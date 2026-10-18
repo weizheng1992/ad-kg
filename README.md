@@ -127,7 +127,7 @@ ad-kg/
 │   ├── __init__.py
 │   ├── config.py                  #   环境与连接配置
 │   ├── llm.py                     #   LLM 客户端适配（OpenAI 兼容接口）
-│   ├── models.py                  #   Pydantic 模型：Entity / Relation / Chunk / Fact / Provenance
+│   ├── models.py                  #   Pydantic 模型：Entity / Relation / Chunk / Fact / Provenance / PermissionPlan / RouterPlan
 │   │
 │   ├── connectors/                #   接入层：只负责拿到原始数据，不做语义解释
 │   │   ├── base.py                #     Connector 协议：fetch() → RawRecord（必带 provenance）
@@ -154,13 +154,13 @@ ad-kg/
 │   ├── retrieval/                 #   召回层
 │   │   ├── router.py              #     本体理解 → 路由计划（含串行依赖与置信度）
 │   │   ├── vector_search.py
-│   │   ├── graph_search.py        #     multi-hop Cypher（注入可见 ID 集）
-│   │   ├── text2sql.py            #     五道闸：只读账号 · 仅 SELECT · 视图/列白名单 · row_filter 谓词注入 · LIMIT+超时
-│   │   └── assemble.py            #     三路结果按本体拼装（含可选重排），汇总 provenance
+│   │   ├── graph_search.py        #     multi-hop Cypher（消费 PermissionPlan 的可见 ID 集）
+│   │   ├── text2sql.py            #     五道闸：只读账号 · 仅 SELECT · 视图/列白名单 · PermissionPlan 谓词注入 · LIMIT+超时
+│   │   └── assemble.py            #     三路结果按本体拼装（含可选重排），出口按 plan 脱敏，汇总 provenance
 │   │
 │   ├── guards/                    #   管控层
 │   │   ├── auth.py                #     service token → role / Person 绑定
-│   │   ├── permission.py          #     按 permissions.yaml 做本体级过滤（graph / vector 路）
+│   │   ├── permission.py          #     permissions.yaml → PermissionPlan 工厂：一份矩阵翻译为三路过滤器 + 脱敏规则
 │   │   ├── action_check.py        #     操作前校验 schema.yaml 中的约束
 │   │   └── audit.py               #     审计日志（只追加，ULID 主键）
 │   │
@@ -198,7 +198,7 @@ ad-kg/
 │   ├── init_db.py                 #   执行 sql/，建 Neo4j 约束与索引
 │   └── load_seed.py               #   导入 data/seed/（含同素材双平台样例）
 │
-└── tests/                         #   单测（mappings 解析 / permission 过滤 / action_check / provenance 必填）
+└── tests/                         #   单测（mappings 解析 / PermissionPlan / action_check / provenance 必填）
                                    #   + 集成冒烟（compose 起库 → load_seed → /ask 三例）；越权零泄漏、缺 provenance 拒绝写成不变量测试
 ```
 
@@ -220,12 +220,12 @@ web/
 | 组件 | 选型 | 理由 | 备选 |
 |---|---|---|---|
 | 语言 / 包管理 | Python 3.11+ / uv | 与 LangGraph 生态同源，smartServe 已用 uv | — |
-| 服务框架 | FastAPI + Pydantic v2 | 结构化输出校验、OpenAPI 自动生成 | — |
+| 服务框架 | FastAPI 1.x + Pydantic v2 | 结构化输出校验、OpenAPI 自动生成 | — |
 | 认证 | 静态 service token（每 role 一枚）+ 网关注入 | 单人维护相称，不起 OAuth/JWT | — |
-| 向量 / 事实 / 溯源 | PostgreSQL 16 + pgvector | 一个库同时承载向量、事实表、溯源表，单人维护成本最低；Text2SQL 只对库内白名单视图生成 | Qdrant / Milvus |
-| 嵌入 | bge-m3（1024 维、cosine、HNSW） | 中文语料表现好、开源可私有化；同一模型兼供 7.4 实体对齐的相似候选 | Qwen3-Embedding / API 嵌入 |
+| 向量 / 事实 / 溯源 | PostgreSQL 18 + pgvector 0.8 | 一个库同时承载向量、事实表、溯源表，单人维护成本最低；异步 I/O 提升读吞吐，UUIDv7 直接做 audit_log / ingest_job 主键；Text2SQL 只对库内白名单视图生成 | Qdrant / Milvus |
+| 嵌入 | Qwen3-Embedding-0.6B（1024 维、cosine、HNSW） | MTEB v2 开源榜首、中文强、单卡可跑；同一模型兼供 7.4 实体对齐的相似候选 | bge-m3（轻量、dense+sparse 多功能）/ API 嵌入 |
 | 重排（可选） | bge-reranker | 仅对 vector 路候选精排（概念 / 规范类），graph 链路不进重排 | — |
-| 图 | Neo4j 5 Community | multi-hop Cypher 表达力强；自带浏览器可视化，演示友好 | Postgres 三元组表（本规模下可替代，见下） |
+| 图 | Neo4j 2025.09 LTS Community | multi-hop Cypher 表达力强；自带浏览器可视化，演示友好；日历版本制下取 LTS 线 | Postgres 三元组表（本规模下可替代，见下） |
 | LLM | OpenAI 兼容接口（GLM / 其他） | 抽取、路由、Text2SQL、评估 judge 共用一个适配层 | — |
 | 原始层 | 本地目录 | 单机够用；多人时换 MinIO，接口不变 | MinIO |
 | Agent 编排 | 不内置 | 编排在 smartServe engine-py；本项目只暴露 API | — |
@@ -310,9 +310,9 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 操作类不进 `/ask`：由调用方直接调 `/actions/check`，`/ask` 识别为操作意图时返回端点指引而非答案。
 
-**融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路 RRF 合并 → 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。
+**融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路 RRF 合并 → 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。路由计划 **RouterPlan**（steps 带依赖与置信度、fallback 标志）是 models.py 一等类型，`ask.py` 只解释执行——路由评测直接对 plan 断言，不起整条 LLM 链路。
 
-**权限下推**（过滤在召回层内生效，assemble 只见过滤后结果；对外仅布尔 `permission_applied`，计数与明细进审计）：vector 路 chunk 元数据过滤下推进 SQL；graph 路 Cypher 注入可见 ID 集；text2sql 路 row_filter 谓词由系统拼进 WHERE——**不信任生成的 SQL**。越权值不得参与聚合：top-N / 均值一律算在过滤后集合上。
+**权限下推**：`guards/permission.py` 把 permissions.yaml 翻译成 **PermissionPlan**（metadata_filter / 可见 ID 集 / SQL 谓词 + 列白名单 / 脱敏规则），vector、graph、text2sql 三路与 assemble 出口**只消费 plan、不读权限矩阵**——过滤在召回层内生效，assemble 只见过滤后结果，对外仅布尔 `permission_applied`（计数与明细进审计）；text2sql 路的谓词由系统拼进 WHERE——**不信任生成的 SQL**。越权值不得参与聚合：top-N / 均值一律算在过滤后集合上。翻译收口在一处，越权测试集只打 PermissionPlan 这一个 interface。
 
 ### 7.4 实体对齐（四级漏斗）
 
@@ -321,7 +321,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 | 级 | 做法 | 判定 |
 |---|---|---|
 | 1 规则归一 | ID 直接映射；名称清洗（去平台前后缀、大小写、全半角） | entity_alias 命中即接受 |
-| 2 相似候选 | embedding top-k | 相似度 ≥0.75 进下一级 |
+| 2 相似候选 | embedding top-k | 相似度 ≥τ 进下一级（τ 随嵌入模型在 seed 上标定，Qwen3 初值 0.75） |
 | 3 LLM 判别 | 候选对交给 LLM | ≥0.8 接受；0.5–0.8 人审；<0.5 拒绝 |
 | 4 人审 | review_queue | 产物：entity_alias 行 |
 
@@ -573,7 +573,7 @@ client:                             # 外部角色：一律白名单
   row_filter: Person(external_for)->Brand<-for_brand-Case<-belongs_to-Campaign
 ```
 
-`row_filter` 语义 = **锚点 + 路径 + 方向**（支持多跳与反向路径）；全局类（Metric、Guideline、Channel）不挂锚点、不参与 row_filter，类白名单内即全量可见；行过滤沿关系**级联收窄**：Case 收窄后 belongs_to / uses 下游随之收窄，未连通实例默认不可见。row_filter 在 graph / vector 路，由 `permission.py` 过滤；在 text2sql 路注入 SQL 谓词（7.3）。动作词表与 9.4 一致，落在 `schema.yaml#actions`。
+`row_filter` 语义 = **锚点 + 路径 + 方向**（支持多跳与反向路径）；全局类（Metric、Guideline、Channel）不挂锚点、不参与 row_filter，类白名单内即全量可见；行过滤沿关系**级联收窄**：Case 收窄后 belongs_to / uses 下游随之收窄，未连通实例默认不可见。row_filter 的翻译收口在 `permission.py` 一处，产出 PermissionPlan：graph / vector 路消费过滤器，text2sql 路注入 SQL 谓词（7.3）。动作词表与 9.4 一致，落在 `schema.yaml#actions`。
 
 ### 12.5 实体 ID 规则
 
