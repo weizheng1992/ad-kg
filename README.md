@@ -204,7 +204,16 @@ ad-kg/
 
 seed 里两个 `creative_metrics_daily_*.csv` 各含同一素材的记录（同 internal_id、两个平台的 external_id）——跨平台口径验收的锚点（见 [12.5](#125-实体-id-规则)）。
 
-可选扩展（不在稳定基线内）：`web/` 前端（React），用于图谱可视化与问答演示，Phase 6 之后按需加入。
+可选扩展（不在稳定基线内，详见 [9.7](#97-前端与运营台webphase-5-后)）：`web/` 前端（React + Vite），Phase 5 后薄演示版、Phase 6 起按需加厚：
+
+```text
+web/
+├── src/
+│   ├── pages/    # ask（问答+证据）· graph（图谱展开）· guideline（规范检查）· review（人审队列）· ops（上传/审计）
+│   └── lib/      # API client：由 FastAPI OpenAPI 生成 TS 类型，API 变更编译期报错
+```
+
+接入只有一条路：web → HTTP API 服务层（含认证），不直连 Neo4j / Postgres（十三的边界）；浏览器侧认证走反代（nginx / Caddy）登录后注入 Authorization 头，本地演示 `ADKG_DEV_AUTH=off`。
 
 ## 五、技术栈与规模假设
 
@@ -431,6 +440,19 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | 换一个行业 | **重写**：`ontology/` 四件（schema / mappings / authority / permissions）+ `sql/` 事实表与 002 视图 + `data/seed/` + golden_set 题目 | **复用**：`adkg/` 代码、run_eval 评估协议、connector 接入模式（新数据源按第一行增删） |
 
 换行业的重写边界只在此处声明，全文其他提到处均指回本表。
+
+### 9.7 前端与运营台（web/，Phase 5 后）
+
+定位只做三件事：**自助看数、演示、知识运营**——不做对话。内部用户的日常主力界面是 smartServe 的对话（独立项目，见十三）；web 的问答页只作演示、评测可视化，以及无对话入口角色（财务、管理层）的兜底。
+
+| 页面 | 谁用 | 端点 |
+|---|---|---|
+| 问答 + 证据 | 所有人 | `/ask` |
+| 图谱展开 | AE、优化师 | `/graph/entity` |
+| 规范检查 | 创意 / AIGC | `/guideline/check` |
+| 人审队列 | 知识运营 | `review_queue` + `/ingest` |
+
+后台管理 = 知识运营台，**不做用户管理**：必须有 review_queue 人审界面（冲突对比 + unmatched 对齐——12.2 仲裁与 7.4 对齐闭环的落地）；最好有文档上传与审计查看；角色与 token 留在 `permissions.yaml` + `.env`（配置文件即管理界面），身份生命周期在外部（网关 / 引擎），做用户管理 UI 是负资产。
 
 ## 十、快速开始（规划，代码就绪后生效）
 
