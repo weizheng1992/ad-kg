@@ -266,7 +266,7 @@ Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指�
 | Phase | 做什么 | 产物 | 预估 | 状态 |
 |---|---|---|---|---|
 | 0 | 列 20 个真实问题并标注命中类型；golden set 骨架；本 README | `eval/golden_set.jsonl`、README | 2d | **进行中** |
-| 1 | 定 12 类本体、关系、约束；permissions、authority；`sql/`（含 audit_log、ingest_job）；docker-compose；models.py；run_eval 骨架；纸面评审 | `ontology/`、`sql/`、空库 | 4d | 待开始 |
+| 1 | 定 12 类本体、关系、约束；permissions、authority；`sql/`（含 audit_log、ingest_job）；docker-compose；models.py；run_eval 骨架；纸面评审 | `ontology/`、`sql/`、空库 | 4d | **完成** |
 | 2a | 文档路·本地：files connector、chunking、extraction（30 段人工标注回归，precision/recall ≥0.85 才放量）、resolution 前两级、向量 + 图入库；人工只校 schema 和前 50 实体 | 图里第一张关系网 | 6d | 待开始 |
 | 2b | 文档路·飞书：feishu 按 revision 增量（外部依赖：自建应用审批与文档授权）、LLM 判别级对齐 | 云文档自动入库 | 4d | 待开始 |
 | 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | 待开始 |
