@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目现状与最高规则
 
-- **设计阶段**：仓库目前是 README.md（600+ 行设计基线）+ `.env.example`，代码按 README §7.1 的八步路线（Phase 0–6）逐步落地。README 是唯一规范：**任何设计、接口、约定变更，先改 README 再写代码**，保持文档-代码同步
+- **八步路线全部完成**（README §7.1，2026-10-19）：四端点（`/ask` `/actions/check` `/guideline/check` `/ingest/assertion`）真跑通；golden set 36 题 89%；消融归因 multi_hop 0/5→5/5。可选扩展进行中：`web/` 演示前端（§9.7）、per-role 视图、对齐漏斗 L3。README 是唯一规范：**任何设计、接口、约定变更，先改 README 再写代码**，保持文档-代码同步
 - 中文项目：文档、代码注释、提交信息全部用中文；README 文风是高密度短句 + 表格，修改时保持
 - 换行业的重写边界只在 README §9.6 声明一处，其他位置只指回该表，不得另立口径
 
@@ -19,7 +19,8 @@ uv run python scripts/load_seed.py           # 导入 data/seed/
 uv run uvicorn adkg.api.main:app --reload    # http://127.0.0.1:8000/docs
 ```
 
-评测 `uv run python eval/run_eval.py`（三路 vs 双路 / 双路+Text2SQL 消融）；测试 `uv run pytest tests/`。
+评测 `uv run python eval/run_eval.py`（LLM judge + 规则判据）；消融 `uv run python eval/run_ablation.py`；测试 `uv run pytest tests/`（103 个，库不在线自动跳过集成）。
+前端（web/ 就绪后）：`pnpm --dir web dev`（Vite 代理到 :8000）。
 
 ## 架构大图
 

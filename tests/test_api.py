@@ -65,3 +65,22 @@ class TestAsk:
         r = client.post("/ask", json={"question": "消耗多少"},
                         headers={"Authorization": "Bearer change-me-management"})
         assert r.status_code == 200 and r.json()["intent"] == "fact"
+
+
+@pytest.mark.skipif(not os.environ.get("ADKG_PG_DSN"), reason="未配置 .env")
+class TestGraphEntity:
+    def test_实体展开带权限过滤(self, client):
+        r = client.get("/graph/entity", params={
+            "id": "Person:li", "role": "optimizer", "user": "Person:li"})
+        body = r.json()
+        assert body["entity"]["id"] == "Person:li"
+        assert any(n["via"] == "responsible_for" for n in body["neighbors"])
+
+    def test_客户不见他品牌邻居(self, client):
+        r = client.get("/graph/entity", params={
+            "id": "Brand:B06", "role": "client", "user": "Person:client_a"})
+        assert r.json()["neighbors"] == []            # B04 之外的子图零邻居
+
+    def test_不存在实体返回404(self, client):
+        assert client.get("/graph/entity", params={
+            "id": "Brand:NOPE", "role": "management"}).status_code == 404

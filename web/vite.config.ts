@@ -1,0 +1,17 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// dev 代理到本机 AdKG（README §9.7：web → HTTP API 是唯一接入路径）
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/ask': 'http://127.0.0.1:8000',
+      '/graph': 'http://127.0.0.1:8000',
+      '/actions': 'http://127.0.0.1:8000',
+      '/guideline': 'http://127.0.0.1:8000',
+      '/ingest': 'http://127.0.0.1:8000',
+    },
+  },
+})
