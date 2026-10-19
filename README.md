@@ -108,7 +108,7 @@
 ```text
 ad-kg/
 ├── README.md
-├── .gitignore                     # .env、data/raw/、eval/runs/、.venv、__pycache__/
+├── .gitignore                     # .env、data/raw/、eval/runs/、.venv、__pycache__/、web 构建产物
 ├── pyproject.toml                 # uv 管理的 Python 项目
 ├── docker-compose.yml             # Postgres(pgvector) + Neo4j
 ├── .env.example                   # 连接串、LLM key、service token 模板
@@ -185,6 +185,7 @@ ad-kg/
 ├── data/
 │   ├── seed/                      #   合成种子数据，可提交
 │   │   ├── brands_products.csv
+│   │   ├── org_people.csv         #   手工维护的"CRM 导出"：人员与品牌对接关系（system_of_record）
 │   │   ├── creative_metrics_daily_douyin.csv   # 素材粒度事实（platform × campaign × creative × day）
 │   │   ├── creative_metrics_daily_xhs.csv      # 故意用中文表头，演示映射层的作用
 │   │   ├── assertions.csv         #   预置 violates 断言样例（画面 6 演示锚点）
@@ -195,7 +196,8 @@ ad-kg/
 ├── docs/                          #   Phase 6 起沉淀：评测报告、决策记录（届时再定文件名）
 │
 ├── scripts/                       # 一次性脚本
-│   ├── init_db.py                 #   执行 sql/，建 Neo4j 约束与索引
+│   ├── gen_seed.py                #   生成合成种子数据（静态文件，可重生成）
+│   ├── init_db.py                 #   执行 sql/，建 Neo4j 约束与索引、Postgres 双账号
 │   └── load_seed.py               #   导入 data/seed/（含同素材双平台样例）
 │
 └── tests/                         #   单测（mappings 解析 / PermissionPlan / action_check / provenance 必填）
@@ -223,7 +225,7 @@ web/
 | 服务框架 | FastAPI 1.x + Pydantic v2 | 结构化输出校验、OpenAPI 自动生成 | — |
 | 认证 | 静态 service token（每 role 一枚）+ 网关注入 | 单人维护相称，不起 OAuth/JWT | — |
 | 向量 / 事实 / 溯源 | PostgreSQL 18 + pgvector 0.8 | 一个库同时承载向量、事实表、溯源表，单人维护成本最低；异步 I/O 提升读吞吐，UUIDv7 直接做 audit_log / ingest_job 主键；Text2SQL 只对库内白名单视图生成 | Qdrant / Milvus |
-| 嵌入 | Qwen3-Embedding-0.6B（1024 维、cosine、HNSW） | MTEB v2 开源榜首、中文强、单卡可跑；同一模型兼供 7.4 实体对齐的相似候选 | bge-m3（轻量、dense+sparse 多功能）/ API 嵌入 |
+| 嵌入 | Qwen3-Embedding-0.6B · API（1024 维、cosine、HNSW） | MTEB v2 开源榜首、中文强；OpenAI 兼容 API（硅基流动 / 百炼）即插即用，本地权重留作备选；同一模型兼供 7.4 实体对齐的相似候选 | bge-m3（轻量、dense+sparse 多功能）/ 本地权重 |
 | 重排（可选） | bge-reranker | 仅对 vector 路候选精排（概念 / 规范类），graph 链路不进重排 | — |
 | 图 | Neo4j 2025.09 LTS Community | multi-hop Cypher 表达力强；自带浏览器可视化，演示友好；日历版本制下取 LTS 线 | Postgres 三元组表（本规模下可替代，见下） |
 | LLM | OpenAI 兼容接口（GLM / 其他） | 抽取、路由、Text2SQL、评估 judge 共用一个适配层 | — |
@@ -231,6 +233,10 @@ web/
 | Agent 编排 | 不内置 | 编排在 smartServe engine-py；本项目只暴露 API | — |
 
 **规模假设**（拍板值，非实测，按代投 App 引流、单人维护估计）：品牌 ~50、案例 ~200/年、素材 ~5k、事实行 ~百万级/年、chunk ~1 万、golden set 20 题起。该量级下 Postgres 三元组表也扛得住——选 Neo4j 看重的是 Cypher 多跳表达力与可视化演示，不是规模刚需；量级再涨两个数量级时重估。演示数据用 `data/seed/` 合成种子，量级取上表零头。
+
+**运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。
+
+**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）。
 
 ## 六、本体概览
 
@@ -423,7 +429,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | 手动整理的文件 | `/ingest/doc` 或 `connectors/files` | 解析 → 分块 → 向量 + 抽取入图 |
 | 云文档 | `connectors/feishu` 定时 | 按 revision 增量，新版本 `supersedes` 旧版 |
 | 平台效果数据 | `connectors/platforms` 每日 | T+1 ETL 进事实表，经 `mappings/` 统一口径 |
-| CRM / 组织系统主数据 | 定期导出文件走 `/ingest/doc` | 解析入图标 system_of_record——authority 顶层级有真实数据来源 |
+| CRM / 组织系统主数据 | 定期导出文件走 `/ingest/doc`（演示期即 `data/seed/org_people.csv`） | 解析入图标 system_of_record——authority 顶层级有真实数据来源 |
 | 数仓 / 业务库 | `connectors/warehouse` | 只读 schema 建映射（供 router 理解字段语义），不搬数不直查；指标查询统一走事实层视图（FDW 直查留作扩展） |
 | Agent 断言（AIGC 比对结果等） | `/ingest/assertion` | 带低 authority provenance 入图，冲突按 [12.2](#122-权威度authorityyaml) 进 review_queue |
 | 对话中暴露的缺口 | Agent 自动写 `review_queue` | 人审通过后入库 |
