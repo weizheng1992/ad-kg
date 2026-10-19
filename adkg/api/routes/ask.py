@@ -76,13 +76,12 @@ def ask(request: Request, body: dict,
     planner = _planner(request)
     plan = planner.plan(role, person=person)
     llm = _llm(request)
-    if llm is not None:                                   # LLM 路由优先，异常回规则（§7.2）
+    decision = rule_route(question)
+    if llm is not None and decision.confidence < 0.8:     # 强关键词信规则，LLM 只兜弱置信
         try:
             decision = llm_route(question, llm.chat_json)
         except Exception:
-            decision = rule_route(question)
-    else:
-        decision = rule_route(question)
+            pass                                          # 回规则（§7.2）
 
     if decision.intent == "operation":                      # 不进 /ask（§7.3）
         _audit(env, role, person, question, "info", "operation 意图，返回端点指引")

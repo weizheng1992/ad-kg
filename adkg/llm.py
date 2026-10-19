@@ -31,6 +31,7 @@ class LLMClient:
         resp = self._client.chat.completions.create(
             model=self._model,
             response_format={"type": "json_object"},
+            temperature=0,                                  # 路由/judge 要确定性
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}],
         )
@@ -46,7 +47,7 @@ class LLMClient:
         client = OpenAI(base_url=base, api_key=os.environ["ADKG_LLM_API_KEY"],
                         timeout=30, max_retries=2)
         resp = client.chat.completions.create(
-            model=model, response_format={"type": "json_object"},
+            model=model, response_format={"type": "json_object"}, temperature=0,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}])
         import json

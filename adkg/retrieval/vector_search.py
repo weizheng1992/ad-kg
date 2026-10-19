@@ -27,15 +27,28 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
         where.append("(case_id = ANY(%s) OR brand_id = ANY(%s) OR case_id IS NULL)")
         where_params += [visible, visible]
 
-    sql = (f"SELECT doc_id, chunk_index, text, 1 - (embedding <=> %s::vector) AS score"
-           f" FROM chunks WHERE {' AND '.join(where)}"
-           f" ORDER BY embedding <=> %s::vector LIMIT {int(limit)}")
+    sql = (f"""
+        SELECT doc_id, chunk_index, text, score FROM (
+          SELECT doc_id, chunk_index, text,
+                 1 - (embedding <=> %s::vector) AS score,
+                 row_number() OVER (PARTITION BY coalesce(entity_class, '~')
+                                    ORDER BY embedding <=> %s::vector) AS rn
+          FROM chunks WHERE {' AND '.join(where)}
+        ) t WHERE rn <= 3 ORDER BY score DESC LIMIT {int(limit)}""")
     with psycopg.connect(dsn, options="-c statement_timeout=3000") as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, [vec, *where_params, vec])
+            cur.execute(sql, [vec, vec, *where_params])
             rows = cur.fetchall()
-    return {"evidence": [{
-        "type": "doc", "ref": f"chunk:{r[0]}#{r[1]}", "quote": r[2][:200],
-        "score": round(float(r[3]), 4),
-        "provenance": {"source_type": "official_doc", "authority": 60},
-    } for r in rows], "degraded": False}
+    # 内容级近似去重（模板化文档会产生同文块，只留最高分）+ 类配额已保证规范块在场
+    seen_prefix, evidence = set(), []
+    for r in rows:
+        key = r[2][:60]
+        if key in seen_prefix:
+            continue
+        seen_prefix.add(key)
+        evidence.append({
+            "type": "doc", "ref": f"chunk:{r[0]}#{r[1]}", "quote": r[2][:200],
+            "score": round(float(r[3]), 4),
+            "provenance": {"source_type": "official_doc", "authority": 60},
+        })
+    return {"evidence": evidence, "degraded": False}

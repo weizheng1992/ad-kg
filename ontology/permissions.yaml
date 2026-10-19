@@ -53,8 +53,8 @@ roles:
     metrics_deny: []
     actions: [read]
 
-  management:                    # 跨品牌聚合视图，无行过滤
-    classes: [Brand, Product, Case, Campaign, Creative, Metric]
+  management:                    # 跨品牌聚合视图 + 规范/口径（全局类），无行过滤
+    classes: [Brand, Product, Case, Campaign, Creative, Metric, Guideline, Channel]
     metrics_deny: []
     actions: [read]
 

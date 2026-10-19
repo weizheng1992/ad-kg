@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
+from eval.judge import judge_item  # noqa: E402
+
 load_dotenv(ROOT / ".env")
 
 GOLDEN = ROOT / "eval" / "golden_set.jsonl"
@@ -60,7 +62,7 @@ def _role_of(item: dict) -> tuple[str, str]:
     return role, user
 
 
-def eval_one(client, item: dict) -> dict:
+def eval_one(client, item: dict, judge_fn=None) -> dict:
     role, user = _role_of(item)
     r = client.post("/ask", json={"question": item["question"], "role": role, "user": user})
     body = r.json()
@@ -91,7 +93,14 @@ def eval_one(client, item: dict) -> dict:
     evidence = body.get("evidence", [])
     must = item.get("expected_answer", {}).get("must_entities", [])
     blob = json.dumps(evidence, ensure_ascii=False, default=str)
-    result["checks"]["evidence"] = bool(evidence) and (not must or any(m in blob for m in must))
+    points = item.get("expected_answer", {}).get("points", [])
+    if judge_fn is not None and evidence:
+        verdict = judge_fn(item["question"], points, evidence)   # LLM 按要点（§11.3）
+        result["judge"] = verdict
+        result["checks"]["evidence"] = bool(verdict and verdict["verdict"]) and (
+            not must or any(m in blob for m in must))
+    else:
+        result["checks"]["evidence"] = bool(evidence) and (not must or any(m in blob for m in must))
     if role == "client":
         result["checks"]["permission"] = "Case:C-2025-006" not in blob  # 越权目标零出现
     result["degraded"] = body.get("degraded", [])
@@ -102,7 +111,16 @@ def eval_one(client, item: dict) -> dict:
 def main() -> None:
     rows = load()
     client = _client()
-    results = [eval_one(client, item) for item in rows]
+    judge_fn = None
+    try:
+        from adkg.llm import LLMClient
+        llm = LLMClient()
+        llm.batch_chat_json("ping", '返回 {"ok": true}')      # 通道可用性探测
+        judge_fn = lambda q, pts, ev: judge_item(llm.batch_chat_json, q, pts, ev)
+        print("judge：LLM 按要点打分（glm-4-flash 批通道）\n")
+    except Exception as e:
+        print(f"judge 不可用，回退规则判据：{type(e).__name__}\n")
+    results = [eval_one(client, item, judge_fn) for item in rows]
 
     dist = Counter(r["type"] for r in results)
     by_type: dict[str, list] = {t: [r for r in results if r["type"] == t] for t in REQUIRED_TYPES}
@@ -115,6 +133,10 @@ def main() -> None:
         degraded_n = sum(1 for r in sub if r.get("degraded"))
         note = f"缺席路 {degraded_n} 题" if degraded_n else ""
         print(f"{t:<12}{ok}/{len(sub):<8}{note}")
+    judged = [r for r in results if r.get("judge")]
+    if judged:
+        agree = sum(1 for r in judged if r["judge"]["verdict"])
+        print(f"\njudge：{agree}/{len(judged)} 题要点全命中")
     failed = [r for r in results if not r["pass"]]
     if failed:
         print("\n未过：")
