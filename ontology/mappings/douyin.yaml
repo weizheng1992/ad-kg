@@ -1,0 +1,20 @@
+# ==================================================================
+# 巨量引擎（抖音）→ 本体映射（README §四 mappings/douyin.yaml）
+# 平台字段 → unified_metrics 统一列；指标口径锚点 = Metric 定义（§六）
+# 平台 ID 一律作 external_id 进 entity_alias，不进主键（§12.5）
+# ==================================================================
+
+source: douyin
+table: creative_metrics_daily_douyin
+alias_source: douyin          # entity_alias(source, creative_local_id) 查换算
+
+columns:                      # 平台列 → unified 列
+  date: date
+  campaign_local_id: campaign_local_id
+  creative_local_id: creative_local_id
+  cost: cost
+  impressions: impressions
+  clicks: clicks
+  conversions: conversions
+
+metrics: [Metric:ctr, Metric:cvr, Metric:cpa, Metric:cpm]   # 本表可支撑的口径

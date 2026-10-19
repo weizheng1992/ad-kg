@@ -1,0 +1,19 @@
+# ==================================================================
+# 聚光平台（小红书）→ 本体映射（README §四 mappings/xiaohongshu.yaml）
+# 平台导出为中文表头——映射层在这里完成翻译（§四「故意用中文表头」的落点）
+# ==================================================================
+
+source: xhs
+table: creative_metrics_daily_xhs
+alias_source: xhs
+
+columns:
+  日期: date
+  计划ID: campaign_local_id
+  素材ID: creative_local_id
+  消耗: cost
+  曝光量: impressions
+  点击量: clicks
+  转化量: conversions
+
+metrics: [Metric:ctr, Metric:cvr, Metric:cpa, Metric:cpm]

@@ -84,3 +84,20 @@ class TestRawStore:
         store.write("a.md", "旧")
         with pytest.raises(FileExistsError):
             store.write("a.md", "新内容")
+
+
+# ---------------------------------------------------------------- platforms 导出文件路
+class TestPlatformsExportConnector:
+    def test_按文件名认平台(self, tmp_path):
+        from adkg.connectors.platforms import PlatformsExportConnector
+        (tmp_path / "巨量引擎报表_2025-06.csv").write_text("date,cost\n2025-06-01,1",
+                                                          encoding="utf-8")
+        (tmp_path / "聚光导出_2025-06.csv").write_text("日期,消耗\n2025-06-01,1",
+                                                       encoding="utf-8")
+        (tmp_path / "无关.csv").write_text("x", encoding="utf-8")
+        conn = PlatformsExportConnector(tmp_path)
+        targets = conn.etl_targets()
+        assert [m for _, m in targets] == ["douyin", "xiaohongshu"]
+        records = list(conn.fetch())
+        assert len(records) == 2
+        assert all(r.provenance.source_type.value == "platform_api" for r in records)

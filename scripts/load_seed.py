@@ -171,7 +171,19 @@ def main() -> None:
                 "INSERT INTO entity_alias (source, external_id, internal_id)"
                 " VALUES (%s,%s,'Creative:creative_992')"
                 " ON CONFLICT (source, external_id) DO NOTHING", (source, ext))
-    print("entity_alias：双平台同素材锚点已就位（dy_889 / xhs_77 → Creative:creative_992）")
+        # 部分平台回执 ID 与本体对齐（其余留作 unmatched 人审演示，§7.4）
+        cc = _rows("cases_campaigns.csv")
+        douyin_first8 = [r["creative_id"] for r in cc if r["platform"] == "douyin"][:8]
+        xhs_first8 = [r["creative_id"] for r in cc if r["platform"] == "xhs"][:8]
+        for i, cid in enumerate(douyin_first8):
+            cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
+                        " VALUES ('douyin', %s, %s) ON CONFLICT DO NOTHING",
+                        (f"dy_cr{i}", cid))
+        for i, cid in enumerate(xhs_first8):
+            cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
+                        " VALUES ('xhs', %s, %s) ON CONFLICT DO NOTHING",
+                        (f"xhs_cr{i}", cid))
+    print("entity_alias：双平台锚点 + 16 条平台回执对齐（其余 unmatched 留给人审演示）")
 
     # ── 文档路：cases + guidelines 走流水线（raw + chunk 入 PG）──────
     for sub, stype in (("cases", "wiki"), ("guidelines", "official_doc")):
@@ -183,6 +195,14 @@ def main() -> None:
 
     counts = graph.counts()
     print(f"对账：{counts}")
+
+    # ── 数据路（Phase 3）：两平台 CSV → 映射 → 别名换算 → 事实表 ──────
+    from adkg.pipeline.etl_facts import etl_csv
+    for mapping, csvf in (("douyin", "creative_metrics_daily_douyin.csv"),
+                          ("xiaohongshu", "creative_metrics_daily_xhs.csv")):
+        st = etl_csv(pg, graph, ROOT / "ontology" / "mappings" / f"{mapping}.yaml",
+                     SEED / csvf)
+        print(f"数据路 {mapping}：{st.rows} 行（matched {st.matched} / unmatched {st.unmatched}）")
     graph.close()
 
 

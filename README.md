@@ -270,7 +270,7 @@ Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指�
 | 1 | 定 12 类本体、关系、约束；permissions、authority；`sql/`（含 audit_log、ingest_job）；docker-compose；models.py；run_eval 骨架；纸面评审 | `ontology/`、`sql/`、空库 | 4d | **完成** |
 | 2a | 文档路·本地：files connector、chunking、extraction（30 段人工标注回归，precision/recall ≥0.85 才放量）、resolution 前两级、向量 + 图入库；人工只校 schema 和前 50 实体 | 图里第一张关系网 | 6d | **进行中**（关系网已点亮；LLM 抽取回归待 key） |
 | 2b | 文档路·飞书：feishu 按 revision 增量（外部依赖：自建应用审批与文档授权）、LLM 判别级对齐 | 云文档自动入库 | 4d | **进行中**（connector+版本链就绪，等文档授权） |
-| 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | 待开始 |
+| 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | **完成**（演示级：锚点素材两平台同口径可比；platforms API adapter 留给真实部署方） |
 | 4 | 召回与权限：认证、permission 过滤与下推、router、三路检索、融合排序、assemble、`/ask` | `/ask` 能答混合问题 | 6d | 待开始 |
 | 5 | 管控收口：`/actions/check`、audit、AIGC 闭环 | 越权被过滤、违规被拦截 | 5d | 待开始 |
 | 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | 待开始 |

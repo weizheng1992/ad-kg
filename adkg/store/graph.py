@@ -60,3 +60,21 @@ class GraphStore:
             rels = s.run("MATCH ()-[r]->() WHERE r.prov_source IS NOT NULL "
                          "RETURN count(r) AS c").single()["c"]
         return {"nodes": nodes, "relations": rels}
+
+    def creative_contexts(self, creative_ids: list[str]) -> dict[str, dict]:
+        """etl_facts 物化维度列用（§八）：素材 → 所属计划/案例/品牌。"""
+        if not creative_ids:
+            return {}
+        with self.session() as s:
+            rows = s.run(
+                """
+                UNWIND $ids AS cid
+                OPTIONAL MATCH (c:Entity {id: cid})<-[:uses]-(cp:Entity)
+                    -[:belongs_to]->(cs:Entity)
+                OPTIONAL MATCH (cs)-[:for_brand]->(b:Entity)
+                RETURN cid, head(collect(DISTINCT cp.id)) AS campaign_id,
+                       head(collect(DISTINCT cs.id)) AS case_id,
+                       head(collect(DISTINCT b.id))  AS brand_id
+                """, ids=creative_ids)
+            return {r["cid"]: {"campaign_id": r["campaign_id"], "case_id": r["case_id"],
+                               "brand_id": r["brand_id"]} for r in rows}
