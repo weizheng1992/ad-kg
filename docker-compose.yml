@@ -1,0 +1,36 @@
+# AdKG 本地双库（README §五 / §八）——单机演示与内部部署，不承诺 SLA（§11.3）
+# 凭据全部来自 .env（见 .env.example）；docker compose 自动读取同目录 .env
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: adkg-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      # PG18+ 镜像约定：挂 /var/lib/postgresql（数据落在版本子目录，便于 pg_upgrade）
+      - adkg_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  neo4j:
+    image: neo4j:2025.09-community        # 日历版本制下取 LTS 线（§五）
+    container_name: adkg-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH}
+    ports:
+      - "7474:7474"                       # 浏览器可视化（演示用，§五）
+      - "7687:7687"
+    volumes:
+      - adkg_neo4jdata:/data
+
+volumes:
+  adkg_pgdata:
+  adkg_neo4jdata:

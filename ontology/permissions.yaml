@@ -1,0 +1,64 @@
+# ==================================================================
+# 权限矩阵（README §12.4）——一行一个 role，人和 Agent 共用
+# 默认策略：内部角色 = 类白名单 + 属性黑名单；外部角色 = 全白名单（fail-closed）
+# 指标列权限有派生联动：deny cost 连带 deny cpa / roi（防乘法反推）
+#
+# bindings 只存 token 标识 → role / Person 的映射结构；
+# token 本体进 .env / 密管（见 .env.example 的 ADKG_TOKEN_* 段）。
+# row_filter 语义 = 锚点 + 路径 + 方向；翻译收口在 guards/permission.py
+# 产出 PermissionPlan，三路检索只消费 plan（README §7.3）。
+# ==================================================================
+
+bindings:
+  tok-ae-li:          {role: ae,          person: Person:li}
+  tok-optimizer-li:   {role: optimizer,   person: Person:li}
+  tok-creative-wang:  {role: creative,    person: Person:wang}
+  tok-client-a:       {role: client,      person: Person:client_a}
+  tok-finance-zhou:   {role: finance,     person: Person:zhou}
+  tok-mgmt-chen:      {role: management,  person: Person:chen}
+  tok-admin:          {role: admin,       person: Person:admin}
+
+roles:
+
+  ae:                            # 内部角色：类白名单 + 属性黑名单
+    classes: [Brand, Product, Case, Campaign, Creative, Metric, Guideline]
+    deny_properties: [Case.bd_budget, Case.gross_margin]
+    metrics_deny: [gross_margin]
+    actions: [read, create_case]
+    row_filter: Person(belongs_to_brand)->Brand<-for_brand-Case
+
+  optimizer:                     # 与 README §12.4 逐字一致
+    classes: [Case, Campaign, Creative, Channel, Metric, Guideline]
+    deny_properties: [Case.bd_budget, Case.gross_margin]
+    metrics_deny: [gross_margin]
+    actions: [read, create_creative, pause_campaign, delete_creative]
+    row_filter: Person(responsible_for)->Case<-belongs_to-Campaign-uses->Creative
+
+  creative:                      # 生成前查规范、找爆款参考；"创意看不到成本字段"（§1.3）
+    classes: [Creative, Guideline, Metric, Channel, Campaign]
+    deny_properties: [Campaign.daily_budget]
+    metrics_deny: [cost, gross_margin, cpa, roi]   # 派生联动：deny cost 连带 cpa / roi（§12.4）
+    actions: [read, create_creative]
+
+  client:                        # 外部角色：一律白名单，与 README §12.4 逐字一致
+    external: true
+    classes: [Case, Campaign, Creative, Metric]
+    allow_properties: [Case.stage, Campaign.status]
+    metrics_allow: [cost, ctr, cvr, conversion]
+    actions: [read]
+    row_filter: Person(external_for)->Brand<-for_brand-Case<-belongs_to-Campaign
+
+  finance:                       # 结算相关字段；属性级覆盖（§9.2）
+    classes: [Case, Brand]
+    metrics_deny: []
+    actions: [read]
+
+  management:                    # 跨品牌聚合视图，无行过滤
+    classes: [Brand, Product, Case, Campaign, Creative, Metric]
+    metrics_deny: []
+    actions: [read]
+
+  admin:                         # 运维与审计读取；不参与业务检索
+    classes: [Brand, Product, Case, Campaign, Creative, Channel, LandingPage,
+              Audience, Metric, Guideline, Person, DocVersion]
+    actions: [read, create_creative, pause_campaign, delete_creative, create_case, update_stage]

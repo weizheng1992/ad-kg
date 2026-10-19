@@ -1,0 +1,102 @@
+# ==================================================================
+# AdKG 本体 schema——唯一语义真源（README §六）
+# 12 类 + 14 关系 + Case 状态机约束 + 动作词表
+# 详细口径以 README 为准；本文件是代码可加载的资产形态
+# ==================================================================
+
+classes:
+  Brand:
+    description: 广告主，主数据，关系的载体
+    properties: [category, owner_type]
+
+  Product:
+    description: 商品（App / SKU）
+    properties: [app_id, platform]
+
+  Case:
+    description: 主线实体，提案到结案的生命周期
+    properties: [stage, bd_budget, gross_margin, settlement_status, terminate_reason]
+
+  Campaign:
+    description: 投放计划
+    properties: [status, daily_budget]
+
+  Creative:
+    description: 投放素材；AIGC 产物带 derived_from 链
+    properties: [is_aigc, derived_from]
+
+  Channel:
+    description: 广告位 / 流量场景；与事实表的平台维度区分，不重复建模
+    properties: [slot_type]
+    global_class: true        # 全局类：不挂锚点、不参与 row_filter（§12.4）
+
+  LandingPage:
+    description: 落地页
+    properties: [url, page_type]
+
+  Audience:
+    description: 定向人群包
+    properties: [targeting_desc]
+
+  Metric:
+    description: 指标口径定义（非数值）；unified_metrics 视图列的语义锚点
+    properties: [expr, grain, dedup_rule, valid_scope]   # 语义层手工定义   # 语义层手工定义
+    global_class: true
+
+  Guideline:
+    description: 创意规范、品牌 VI、广告法条款；可机判规范带结构化阈值
+    properties: [guideline_type, max_duration_s, aspect_ratio, platform_scope]
+    global_class: true
+
+  Person:
+    description: AE / 优化师 / 客户对接人；权限与责任归属。不存联系方式
+    properties: [name, org_role]
+
+  DocVersion:
+    description: 文档版本链
+    properties: [rev]
+
+# ------------------------------------------------------------------
+# 关系（§六"关键关系"全集；scope 区分内部对接人与外部客户锚点）
+# ------------------------------------------------------------------
+relations:
+  - {predicate: for_brand,        source: Case,     target: Brand,     cardinality: "N:1"}
+  - {predicate: for_product,      source: Case,     target: Product,   cardinality: "N:1"}
+  - {predicate: has_product,      source: Brand,    target: Product,   cardinality: "1:N"}
+  - {predicate: belongs_to,       source: Campaign, target: Case,      cardinality: "N:1"}
+  - {predicate: uses,             source: Campaign, target: Creative,  cardinality: "N:M"}
+  - {predicate: in_channel,       source: Campaign, target: Channel,   cardinality: "N:1"}
+  - {predicate: targets,          source: Campaign, target: Audience,  cardinality: "N:M"}
+  - {predicate: links_to,         source: Creative, target: LandingPage, cardinality: "N:1"}
+  - {predicate: complies_with,    source: Creative, target: Guideline, cardinality: "N:M"}
+  - {predicate: violates,         source: Creative, target: Guideline, cardinality: "N:M"}
+  - {predicate: derived_from,     source: Creative, target: Creative,  cardinality: "N:1"}
+  - {predicate: responsible_for,  source: Person,   target: Case,      cardinality: "N:M"}
+  - {predicate: belongs_to_brand, source: Person,   target: Brand,     cardinality: "N:M", scope: internal}
+  - {predicate: external_for,     source: Person,   target: Brand,     cardinality: "N:M", scope: external}  # 外部客户账号绑定，变更走人审
+  - {predicate: supersedes,       source: DocVersion, target: DocVersion, cardinality: "N:1"}  # 文档版本链：新版本 supersedes 旧版本而不是删除（§7.2）
+
+# ------------------------------------------------------------------
+# 约束（guards/action_check.py 读取）
+# ------------------------------------------------------------------
+constraints:
+  case_stage:
+    initial: proposal
+    transitions:
+      proposal: [live, lost]
+      live: [closed, terminated]
+      closed: []
+      lost: []
+      terminated: []
+    terminal: [closed, lost, terminated]   # 终态不可逆
+    on_lost: 默认排除出可比案例检索（retrieval 按 stage 过滤），保留复盘归因
+    on_terminated: 必填终止原因 terminate_reason
+  creative_deletion:
+    rule: live / closed 状态的 Case 不可删除 Creative
+  provenance_required:
+    rule: 任何写入必须带 provenance 四元组，缺失即拒绝
+
+# ------------------------------------------------------------------
+# 动作词表（/actions/check 的 op 取值域；§9.4）
+# ------------------------------------------------------------------
+actions: [read, create_creative, pause_campaign, delete_creative, create_case, update_stage]

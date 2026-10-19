@@ -1,0 +1,15 @@
+# ==================================================================
+# 权威度查表（README §12.2）——五级与 source_type 一一对应
+# tests/test_ontology.py 断言本表与 adkg/models.AUTHORITY_LADDER 一致，
+# 改任一处都会被测试拦下。
+# ==================================================================
+
+ladder:
+  system_of_record: 100   # CRM / 案例系统 / 组织系统等内部主数据源
+  platform_api: 80
+  official_doc: 60
+  wiki: 40
+  conversation: 20        # Agent 断言（AIGC violates 等）落这一档
+
+# 同分裁决链：authority 相同时依次比较，全部不能判定则双方标 conflicted 进 review_queue
+tie_breaker: [confidence, fetched_at, conflicted]
