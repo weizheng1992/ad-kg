@@ -40,17 +40,17 @@ def _graph(request: Request):
 
 
 def _llm(request: Request):
-    """惰性 LLM 客户端；chat 不可用（无 key/网络）返回 None 走降级。"""
+    """惰性 LLM 客户端；探测失败不缓存（限流是暂态，下一问重试，§7.2）。"""
     if not hasattr(request.app.state, "llm"):
         request.app.state.llm = None
-        if request.app.state.env.get("ADKG_LLM_API_KEY"):
-            try:
-                from adkg.llm import LLMClient
-                client = LLMClient()
-                client.chat_json("ping", '返回 {"ok": true}')
-                request.app.state.llm = client
-            except Exception:
-                request.app.state.llm = None
+    if request.app.state.llm is None and request.app.state.env.get("ADKG_LLM_API_KEY"):
+        try:
+            from adkg.llm import LLMClient
+            client = LLMClient()
+            client.chat_json("ping", '返回 {"ok": true}')
+            request.app.state.llm = client
+        except Exception:
+            return None                                  # 本问降级，不缓存失败
     return request.app.state.llm
 
 
@@ -93,11 +93,12 @@ def ask(request: Request, body: dict,
     results: dict[str, dict] = {}
     for step in decision.plan.steps:                        # 按序执行即满足依赖
         if step.route.value == "graph":
-            r = graph_search.search(question, plan, graph)
+            r = graph_search.search(question, plan, graph, person=person)
         elif step.route.value == "text2sql":
             dep = step.params.get("entity_ids_from")
             entity_ids = results.get(dep, {}).get("entity_ids") if dep else None
-            r = text2sql.run(question, plan, env["ADKG_PG_RO_DSN"], entity_ids)
+            r = text2sql.run(question, plan, env["ADKG_PG_RO_DSN"], entity_ids,
+                             generator=llm.chat_json if llm else None)
         else:
             r = vector_search.search(question, plan, env["ADKG_PG_DSN"],
                                      embed_fn=llm.embed if llm else None)

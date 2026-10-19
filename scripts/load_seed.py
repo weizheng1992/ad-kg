@@ -179,6 +179,14 @@ def main() -> None:
             cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
                         " VALUES ('douyin', %s, %s) ON CONFLICT DO NOTHING",
                         (f"dy_cr{i}", cid))
+        # 负责人案例（C-2025-006，优化师 demo 主场景）的创意也纳入对齐——
+        # 否则其案例级谓词在事实表无 matched 行（评测 R2 抓出的数据覆盖缺口）
+        for i, cid in enumerate([r["creative_id"] for r in cc
+                                 if r["case_id"] == "Case:C-2025-006"
+                                 and r["platform"] == "douyin"][:2]):
+            cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
+                        " VALUES ('douyin', %s, %s) ON CONFLICT DO NOTHING",
+                        (f"dy_cr{8 + i}", cid))
         for i, cid in enumerate(xhs_first8):
             cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
                         " VALUES ('xhs', %s, %s) ON CONFLICT DO NOTHING",

@@ -98,7 +98,8 @@ class TestRowFilter图展开:
         assert "Brand:B04" in vis
         assert "Case:C-2025-003" in vis and "Case:C-2025-011" in vis
         assert "Case:C-2025-005" not in vis                # Brand:B06 的案例，零可见
-        assert plan.sql_predicate == "brand_id IN ('B04')"  # 行过滤落成 SQL 谓词
+        assert plan.sql_predicate.startswith("case_id IN (")   # 案例级谓词（比品牌级更严）
+        assert "Case:C-2025-003" in plan.sql_predicate
 
     def test_无row_filter的角色全量可见(self):
         plan = self._planner().plan("management")

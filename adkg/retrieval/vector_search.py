@@ -15,7 +15,10 @@ def _vec_literal(v: list[float]) -> str:
 def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> dict:
     if embed_fn is None:
         return {"evidence": [], "degraded": True, "reason": "无嵌入能力（缺本地模型）"}
-    vec = _vec_literal(embed_fn([question])[0])
+    try:
+        vec = _vec_literal(embed_fn([question])[0])
+    except Exception:
+        return _keyword_fallback()
 
     where, where_params = ["embedding IS NOT NULL"], []
     classes = plan.metadata_filter.get("entity_class__in", [])
@@ -26,6 +29,32 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
     if visible:
         where.append("(case_id = ANY(%s) OR brand_id = ANY(%s) OR case_id IS NULL)")
         where_params += [visible, visible]
+
+    # 嵌入未命中/失败时的关键词兜底（§7.2 降级矩阵：缺席不如降级检索）
+    def _keyword_fallback():
+        import re as _re
+        stop = "的了吗呢吧啊是有在和与及对从被把"
+        kws = []
+        for w in _re.findall(r"[\u4e00-\u9fa5]{2,8}", question):
+            w = w.strip(stop)                           # 剥首尾虚词，防"信息流视频的"式 miss
+            if len(w) >= 2 and w not in kws:
+                kws.append(w)
+        kws = kws[:4]
+        if not kws:
+            return {"evidence": [], "degraded": False}
+        like = " OR ".join("text ILIKE %s" for _ in kws)
+        kws = [f"%{k}%" for k in kws]
+        with psycopg.connect(dsn, options="-c statement_timeout=3000") as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT doc_id, chunk_index, text, 0.5 FROM chunks"
+                            f" WHERE entity_class IS NOT NULL AND ({like})"
+                            f" ORDER BY (entity_class='Guideline') DESC LIMIT 5", kws)
+                rows = cur.fetchall()
+        return {"evidence": [{
+            "type": "doc", "ref": f"chunk:{r[0]}#{r[1]}", "quote": r[2][:200],
+            "score": 0.5, "fallback": "keyword",
+            "provenance": {"source_type": "official_doc", "authority": 60},
+        } for r in rows], "degraded": False}
 
     sql = (f"""
         SELECT doc_id, chunk_index, text, score FROM (
@@ -51,4 +80,6 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
             "score": round(float(r[3]), 4),
             "provenance": {"source_type": "official_doc", "authority": 60},
         })
+    if not evidence:
+        return _keyword_fallback()
     return {"evidence": evidence, "degraded": False}

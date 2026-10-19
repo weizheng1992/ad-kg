@@ -117,9 +117,15 @@ class TestText2SQL:
         planner = PermissionPlanner(ROOT / "ontology/permissions.yaml", graph=g)
         plan = planner.plan("client", person="Person:client_a")
         sql, _ = build_sql("消耗多少", plan)
-        assert "brand_id IN ('B04')" in sql                 # 闸 4：谓词注入
+        assert "case_id IN (" in sql                          # 闸 4：谓词注入（案例级）
         out = run("上月 CPA 最差的素材", plan, os.environ["ADKG_PG_RO_DSN"])
-        assert out["evidence"][0]["rows"] == []             # B04 无 matched 事实行 → 空集不越权
+        rows = out["evidence"][0]["rows"]
+        # 案例级谓词下：客户能看到自己品牌（B04=案例 003/011/019）的 matched 行，
+        # 但不得出现他牌案例（如 005/006）的素材——行级权限的正行为
+        theirs = {r[0] for r in [(c,) for c in []]}
+        bad = [r for r in rows if str(r.get("creative_id", "")).startswith(
+            ("Creative:C-2025-005", "Creative:C-2025-006", "Creative:C-2025-002"))]
+        assert not bad, f"越权：{bad}"
         g.close()
 
     def test_创意角色列白名单_无cpa(self):
@@ -130,3 +136,94 @@ class TestText2SQL:
         plan = planner.plan("creative")
         sql, _ = build_sql("上月 CPA 最差的素材", plan)
         assert "cpa" not in sql                             # deny cost 派生联动（§12.4）
+
+
+class TestTopMetric模板:
+    """口径感知 top-N（§六 Metric）：指标词/方向/平台/时间窗的纯函数解析。"""
+
+    def _plan(self):
+        from adkg.models import PermissionPlan
+        return PermissionPlan(metadata_filter={"entity_class__in": ["Metric", "Creative"]},
+                              allowed_columns=["cost", "impressions", "clicks",
+                                               "conversions", "ctr", "cvr", "cpa", "cpm"])
+
+    def test_点击率最好_抖音_上月(self):
+        from adkg.retrieval.text2sql import build_sql
+        sql, p = build_sql("上个月抖音的点击率最好的素材", self._plan())
+        assert p["metric"] == "ctr" and p["direction"] == "DESC"    # 比率型越高越好
+        assert p["platform"] == "douyin" and p["window"]
+        assert "platform = 'douyin'" in sql and "avg_ctr" in sql and "BETWEEN" in sql
+
+    def test_cpa最好方向反转(self):
+        from adkg.retrieval.text2sql import build_sql
+        _, p = build_sql("CPA 最好的素材", self._plan())
+        assert p["metric"] == "cpa" and p["direction"] == "ASC"     # 成本型越低越好
+
+    def test_小红书转化率最差(self):
+        from adkg.retrieval.text2sql import build_sql
+        sql, p = build_sql("小红书转化率最差的素材有哪些", self._plan())
+        assert p["metric"] == "cvr" and p["direction"] == "ASC" and p["platform"] == "xhs"
+        assert "platform = 'xhs'" in sql
+
+
+class Test五道闸校验:
+    """LLM 生成 SQL 的静态闸门（§7.3：不信任生成的 SQL）。"""
+
+    def _plan(self):
+        from adkg.models import PermissionPlan
+        return PermissionPlan(allowed_columns=["cost", "ctr", "cvr", "cpa", "conversions"])
+
+    def test_合法生成通过并强制LIMIT(self):
+        from adkg.retrieval.text2sql import validate_sql
+        err, fixed = validate_sql(
+            "SELECT brand_id, sum(cost) FROM unified_metrics GROUP BY 1", self._plan())
+        assert err is None and "LIMIT 50" in fixed
+
+    def test_写操作与多语句与他表拒绝(self):
+        from adkg.retrieval.text2sql import validate_sql
+        for bad in ("DELETE FROM unified_metrics",
+                    "SELECT 1; SELECT 2",
+                    "SELECT * FROM provenance",
+                    "SELECT pg_sleep(10)"):
+            err, _ = validate_sql(bad, self._plan())
+            assert err, bad
+
+    def test_白名单外列拒绝(self):
+        from adkg.retrieval.text2sql import validate_sql
+        err, _ = validate_sql(
+            "SELECT gross_margin FROM unified_metrics LIMIT 5", self._plan())
+        assert err and "gross_margin" in err
+
+    def test_谓词强制包裹(self):
+        from adkg.retrieval.text2sql import enforce_predicate
+        from adkg.models import PermissionPlan
+        plan = PermissionPlan(allowed_columns=["cost"],
+                              sql_predicate="brand_id IN ('B04')")
+        wrapped = enforce_predicate("SELECT platform, sum(cost) FROM unified_metrics LIMIT 5", plan)
+        assert wrapped.startswith("SELECT * FROM (") and "brand_id IN ('B04')" in wrapped
+        # 已含 brand_id 的不再包
+        assert enforce_predicate("SELECT brand_id FROM unified_metrics", plan) == \
+            "SELECT brand_id FROM unified_metrics"
+
+    def test_生成失败回落模板语义(self):
+        from adkg.retrieval.text2sql import generate_sql
+        assert generate_sql(lambda s, u: (_ for _ in ()).throw(RuntimeError("x")),
+                            "任何问题", self._plan()) is None
+        # 返回危险 SQL 也被闸门拒
+        assert generate_sql(lambda s, u: {"sql": "DROP TABLE chunks"}, "q", self._plan()) is None
+
+
+class Test语义不变量注入:
+    def test_unmatched条件强制(self):
+        from adkg.retrieval.text2sql import enforce_semantics
+        # 无 WHERE → 注入
+        assert "WHERE NOT unmatched" in enforce_semantics(
+            "SELECT brand_id FROM unified_metrics GROUP BY 1 LIMIT 5")
+        # 有 WHERE → AND 进去
+        out = enforce_semantics(
+            "SELECT brand_id FROM unified_metrics WHERE platform = 'douyin' LIMIT 5")
+        assert "NOT unmatched AND platform" in out.replace("  ", " ")
+        # 已有 → 不动
+        assert enforce_semantics(
+            "SELECT 1 FROM unified_metrics WHERE NOT unmatched") == \
+            "SELECT 1 FROM unified_metrics WHERE NOT unmatched"

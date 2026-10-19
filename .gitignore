@@ -15,3 +15,6 @@ __pycache__/
 # 前端
 web/node_modules/
 web/dist/
+
+# promptfoo 运行缓存
+.promptfoo/

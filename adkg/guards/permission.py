@@ -82,13 +82,17 @@ class PermissionPlanner:
                          " RETURN DISTINCT n.id AS id", person=person).data()
             ids: set[str] = {person} | {r["id"] for r in rows if r["id"]}
             # 品牌维度 → SQL 谓词（text2sql 行级落点）
-            brand_rows = s.run(
-                "MATCH (p0:Entity {id: $person})-[:belongs_to_brand|external_for]->"
-                "(b:Entity) RETURN collect(DISTINCT b.id) AS brands",
-                person=person).single()
-            brands = [b.split(":", 1)[1] for b in (brand_rows["brands"] if brand_rows else [])]
-        predicate = ("brand_id IN (" + ", ".join(f"'{b}'" for b in brands) + ")") \
-            if brands else ""
+        # SQL 谓词（闸 4 的数据）：优先案例级（optimizer 的"负责案例"粒度，§9.2），
+        # 无案例维度再退品牌级（client 的品牌子图）；维度来自可见集而非锚点品牌——
+        # 修复：optimizer 对接品牌 ≠ 负责案例所在品牌，按品牌收窄会错杀（评测 R2 抓出）
+        case_ids = sorted(i for i in ids if i.startswith("Case:"))
+        brand_ids = sorted(i for i in ids if i.startswith("Brand:"))
+        if case_ids:
+            predicate = "case_id IN (" + ", ".join(f"'{c}'" for c in case_ids) + ")"
+        elif brand_ids:
+            predicate = "brand_id IN (" + ", ".join(f"'{b}'" for b in brand_ids) + ")"
+        else:
+            predicate = ""
         return frozenset(ids), predicate
 
     # ----------------------------------------------------- 主入口

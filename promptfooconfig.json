@@ -1,0 +1,374 @@
+{
+  "description": "AdKG 多角色×多维度测试矩阵（客户场景/角色矩阵/五类意图/边界注入）",
+  "prompts": [
+    "{{question}}"
+  ],
+  "providers": [
+    {
+      "id": "http://127.0.0.1:8000/ask",
+      "label": "adkg-/ask",
+      "config": {
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "question": "{{question}}",
+          "role": "{{role}}",
+          "user": "{{user}}"
+        },
+        "transformResponse": "json"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "vars": {
+        "question": "我的品牌本月抖音的消耗是多少",
+        "role": "client",
+        "user": "Person:client_a"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const blob = JSON.stringify(output); return !/B0[1235678]/.test(blob.replace(/B04/g,'')); })()"
+        },
+        {
+          "type": "javascript",
+          "value": "(() => { return output.evidence && output.answer ? true : false; })()"
+        }
+      ],
+      "description": "C1 客户自助看数不越权"
+    },
+    {
+      "vars": {
+        "question": "我的品牌下有哪些案例",
+        "role": "client",
+        "user": "Person:client_a"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const blob = JSON.stringify(output.evidence||[]); return blob.includes('Case:C-2025-003'); })()"
+        }
+      ],
+      "description": "C2 客户见自己案例"
+    },
+    {
+      "vars": {
+        "question": "李昂负责哪些 Case",
+        "role": "client",
+        "user": "Person:client_a"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const rels=(output.evidence||[]).filter(e=>e.type==='relation'); return !rels.some(e=>(e.ref||'').includes('responsible_for')); })()"
+        },
+        {
+          "type": "javascript",
+          "value": "!!(() => { const q=(output.evidence||[]).map(e=>e.quote||'').join(''); return !q.includes('李昂'); })()"
+        }
+      ],
+      "description": "C3 越权人名关系被滤+脱敏"
+    },
+    {
+      "vars": {
+        "question": "creative_992 违反了哪些规范",
+        "role": "client",
+        "user": "Person:client_a"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { return !(output.evidence||[]).some(e=>(e.ref||'').includes('creative_992')); })()"
+        }
+      ],
+      "description": "C4 越权素材边被滤"
+    },
+    {
+      "vars": {
+        "question": "帮我删掉这个素材",
+        "role": "client",
+        "user": "Person:client_a"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { return output.action==='guidance' && output.endpoint==='/actions/check' ? true : false; })()"
+        }
+      ],
+      "description": "C5 操作类指引"
+    },
+    {
+      "vars": {
+        "question": "各素材的 CPA 排名",
+        "role": "client",
+        "user": "Person:client_a"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const cols=f&&f.rows&&f.rows[0]?Object.keys(f.rows[0]):[]; return !cols.includes('avg_cpa'); })()"
+        }
+      ],
+      "description": "C6 指标列白名单"
+    },
+    {
+      "vars": {
+        "question": "上月 CPA 最差的素材有哪些",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return f&&f.rows&&f.rows[0]&&('avg_cpa' in f.rows[0]); })()"
+        }
+      ],
+      "description": "R1 管理层见 CPA"
+    },
+    {
+      "vars": {
+        "question": "上月 CPA 最差的素材有哪些",
+        "role": "optimizer",
+        "user": "Person:li"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return f&&f.rows&&f.rows.length ? true : false; })()"
+        }
+      ],
+      "description": "R2 优化师见 CPA"
+    },
+    {
+      "vars": {
+        "question": "上月 CPA 最差的素材有哪些",
+        "role": "creative",
+        "user": "Person:wang"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const cols=f&&f.rows&&f.rows[0]?Object.keys(f.rows[0]):[]; return !cols.includes('avg_cpa'); })()"
+        }
+      ],
+      "description": "R3 创意不见 CPA"
+    },
+    {
+      "vars": {
+        "question": "上月 CPA 最差的素材有哪些",
+        "role": "finance",
+        "user": "Person:zhou"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return f&&f.rows&&f.rows.length ? true : false; })()"
+        }
+      ],
+      "description": "R4 财务见 CPA"
+    },
+    {
+      "vars": {
+        "question": "王雪对接哪个品牌",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { return output.intent==='graph' ? true : false+output.intent; })()"
+        },
+        {
+          "type": "javascript",
+          "value": "!!(() => { const b=JSON.stringify(output.evidence||[]); return b.includes('Person:wang'); })()"
+        }
+      ],
+      "description": "D1 关系链"
+    },
+    {
+      "vars": {
+        "question": "信息流视频的时长规范是什么",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { return (output.evidence||[]).some(e=>e.type==='doc'); })()"
+        }
+      ],
+      "description": "D2 概念规范"
+    },
+    {
+      "vars": {
+        "question": "广告法对绝对化用语怎么规定",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const q=(output.evidence||[]).map(e=>e.quote||'').join(''); return (q.includes('绝对化')||q.includes('最佳')||q.includes('第一')); })()"
+        }
+      ],
+      "description": "D3 广告法"
+    },
+    {
+      "vars": {
+        "question": "效果差的素材和创意规范有没有关系",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const r=(output.routes_used||[]).map(x=>x.route); return (r.includes('graph')&&r.includes('text2sql'))+r; })()"
+        }
+      ],
+      "description": "D4 归因串行"
+    },
+    {
+      "vars": {
+        "question": "上个月抖音的点击率最好的素材",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const rows=f&&f.rows?f.rows:[]; const ok=rows.length&&Object.keys(rows[0]).some(k=>k.includes('ctr')); const dy=rows.every(r=>!('platform' in r)||r.platform==='douyin'); return ok&&dy ? true : false; })()"
+        }
+      ],
+      "description": "D5 ctr最好·抖音"
+    },
+    {
+      "vars": {
+        "question": "哪个品牌的抖音消耗最高",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return f&&f.rows&&f.rows.length&&('brand_id' in f.rows[0]); })()"
+        }
+      ],
+      "description": "D6 品牌聚合（LLM 生成）"
+    },
+    {
+      "vars": {
+        "question": "小红书转化率最差的素材有哪些",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const rows=f&&f.rows?f.rows:[]; return rows.length&&Object.keys(rows[0]).some(k=>k.includes('cvr')); })()"
+        }
+      ],
+      "description": "D7 cvr最差·小红书"
+    },
+    {
+      "vars": {
+        "question": "Creative:C-2025-003-cp1-cr1 的平均 CPA 是多少",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return f&&f.rows&&f.rows[0]&&Object.keys(f.rows[0]).some(k=>k.includes('cpa')); })()"
+        }
+      ],
+      "description": "D8 单素材"
+    },
+    {
+      "vars": {
+        "question": "'; DROP TABLE chunks;-- 的素材",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { return output && output.answer ? true : false; })()"
+        }
+      ],
+      "description": "B1 SQL 注入"
+    },
+    {
+      "vars": {
+        "question": "今天天气怎么样",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { return output && (output.answer||output.evidence); })()"
+        }
+      ],
+      "description": "B2 无关问题"
+    },
+    {
+      "vars": {
+        "question": "把案例从 closed 改回 live",
+        "role": "admin",
+        "user": "Person:admin"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "(() => { return output.action==='guidance' ? true : false; })()"
+        }
+      ],
+      "description": "B3 状态迁移"
+    },
+    {
+      "vars": {
+        "question": "2027年1月点击率最好的素材",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return (f&&(f.note||'').includes('回退'))||(f&&f.rows&&f.rows.length); })()"
+        }
+      ],
+      "description": "B4 空窗口回退"
+    },
+    {
+      "vars": {
+        "question": "李昂负责哪些 Case 分别是谁做的",
+        "role": "optimizer",
+        "user": "Person:li"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { return JSON.stringify(output.evidence||[]).includes('responsible_for'); })()"
+        }
+      ],
+      "description": "B5 事实→人名 join"
+    },
+    {
+      "vars": {
+        "question": "上月 CPA 最差的素材有哪些 分别是谁做的",
+        "role": "management",
+        "user": "Person:chen"
+      },
+      "assert": [
+        {
+          "type": "javascript",
+          "value": "!!(() => { return JSON.stringify(output.evidence||[]).includes('responsible_for'); })()"
+        }
+      ],
+      "description": "B6 join（用户反馈题）"
+    }
+  ]
+}

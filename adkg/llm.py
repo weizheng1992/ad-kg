@@ -15,7 +15,7 @@ class LLMClient:
         self._client = OpenAI(
             base_url=os.environ.get("ADKG_LLM_BASE_URL"),
             api_key=os.environ.get("ADKG_LLM_API_KEY"),
-            timeout=30, max_retries=1,              # 限流时快速失败走降级（§7.2）
+            timeout=30, max_retries=3,              # 限流重试；仍败走降级（§7.2）
         )
         self._model = os.environ.get("ADKG_LLM_MODEL", "glm-5.3-flash")
         self._embed_api_base = os.environ.get("ADKG_EMBED_BASE_URL", "")

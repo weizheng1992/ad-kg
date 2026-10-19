@@ -12,7 +12,7 @@ _ID_PATTERN = re.compile(r"[A-Za-z]+:[A-Za-z0-9_\-]+")        # {class}:{slug} �
 _SLUG_PATTERN = re.compile(r"[Gg]-\d{2}|creative_\w+|[A-Za-z]+_\d+\w*")  # 裸 slug
 
 
-def search(question: str, plan, graph, *, limit: int = 50) -> dict:
+def search(question: str, plan, graph, *, limit: int = 50, person: str | None = None) -> dict:
     with graph.session() as s:
         # 实体定位：① 完整本体 ID ② 节点 name ③ 裸 slug 后缀匹配
         ids = set(_ID_PATTERN.findall(question))
@@ -23,6 +23,8 @@ def search(question: str, plan, graph, *, limit: int = 50) -> dict:
             ids |= {r["id"] for r in s.run(
                 "MATCH (n:Entity) WHERE n.id ENDS WITH $suffix RETURN n.id AS id LIMIT 5",
                 suffix=f":{token}").data()}
+        if not ids and person:
+            ids.add(person)                     # "我的品牌/我们的案例"——锚点即本人（§9.1）
         if not ids:
             return {"evidence": [], "entity_ids": [], "filtered": 0}
 
