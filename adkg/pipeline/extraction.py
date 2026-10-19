@@ -32,6 +32,8 @@ class Extractor:
         self.schema = schema
         self.classes = set(schema["classes"])
         self.predicates = {r["predicate"] for r in schema["relations"]}
+        # 谓词有端点类型契约（§六）：(src_class, predicate, dst_class) 必须匹配 schema
+        self.triples = {(r["source"], r["predicate"], r["target"]) for r in schema["relations"]}
         self.chat_json = chat_json
 
     def extract(self, chunk_text: str, provenance: dict) -> ExtractionResult:
@@ -52,6 +54,11 @@ class Extractor:
 
         for item in payload.get("relations", []):
             if not isinstance(item, dict) or item.get("predicate") not in self.predicates:
+                continue
+            sc, _, _ = str(item.get("source", "")).partition(":")
+            dc, _, _ = str(item.get("target", "")).partition(":")
+            if (sc, item["predicate"], dc) not in self.triples:   # 如 Case-[:violates]-> 非法
+                result.dropped += 1
                 continue
             conf = float(item.get("confidence", 0))
             if conf < REVIEW:

@@ -65,10 +65,11 @@ def search(question: str, plan, graph, *, limit: int = 50) -> dict:
     for r in rows:
         ref = r.get("ref") or f"({r['src']})-[:{r['rel']}]->({r['dst']})"
         ends = {r["src"], r["dst"]}
-        if visible and not (ends & visible) and not any(
-                e.split(":")[0] in global_classes for e in ends):
-            filtered += 1                                # 级联收窄的出口执行点
-            continue
+        end_classes = {e.split(":")[0] for e in ends}
+        if visible and not (ends & visible) and not end_classes <= global_classes:
+            filtered += 1                                # 级联收窄的出口执行点（全局类
+            continue                                     # 豁免仅限两端皆全局类，防越权边经
+                                                           # Guideline/Metric 泄漏存在性）
         evidence.append({
             "type": "relation",
             "ref": ref,

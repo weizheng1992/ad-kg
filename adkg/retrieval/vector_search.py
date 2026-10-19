@@ -20,7 +20,7 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
     where, where_params = ["embedding IS NOT NULL"], []
     classes = plan.metadata_filter.get("entity_class__in", [])
     if classes:
-        where.append("entity_class = ANY(%s)")
+        where.append("(entity_class = ANY(%s) OR entity_class IS NULL)")   # 未分类=公共内容
         where_params.append(classes)
     visible = list(plan.visible_entity_ids)
     if visible:

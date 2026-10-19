@@ -95,3 +95,19 @@ class GraphStore:
                 "MATCH (g:Entity) WHERE g.class='Guideline'"
                 " RETURN g.id AS id, g.guideline_type AS gtype,"
                 " g.max_duration_s AS max_duration_s").data()
+
+    def responsible_for_creatives(self, creative_ids: list[str]) -> list[dict]:
+        """事实行→图补 join（§7.3 归因串行的通用化）：素材 → 计划 → 案例 → 负责人。"""
+        if not creative_ids:
+            return []
+        with self.session() as s:
+            return s.run(
+                """
+                UNWIND $ids AS cid
+                MATCH (c:Entity {id: cid})<-[:uses]-(cp:Entity)
+                      -[:belongs_to]->(cs:Entity)<-[:responsible_for]-(p:Entity)
+                RETURN cid, head(collect(DISTINCT cp.id)) AS campaign,
+                       head(collect(DISTINCT cs.id)) AS case,
+                       head(collect(DISTINCT p.id)) AS person,
+                       head(collect(DISTINCT p.name)) AS person_name
+                """, ids=creative_ids).data()
