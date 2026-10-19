@@ -30,7 +30,7 @@ def assemble(route_results: dict, plan, decision, *, person_names: list[str] | N
         for ev in evidence:                                # 脱敏出口（§12.6）
             for field in ("ref", "quote"):
                 if field in ev and isinstance(ev[field], str):
-                    for name in person_names:
+                    for name in (n for n in person_names if n):
                         ev[field] = ev[field].replace(name, "＊＊")
 
     return {

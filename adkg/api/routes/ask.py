@@ -108,7 +108,7 @@ def ask(request: Request, body: dict,
     if plan.mask_rules:
         with graph.session() as s:                          # 脱敏出口需要人名表（§12.6）
             person_names = [r["n"] for r in s.run(
-                "MATCH (p:Entity) WHERE p.class='Person' RETURN p.name AS n").data()]
+                "MATCH (p:Entity) WHERE p.class='Person' AND p.name IS NOT NULL RETURN p.name AS n").data()]
     out = assemble(results, plan, decision, person_names=person_names)
     _audit(env, role, person, question, "info", f"intent={decision.intent}")
     return {"answer": _summarize(question, out, decision), **out}
