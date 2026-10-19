@@ -15,7 +15,7 @@ from adkg.guards.auth import AuthService
 from adkg.guards.permission import PermissionPlanner
 from adkg.retrieval import graph_search, text2sql, vector_search
 from adkg.retrieval.assemble import assemble
-from adkg.retrieval.router import rule_route
+from adkg.retrieval.router import llm_route, rule_route
 
 router = APIRouter()
 
@@ -39,6 +39,21 @@ def _graph(request: Request):
     return request.app.state.planner._graph
 
 
+def _llm(request: Request):
+    """惰性 LLM 客户端；chat 不可用（无 key/网络）返回 None 走降级。"""
+    if not hasattr(request.app.state, "llm"):
+        request.app.state.llm = None
+        if request.app.state.env.get("ADKG_LLM_API_KEY"):
+            try:
+                from adkg.llm import LLMClient
+                client = LLMClient()
+                client.chat_json("ping", '返回 {"ok": true}')
+                request.app.state.llm = client
+            except Exception:
+                request.app.state.llm = None
+    return request.app.state.llm
+
+
 @router.post("/ask")
 def ask(request: Request, body: dict,
         authorization: str | None = Header(default=None)) -> dict:
@@ -60,7 +75,14 @@ def ask(request: Request, body: dict,
 
     planner = _planner(request)
     plan = planner.plan(role, person=person)
-    decision = rule_route(question)
+    llm = _llm(request)
+    if llm is not None:                                   # LLM 路由优先，异常回规则（§7.2）
+        try:
+            decision = llm_route(question, llm.chat_json)
+        except Exception:
+            decision = rule_route(question)
+    else:
+        decision = rule_route(question)
 
     if decision.intent == "operation":                      # 不进 /ask（§7.3）
         _audit(env, role, person, question, "info", "operation 意图，返回端点指引")
@@ -78,7 +100,8 @@ def ask(request: Request, body: dict,
             entity_ids = results.get(dep, {}).get("entity_ids") if dep else None
             r = text2sql.run(question, plan, env["ADKG_PG_RO_DSN"], entity_ids)
         else:
-            r = vector_search.search(question, plan, env["ADKG_PG_DSN"], embed_fn=None)
+            r = vector_search.search(question, plan, env["ADKG_PG_DSN"],
+                                     embed_fn=llm.embed if llm else None)
         results[step.step_id] = {"route": step.route.value, "confidence": step.confidence, **r}
 
     person_names = None

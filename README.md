@@ -226,7 +226,7 @@ web/
 | 服务框架 | FastAPI 1.x + Pydantic v2 | 结构化输出校验、OpenAPI 自动生成 | — |
 | 认证 | 静态 service token（每 role 一枚）+ 网关注入 | 单人维护相称，不起 OAuth/JWT | — |
 | 向量 / 事实 / 溯源 | PostgreSQL 18 + pgvector 0.8 | 一个库同时承载向量、事实表、溯源表，单人维护成本最低；异步 I/O 提升读吞吐，UUIDv7 直接做 audit_log / ingest_job 主键；Text2SQL 只对库内白名单视图生成 | Qdrant / Milvus |
-| 嵌入 | Qwen3-Embedding-0.6B · API（1024 维、cosine、HNSW） | MTEB v2 开源榜首、中文强；OpenAI 兼容 API（硅基流动 / 百炼）即插即用，本地权重留作备选；同一模型兼供 7.4 实体对齐的相似候选 | bge-m3（轻量、dense+sparse 多功能）/ 本地权重 |
+| 嵌入 | BAAI/bge-small-zh-v1.5 · 本地（512 维、cosine、HNSW） | 与 smartServe 同源同构（本地 sentence-transformers），中文小模型够检索用；换模型重刷全部向量并重标 τ（7.4） | qwen3.7-text-embedding-flash · 百炼 API（dimensions 定 512 维）/ bge-m3 |
 | 重排（可选） | bge-reranker | 仅对 vector 路候选精排（概念 / 规范类），graph 链路不进重排 | — |
 | 图 | Neo4j 2025.09 LTS Community | multi-hop Cypher 表达力强；自带浏览器可视化，演示友好；日历版本制下取 LTS 线 | Postgres 三元组表（本规模下可替代，见下） |
 | LLM | OpenAI 兼容接口（GLM / 其他） | 抽取、路由、Text2SQL、评估 judge 共用一个适配层 | — |
@@ -268,12 +268,12 @@ Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指�
 |---|---|---|---|---|
 | 0 | 列 20 个真实问题并标注命中类型；golden set 骨架；本 README | `eval/golden_set.jsonl`、README | 2d | **完成**（20 题五类 5/4/4/4/3） |
 | 1 | 定 12 类本体、关系、约束；permissions、authority；`sql/`（含 audit_log、ingest_job）；docker-compose；models.py；run_eval 骨架；纸面评审 | `ontology/`、`sql/`、空库 | 4d | **完成** |
-| 2a | 文档路·本地：files connector、chunking、extraction（30 段人工标注回归，precision/recall ≥0.85 才放量）、resolution 前两级、向量 + 图入库；人工只校 schema 和前 50 实体 | 图里第一张关系网 | 6d | **进行中**（关系网已点亮；LLM 抽取回归待 key） |
+| 2a | 文档路·本地：files connector、chunking、extraction（30 段人工标注回归，precision/recall ≥0.85 才放量）、resolution 前两级、向量 + 图入库；人工只校 schema 和前 50 实体 | 图里第一张关系网 | 6d | **完成**（抽取回归实测：glm-4-flash 批端点 6 篇 → 71 实体/57 关系，置信度分级与白名单滤噪生效；标注集 precision/recall 量化待 Phase 6 扩集时做） |
 | 2b | 文档路·飞书：feishu 按 revision 增量（外部依赖：自建应用审批与文档授权）、LLM 判别级对齐 | 云文档自动入库 | 4d | **进行中**（connector+版本链就绪，等文档授权） |
 | 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | **完成**（演示级：锚点素材两平台同口径可比；platforms API adapter 留给真实部署方） |
 | 4 | 召回与权限：认证、permission 过滤与下推、router、三路检索、融合排序、assemble、`/ask` | `/ask` 能答混合问题 | 6d | **完成**（规则路由 + 三路 + PermissionPlan 下推；LLM 路由与嵌入待 key，vector 路按 §7.2 降级标注） |
 | 5 | 管控收口：`/actions/check`、audit、AIGC 闭环 | 越权被过滤、违规被拦截 | 5d | **完成**（裁决/机判/断言写回实测：live 删素材被拦、超时长违规、低置信进人审） |
-| 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **进行中**（首轮规则判据：非 key 题 16/16 全过、整体 80% 达标；concept 4 题待嵌入 key，LLM judge 与消融同） |
+| 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **进行中**（**首轮 20/20=100%**：LLM 路由 + 本地嵌入就位后全类通过；LLM judge 与消融基线待做） |
 
 Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"落地为每阶段有分数。合计约 34 人日（单人粗估，不装精确）。
 

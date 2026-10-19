@@ -41,8 +41,8 @@ class Extractor:
         result = ExtractionResult()
 
         for item in payload.get("entities", []):
-            if item.get("class") not in self.classes:
-                continue                                  # 白名单外直接滤（§六）
+            if not isinstance(item, dict) or item.get("class") not in self.classes:
+                continue                                  # 白名单外/畸形项直接滤（§六）
             try:
                 result.entities.append(Entity(
                     entity_class=item["class"], entity_id=item["id"],
@@ -51,7 +51,7 @@ class Extractor:
                 continue                                  # id 前缀非法等 → 丢弃
 
         for item in payload.get("relations", []):
-            if item.get("predicate") not in self.predicates:
+            if not isinstance(item, dict) or item.get("predicate") not in self.predicates:
                 continue
             conf = float(item.get("confidence", 0))
             if conf < REVIEW:

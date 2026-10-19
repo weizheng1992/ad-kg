@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     entity_class text,
     brand_id     text,
     case_id      text,
-    embedding    vector(1024),            -- Qwen3-Embedding-0.6B · cosine（§五）
+    embedding    vector(512),             -- bge-small-zh-v1.5 · cosine（§五）
     provenance_id uuid NOT NULL REFERENCES provenance (id),
     created_at   timestamptz NOT NULL DEFAULT now(),
     UNIQUE (doc_id, chunk_index)

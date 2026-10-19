@@ -112,7 +112,8 @@ def main() -> None:
     for t in sorted(REQUIRED_TYPES):
         sub = by_type[t]
         ok = sum(1 for r in sub if r["pass"])
-        note = "vector 路缺嵌入 key，degraded" if t == "concept" else ""
+        degraded_n = sum(1 for r in sub if r.get("degraded"))
+        note = f"缺席路 {degraded_n} 题" if degraded_n else ""
         print(f"{t:<12}{ok}/{len(sub):<8}{note}")
     failed = [r for r in results if not r["pass"]]
     if failed:

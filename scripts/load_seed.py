@@ -192,6 +192,13 @@ def main() -> None:
                          VectorStore(pg), graph, trace,
                          extractor=None, embed_fn=None)
         print(f"文档路 {sub}/：{stats.docs} 篇 → {stats.chunks} 块（无 LLM key，抽取跳过——§7.2 降级）")
+    # chunk 权限元数据回填（§八 向量层：class / case_id 供检索按角色过滤）
+    with psycopg.connect(pg) as conn, conn.cursor() as cur:
+        cur.execute("UPDATE chunks SET entity_class='Guideline'"
+                    " WHERE doc_id LIKE 'file:G-%' OR doc_id LIKE 'feishu:doc:%'")
+        cur.execute("UPDATE chunks SET entity_class='Case',"
+                    " case_id='Case:'||replace(replace(doc_id,'file:',''),'.md','')"
+                    " WHERE doc_id LIKE 'file:C-2025-%'")
 
     counts = graph.counts()
     print(f"对账：{counts}")

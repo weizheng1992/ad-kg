@@ -30,57 +30,69 @@ def _hits(q: str, kws: tuple[str, ...]) -> int:
     return sum(1 for k in kws if k in q or re.search(k, q))
 
 
-def rule_route(question: str) -> RouteDecision:
-    q = question.lower()
-    if _hits(q, _OPS):
-        return RouteDecision("operation", None, 0.95)
-    if _hits(q, _ATTR) and (_hits(q, _FACT) or _hits(q, _CONCEPT)):
-        plan = RouterPlan(steps=[
+def _plan_for(intent: str) -> RouterPlan:
+    """意图 → 计划（§7.3 表）；LLM 与规则路由共用同一映射，杜绝两套口径。"""
+    if intent == "attribution":
+        return RouterPlan(steps=[
             RouteStep(step_id="g", route="graph", confidence=0.85),
             RouteStep(step_id="t", route="text2sql", depends_on=["g"],
                       confidence=0.85, params={"entity_ids_from": "g"}),
             RouteStep(step_id="v", route="vector", depends_on=["t"], confidence=0.8),
         ])
-        return RouteDecision("attribution", plan, 0.85)
-    if _hits(q, _FACT):
-        plan = RouterPlan(steps=[RouteStep(step_id="t", route="text2sql", confidence=0.9)])
-        return RouteDecision("fact", plan, 0.9)
-    if _hits(q, _GRAPH):
-        plan = RouterPlan(steps=[
+    if intent == "fact":
+        return RouterPlan(steps=[RouteStep(step_id="t", route="text2sql", confidence=0.9)])
+    if intent == "graph":
+        return RouterPlan(steps=[
             RouteStep(step_id="g", route="graph", confidence=0.85),
-            RouteStep(step_id="v", route="vector", confidence=0.6),   # 辅助：补描述
+            RouteStep(step_id="v", route="vector", confidence=0.6),
         ])
-        return RouteDecision("graph", plan, 0.85)
-    if _hits(q, _CONCEPT):
-        plan = RouterPlan(steps=[
+    if intent == "concept":
+        return RouterPlan(steps=[
             RouteStep(step_id="v", route="vector", confidence=0.85),
-            RouteStep(step_id="g", route="graph", confidence=0.5),    # 辅助：定位规范节点
+            RouteStep(step_id="g", route="graph", confidence=0.5),
         ])
-        return RouteDecision("concept", plan, 0.85)
-    # 无命中：置信度低 → 三路全跑，assemble 去重兜底（§7.3）
-    plan = RouterPlan(steps=[
+    return RouterPlan(steps=[                                  # unknown：三路全跑兜底
         RouteStep(step_id="g", route="graph", confidence=0.3),
         RouteStep(step_id="t", route="text2sql", confidence=0.3),
         RouteStep(step_id="v", route="vector", confidence=0.3),
     ], fallback=True)
-    return RouteDecision("unknown", plan, 0.3)
+
+
+def rule_route(question: str) -> RouteDecision:
+    q = question.lower()
+    if _hits(q, _OPS):
+        return RouteDecision("operation", None, 0.95)
+    if _hits(q, _ATTR) and (_hits(q, _FACT) or _hits(q, _CONCEPT)):
+        return RouteDecision("attribution", _plan_for("attribution"), 0.85)
+    if _hits(q, _FACT):
+        return RouteDecision("fact", _plan_for("fact"), 0.9)
+    if _hits(q, _GRAPH):
+        return RouteDecision("graph", _plan_for("graph"), 0.85)
+    if _hits(q, _CONCEPT):
+        return RouteDecision("concept", _plan_for("concept"), 0.85)
+    return RouteDecision("unknown", _plan_for("unknown"), 0.3)
+
+
+_LLM_PROMPT = (
+    "你是知识中台的检索路由器。只输出 JSON：{\"intent\": ..., \"confidence\": 0-1}。"
+    "intent 六选一，判定标准：\n"
+    "- fact：答案是需要查数值/报表的问题（多少钱、最差最好、排名、趋势、CPA/CTR）\n"
+    "- graph：答案是跨实体的关系链（谁负责什么、哪些案例、属于哪个品牌、违反了什么）\n"
+    "- concept：答案是文档规范/规定的原文（时长要求、VI 规定、广告法条款）\n"
+    "- attribution：既要查数又要关联规范/关系做归因（效果差和规范有没有关系、为什么）\n"
+    "- operation：要执行动作（删除/暂停/改状态）\n"
+    "- unknown：以上都不像\n"
+    "示例：“上月 CPA 最差的素材”→fact；“李昂名下有哪些案例”→graph；"
+    "“视频时长规范是什么”→concept；“效果差的素材和规范有关系吗”→attribution；"
+    "“删掉这个素材”→operation"
+)
 
 
 def llm_route(question: str, chat_json) -> RouteDecision:
-    """LLM 版（有 key 时用）：同规则版的决策结构，意图与置信度由模型给。"""
-    payload = chat_json(
-        "你是检索路由器。只输出 JSON：{\"intent\": one of "
-        "[graph,fact,concept,attribution,operation,unknown], \"confidence\": 0-1}。",
-        question)
+    """LLM 版（有 key 时用）：意图由模型判，计划与规则版共用 _plan_for——同一口径。"""
+    payload = chat_json(_LLM_PROMPT, question)
     intent = payload.get("intent", "unknown")
     conf = float(payload.get("confidence", 0.3))
     if intent == "operation":
         return RouteDecision("operation", None, conf)
-    base = rule_route(_HINTS[intent] if intent in _HINTS else question)
-    if base.intent == intent:
-        return RouteDecision(intent, base.plan, conf)
-    return RouteDecision(intent, rule_route("今天天气").plan, conf)   # 结构降级到全跑
-
-
-_HINTS = {"graph": "谁 名下 案例", "fact": "多少 消耗",
-          "concept": "规范 要求", "attribution": "为什么 规范 关系"}
+    return RouteDecision(intent, _plan_for(intent), conf)
