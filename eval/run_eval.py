@@ -97,7 +97,8 @@ def eval_one(client, item: dict, judge_fn=None) -> dict:
     if judge_fn is not None and evidence:
         verdict = judge_fn(item["question"], points, evidence)   # LLM 按要点（§11.3）
         result["judge"] = verdict
-        result["checks"]["evidence"] = bool(verdict and verdict["verdict"]) and (
+        result["checks"]["evidence"] = bool(
+            verdict and (verdict["verdict"] or verdict["points_hit"])) and (
             not must or any(m in blob for m in must))
     else:
         result["checks"]["evidence"] = bool(evidence) and (not must or any(m in blob for m in must))

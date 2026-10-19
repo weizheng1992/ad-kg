@@ -21,8 +21,12 @@ def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
     """问题 → (模板名, 参数)。模板是固定 SQL 骨架，只有参数可变。"""
     q = question.lower()
     n = next((int(x) for x in re.findall(r"([一二三四五六七八九十\d]+)\s*[个条]", q)), 5)
-    if "最差" in question or "最好" in question or "cpa" in q:
-        return "top_cpa", {"n": n, "worst": "最差" in question or "cpa" in q}
+    # 问题里点名具体素材（"X 的平均 CPA"）→ 单素材模板
+    slug = re.search(r"(creative_\w+|[A-Z]{1}\d{3}-cp\d-cr\d)", question)
+    if slug and ("cpa" in q or "平均" in question or "多少" in question):
+        return "entity_metrics", {"ids": [f"Creative:{slug.group(1)}"]}
+    if "最差" in question or "最好" in question:
+        return "top_cpa", {"n": n, "worst": "最差" in question}
     if entity_ids:                                        # 归因串行：graph 圈的实体作条件
         return "entity_metrics", {"ids": entity_ids}
     return "platform_summary", {}
@@ -41,7 +45,9 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
                f" GROUP BY 1 HAVING count(*) >= 5 ORDER BY avg_cpa {'DESC' if params.get('worst', True) else 'ASC'}"
                f" LIMIT {min(params.get('n', 5), 50)}")       # 闸 5：强制 LIMIT
     elif name == "entity_metrics" and metrics:
-        cols = ", ".join(f"round(avg({c})::numeric, 2) AS {c}" for c in metrics[:4])
+        priority = [c for c in ("cpa", "ctr", "cvr", "cost") if c in metrics]
+        cols = ", ".join(f"round(avg({c})::numeric, 2) AS {c}"
+                         for c in priority + [m for m in metrics if m not in priority][:2])
         ids = [i for i in params["ids"] if i.startswith("Creative:")]
         sql = (f"SELECT creative_id, {cols} FROM unified_metrics"
                f" WHERE {' AND '.join(conds + ['creative_id = ANY(%(ids)s)'])} GROUP BY 1 LIMIT 50")

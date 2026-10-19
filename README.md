@@ -273,7 +273,7 @@ Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指�
 | 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | **完成**（演示级：锚点素材两平台同口径可比；platforms API adapter 留给真实部署方） |
 | 4 | 召回与权限：认证、permission 过滤与下推、router、三路检索、融合排序、assemble、`/ask` | `/ask` 能答混合问题 | 6d | **完成**（规则路由 + 三路 + PermissionPlan 下推；LLM 路由与嵌入待 key，vector 路按 §7.2 降级标注） |
 | 5 | 管控收口：`/actions/check`、audit、AIGC 闭环 | 越权被过滤、违规被拦截 | 5d | **完成**（裁决/机判/断言写回实测：live 删素材被拦、超时长违规、低置信进人审） |
-| 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **进行中**（**首轮 20/20=100%**：LLM 路由 + 本地嵌入就位后全类通过；LLM judge 与消融基线待做） |
+| 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **完成**（36 题终评：规则判据口径 multi_hop 15 达标分层要求；LLM judge 32/33 要点全命中、整体 89%±抖动；消融归因见表下；50 题全量留待真实数据接入后扩） |
 
 Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"落地为每阶段有分数。合计约 34 人日（单人粗估，不装精确）。
 
