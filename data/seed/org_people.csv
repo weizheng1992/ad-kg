@@ -1,0 +1,8 @@
+person_id,name,org_role,brand_id,case_id,is_external
+Person:li,李昂,AE,Brand:B01,Case:C-2025-006,0
+Person:wang,王雪,创意,Brand:B02,Case:C-2025-001,0
+Person:zhao,赵岚,优化师,Brand:B03,Case:C-2025-002,0
+Person:zhou,周荃,财务,Brand:B04,Case:C-2025-003,0
+Person:chen,陈朔,管理层,Brand:B05,Case:C-2025-004,0
+Person:sun,孙苗,优化师,Brand:B06,Case:C-2025-005,0
+Person:client_a,顾佳,客户对接人,Brand:B04,,1

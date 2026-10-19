@@ -1,0 +1,11 @@
+subject,predicate,object,confidence
+Creative:creative_992,violates,Guideline:G-01,0.91
+Creative:creative_992,violates,Guideline:G-03,0.55
+Creative:C-2025-005-cp1-cr1,violates,Guideline:G-06,0.88
+Creative:C-2025-005-cp1-cr2,complies_with,Guideline:G-01,0.95
+Creative:C-2025-005-cp2-cr1,complies_with,Guideline:G-04,0.92
+Creative:C-2025-013-cp1-cr1,violates,Guideline:G-06,0.82
+Creative:C-2025-009-cp1-cr1,violates,Guideline:G-07,0.5
+Creative:C-2025-003-cp1-cr1,complies_with,Guideline:G-08,0.9
+Creative:C-2025-006-cp2-cr1,violates,Guideline:G-02,0.85
+Creative:C-2025-012-cp1-cr1,complies_with,Guideline:G-01,0.87

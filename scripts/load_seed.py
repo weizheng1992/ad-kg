@@ -1,0 +1,190 @@
+"""导入种子数据（§四 scripts/load_seed.py）：点亮图里第一张关系网。
+
+- 主数据（brands / people / cases_campaigns / guidelines）→ 图，system_of_record
+- 断言（violates / complies_with）→ 图，conversation 低 authority
+- 文档（cases + guidelines md）→ run_docs 流水线：raw 落盘 + chunk 入 PG
+- 双平台同素材锚点写 entity_alias（§12.5）
+- Metric 口径节点手工定义（§六：语义层手工定义）
+
+幂等：图侧 MERGE、provenance 按 source_id 查重、chunk upsert，重跑无新增。
+用法：uv run python scripts/load_seed.py
+"""
+from __future__ import annotations
+
+import csv
+import os
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import psycopg
+import yaml
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
+sys.path.insert(0, str(ROOT))
+
+from adkg.connectors.files import FilesConnector          # noqa: E402
+from adkg.models import Entity, Provenance, Relation      # noqa: E402
+from adkg.pipeline.run import run_docs                    # noqa: E402
+from adkg.store.graph import GraphStore                   # noqa: E402
+from adkg.store.provenance import TraceStore              # noqa: E402
+from adkg.store.raw import RawStore                       # noqa: E402
+from adkg.store.vector import VectorStore                 # noqa: E402
+
+SEED = ROOT / "data" / "seed"
+FETCHED_AT = "2026-10-19T00:00:00+08:00"                 # 种子固定时间，保证可重跑
+
+METRICS = [  # §六：Metric 口径定义（语义层手工定义）
+    ("Metric:ctr", "clicks / impressions", "creative×day", "不跨平台直接对比", ""),
+    ("Metric:cvr", "conversions / clicks", "creative×day", "不跨平台直接对比", ""),
+    ("Metric:cpa", "cost / conversions", "creative×day", "两平台口径统一后可比", ""),
+    ("Metric:cpm", "cost / impressions * 1000", "creative×day", "", ""),
+    ("Metric:roi", "revenue / cost", "case×month", "需回传收入数据", ""),
+]
+
+
+def _rows(rel: str) -> list[dict]:
+    with open(SEED / rel, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def main() -> None:
+    pg = os.environ["ADKG_PG_DSN"]
+    neo = os.environ
+    graph = GraphStore(neo["ADKG_NEO4J_URI"], neo["ADKG_NEO4J_USER"], neo["ADKG_NEO4J_PASSWORD"])
+    trace = TraceStore(pg)
+    entities: list[Entity] = []
+    relations: list[Relation] = []
+
+    def prov(source_id: str, stype: str = "system_of_record", confidence: float | None = None):
+        return Provenance(source_type=stype, source_id=source_id,
+                          fetched_at=FETCHED_AT, confidence=confidence)
+
+    # ── 主数据：Brand / Product + has_product ─────────────────────────
+    p_brand = prov("seed:brands_products.csv")
+    for r in _rows("brands_products.csv"):
+        entities += [
+            Entity(entity_class="Brand", entity_id=r["brand_id"],
+                   props={"name": r["brand_name"], "category": r["category"]}, provenance=p_brand),
+            Entity(entity_class="Product", entity_id=r["product_id"],
+                   props={"name": r["app_name"], "platform": r["platform"]}, provenance=p_brand)]
+        relations.append(Relation(source=r["brand_id"], predicate="has_product",
+                                  target=r["product_id"], provenance=p_brand))
+
+    # ── 人员：Person + belongs_to_brand / external_for / responsible_for ──
+    p_people = prov("seed:org_people.csv")
+    for r in _rows("org_people.csv"):
+        entities.append(Entity(entity_class="Person", entity_id=r["person_id"],
+                               props={"name": r["name"], "org_role": r["org_role"]},
+                               provenance=p_people))
+        predicate = "external_for" if r["is_external"] == "1" else "belongs_to_brand"
+        relations.append(Relation(source=r["person_id"], predicate=predicate,
+                                  target=r["brand_id"], provenance=p_people))
+        if r["case_id"]:
+            relations.append(Relation(source=r["person_id"], predicate="responsible_for",
+                                      target=r["case_id"], provenance=p_people))
+
+    # ── 案例-计划-素材主数据 ─────────────────────────────────────────
+    p_cc = prov("seed:cases_campaigns.csv")
+    seen_case, seen_camp = set(), set()
+    for r in _rows("cases_campaigns.csv"):
+        if r["case_id"] not in seen_case:
+            seen_case.add(r["case_id"])
+            entities.append(Entity(entity_class="Case", entity_id=r["case_id"],
+                                   props={"stage": r["stage"], "bd_budget": r["bd_budget"],
+                                          "settlement_status": r["settlement_status"]},
+                                   provenance=p_cc))
+            relations += [
+                Relation(source=r["case_id"], predicate="for_brand",
+                         target=r["brand_id"], provenance=p_cc),
+                Relation(source=r["case_id"], predicate="for_product",
+                         target=r["product_id"], provenance=p_cc)]
+        if r["campaign_id"] not in seen_camp:
+            seen_camp.add(r["campaign_id"])
+            entities.append(Entity(entity_class="Campaign", entity_id=r["campaign_id"],
+                                   props={"status": r["campaign_status"],
+                                          "daily_budget": r["daily_budget"]}, provenance=p_cc))
+            relations += [
+                Relation(source=r["campaign_id"], predicate="belongs_to",
+                         target=r["case_id"], provenance=p_cc),
+                Relation(source=r["campaign_id"], predicate="in_channel",
+                         target=f"Channel:{r['channel']}", provenance=p_cc)]
+        entities.append(Entity(entity_class="Creative", entity_id=r["creative_id"],
+                               props={"is_aigc": r["is_aigc"] == "1"}, provenance=p_cc))
+        relations += [
+            Relation(source=r["campaign_id"], predicate="uses",
+                     target=r["creative_id"], provenance=p_cc),
+            Relation(source=r["creative_id"], predicate="links_to",
+                     target=f"LandingPage:lp-{r['campaign_id'].split('-cp')[0][-3:]}",
+                     provenance=p_cc)]
+
+    # 渠道与落地页节点
+    for ch in ("信息流", "搜索", "开屏"):
+        entities.append(Entity(entity_class="Channel", entity_id=f"Channel:{ch}",
+                               props={"slot_type": ch}, provenance=p_cc))
+    lp_ids = {r.target for r in relations if r.predicate == "links_to"}
+    entities += [Entity(entity_class="LandingPage", entity_id=i, props={},
+                        provenance=p_cc) for i in sorted(lp_ids)]
+
+    # 衍生链（§六 derived_from）：AIGC 素材沿用同案例爆款
+    relations.append(Relation(source="Creative:creative_992", predicate="derived_from",
+                              target="Creative:C-2025-005-cp1-cr1", provenance=p_cc))
+
+    # ── 规范（frontmatter 带机判阈值）────────────────────────────────
+    p_gd = prov("seed:guidelines")
+    for path in sorted((SEED / "guidelines").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        m = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
+        fm = yaml.safe_load(m.group(1)) if m else {}
+        props = {"guideline_type": fm.get("guideline_type")}
+        if fm.get("max_duration_s"):
+            props["max_duration_s"] = fm["max_duration_s"]
+        entities.append(Entity(entity_class="Guideline", entity_id=fm["id"],
+                               props=props, provenance=p_gd))
+
+    # ── 断言（AIGC 比对结果回写样例，§9.4）───────────────────────────
+    p_as = prov("seed:assertions.csv", stype="conversation")
+    for r in _rows("assertions.csv"):
+        relations.append(Relation(source=r["subject"], predicate=r["predicate"],
+                                  target=r["object"], provenance=p_as,
+                                  confidence=float(r["confidence"])))
+
+    # ── Metric 口径节点 ──────────────────────────────────────────────
+    p_m = prov("ontology:metric")
+    for mid, expr, grain, scope, note in METRICS:
+        entities.append(Entity(entity_class="Metric", entity_id=mid,
+                               props={"expr": expr, "grain": grain,
+                                      "valid_scope": scope, "note": note}, provenance=p_m))
+
+    # ── 入图（MERGE 幂等），随后对账 ──────────────────────────────────
+    graph.upsert_entities(entities)
+    graph.upsert_relations(relations)
+    print(f"图：{len(entities)} 节点 / {len(relations)} 关系已 MERGE")
+
+    # ── 双平台同素材锚点 → entity_alias（§12.5）──────────────────────
+    with psycopg.connect(pg) as conn, conn.cursor() as cur:
+        for source, ext in (("douyin", "dy_889"), ("xhs", "xhs_77")):
+            cur.execute(
+                "INSERT INTO entity_alias (source, external_id, internal_id)"
+                " VALUES (%s,%s,'Creative:creative_992')"
+                " ON CONFLICT (source, external_id) DO NOTHING", (source, ext))
+    print("entity_alias：双平台同素材锚点已就位（dy_889 / xhs_77 → Creative:creative_992）")
+
+    # ── 文档路：cases + guidelines 走流水线（raw + chunk 入 PG）──────
+    for sub, stype in (("cases", "wiki"), ("guidelines", "official_doc")):
+        stats = run_docs(FilesConnector(SEED / sub, source_type=stype),
+                         RawStore(ROOT / "data" / "raw"),
+                         VectorStore(pg), graph, trace,
+                         extractor=None, embed_fn=None)
+        print(f"文档路 {sub}/：{stats.docs} 篇 → {stats.chunks} 块（无 LLM key，抽取跳过——§7.2 降级）")
+
+    counts = graph.counts()
+    print(f"对账：{counts}")
+    graph.close()
+
+
+if __name__ == "__main__":
+    main()

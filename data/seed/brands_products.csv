@@ -1,0 +1,9 @@
+brand_id,brand_name,category,product_id,app_name,platform
+Brand:B01,轻食日记,餐饮,Product:P01,轻食日记App,iOS/Android
+Brand:B02,律动星球,运动健身,Product:P02,律动星球App,iOS/Android
+Brand:B03,拾光书屋,文化阅读,Product:P03,拾光书屋App,iOS/Android
+Brand:B04,澄肌研究所,美妆个护,Product:P04,澄肌研究所App,iOS/Android
+Brand:B05,途野露营,户外旅行,Product:P05,途野露营App,iOS/Android
+Brand:B06,喵汪到家,宠物服务,Product:P06,喵汪到家App,iOS/Android
+Brand:B07,速算蜂,教育学习,Product:P07,速算蜂App,iOS/Android
+Brand:B08,眠海科技,健康睡眠,Product:P08,眠海科技App,iOS/Android

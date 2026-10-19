@@ -40,6 +40,12 @@ def _load_authority_ladder() -> dict[SourceType, int]:
 AUTHORITY_LADDER: dict[SourceType, int] = _load_authority_ladder()
 
 
+def load_schema() -> dict:
+    """加载 ontology/schema.yaml（类 / 关系 / 约束 / 动作词表）。"""
+    path = Path(__file__).resolve().parents[1] / "ontology" / "schema.yaml"
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
 class CaseStage(str, Enum):
     """Case 状态机（§六）：proposal→live｜lost，live→closed｜terminated，终态不可逆。"""
 
