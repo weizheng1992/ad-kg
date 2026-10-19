@@ -78,7 +78,7 @@ def main() -> None:
                      extractor=None, embed_fn=None)
     n_dv = upsert_docversions(graph, records)
     print(f"飞书同步：{stats.docs} 篇 → {stats.chunks} 块；DocVersion {n_dv} 个（含 supersedes 链）")
-    print(f"对账：{stats.reconcile}")
+    print(f"对账：{graph.counts()}")            # 版本链写入后再对账
     graph.close()
 
 

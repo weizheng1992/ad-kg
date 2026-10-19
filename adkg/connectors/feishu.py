@@ -91,7 +91,7 @@ class FeishuConnector:
             if not content.strip():
                 continue                           # 空文档不入库
             yield RawRecord(
-                source_ref=f"feishu/{doc_token}",
+                source_ref=f"feishu/{doc_token}@{revision or '0'}",   # raw 键带版本（不可变层）
                 text=content,
                 provenance={
                     "source_type": "official_doc",
