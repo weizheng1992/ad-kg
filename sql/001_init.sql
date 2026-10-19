@@ -56,11 +56,11 @@ CREATE INDEX IF NOT EXISTS idx_chunks_hnsw ON chunks
     USING hnsw (embedding vector_cosine_ops);
 
 -- ------------------------------------------------------------------
--- 溯源层：review_queue —— 人审队列（冲突 / 对齐失败 / 缺口 / 对账差异）
+-- 溯源层：review_queue —— 人审队列（冲突 / 对齐失败 / 缺口 / 对账差异 / 低置信断言）
 -- ------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS review_queue (
     id          uuid PRIMARY KEY DEFAULT uuidv7(),
-    kind        text NOT NULL CHECK (kind IN ('conflict', 'unmatched', 'gap', 'reconcile')),
+    kind        text NOT NULL CHECK (kind IN ('conflict', 'unmatched', 'gap', 'reconcile', 'low_confidence')),
     payload     jsonb NOT NULL,
     status      text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'approved', 'rejected')),
     created_at  timestamptz NOT NULL DEFAULT now(),

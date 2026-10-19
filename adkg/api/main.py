@@ -10,7 +10,7 @@ from fastapi import FastAPI
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
-from adkg.api.routes import ask  # noqa: E402
+from adkg.api.routes import actions, ask, guideline, ingest  # noqa: E402
 
 
 def create_app(env: dict[str, str] | None = None) -> FastAPI:
@@ -18,6 +18,9 @@ def create_app(env: dict[str, str] | None = None) -> FastAPI:
                   description="本体驱动的广告营销知识中台（README §三）")
     app.state.env = dict(env or os.environ)
     app.include_router(ask.router)
+    app.include_router(actions.router)
+    app.include_router(guideline.router)
+    app.include_router(ingest.router)
     return app
 
 

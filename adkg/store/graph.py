@@ -78,3 +78,20 @@ class GraphStore:
                 """, ids=creative_ids)
             return {r["cid"]: {"campaign_id": r["campaign_id"], "case_id": r["case_id"],
                                "brand_id": r["brand_id"]} for r in rows}
+
+    def creative_case_stage(self, creative_id: str) -> str | None:
+        """action_check 用（§六）：素材 → 所属案例的 stage。"""
+        with self.session() as s:
+            rec = s.run(
+                "MATCH (c:Entity {id: $cid})<-[:uses]-(cp:Entity)"
+                "-[:belongs_to]->(cs:Entity) RETURN cs.stage AS stage LIMIT 1",
+                cid=creative_id).single()
+            return rec["stage"] if rec else None
+
+    def guidelines_with_thresholds(self) -> list[dict]:
+        """guideline/check 机判用：带结构化阈值的规范节点。"""
+        with self.session() as s:
+            return s.run(
+                "MATCH (g:Entity) WHERE g.class='Guideline'"
+                " RETURN g.id AS id, g.guideline_type AS gtype,"
+                " g.max_duration_s AS max_duration_s").data()

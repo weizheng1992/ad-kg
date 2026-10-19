@@ -47,7 +47,7 @@ class TraceStore:
         with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO review_queue (kind, payload) VALUES (%s, %s)",
-                (kind, json.dumps(payload, ensure_ascii=False)))
+                (kind, json.dumps(payload, ensure_ascii=False, default=str)))
 
     def reconcile(self, graph_counts: dict[str, int]) -> dict[str, int]:
         """批次收尾对账（§八）：计数差异写 review_queue 人审，返回对比结果。
