@@ -1,6 +1,10 @@
+// 图谱页：实体展开 + 力导向图（echarts）+ 权限过滤计数
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
-import { graphEntity, type Neighbor, type Persona } from './api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { graphEntity, type Neighbor, type Persona } from '@/lib/api'
 
 const CLASS_COLOR: Record<string, string> = {
   Brand: '#0ea5e9', Product: '#6366f1', Case: '#10b981', Campaign: '#f59e0b',
@@ -91,25 +95,25 @@ export function GraphPage({ persona }: { persona: Persona }) {
   }, [persona.role, persona.user])
 
   return (
-    <div className="graph">
-      <div className="g-bar">
-        <input
-          value={focus}
-          onChange={(e) => setFocus(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && expand(focus.trim())}
-          placeholder="实体 ID（如 Case:C-2025-005）回车展开"
-        />
-        <button onClick={() => expand(focus.trim())}>展开</button>
-        <span className="g-status">{status}</span>
-        {filtered > 0 && <span className="chip perm">{filtered} 条边被权限过滤</span>}
+    <div className="flex h-[calc(100vh-8.5rem)] flex-col">
+      <div className="flex items-center gap-2.5 px-5 py-3">
+        <Input className="w-96 font-mono text-[13px]" value={focus}
+               placeholder="实体 ID（如 Case:C-2025-005）回车展开"
+               onChange={(e) => setFocus(e.target.value)}
+               onKeyDown={(e) => e.key === 'Enter' && expand(focus.trim())} />
+        <Button size="sm" className="px-4" onClick={() => expand(focus.trim())}>展开</Button>
+        <span className="text-xs text-muted-foreground">{status}</span>
+        {filtered > 0 && <Badge variant="destructive">{filtered} 条边被权限过滤</Badge>}
       </div>
-      <div ref={ref} className="g-canvas" />
-      <div className="g-legend">
+      <div ref={ref} className="min-h-0 flex-1" />
+      <div className="flex flex-wrap gap-3.5 px-5 py-2 text-[11px] text-muted-foreground">
         {Object.entries(CLASS_COLOR).map(([c, col]) => (
-          <span key={c}><i style={{ background: col }} />{c}</span>
+          <span key={c} className="flex items-center gap-1">
+            <i className="inline-block size-2 rounded-full" style={{ background: col }} />{c}
+          </span>
         ))}
       </div>
-      <div className="g-hint">点击节点继续展开 · 滚轮缩放 · 拖拽平移</div>
+      <div className="px-5 pb-2.5 text-[11px] text-slate-300">点击节点继续展开 · 滚轮缩放 · 拖拽平移</div>
     </div>
   )
 }

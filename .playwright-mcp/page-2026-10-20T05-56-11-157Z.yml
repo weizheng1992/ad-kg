@@ -1,0 +1,25 @@
+- generic [ref=f1e16]:
+  - banner [ref=f1e17]:
+    - generic [ref=f1e18]:
+      - generic [ref=f1e19]: AdKG
+      - generic [ref=f1e20]: 本体驱动的广告营销知识中台 · 演示
+    - navigation [ref=f1e21]:
+      - button "问答" [ref=f1e22]
+      - button "图谱" [ref=f1e23]
+    - generic [ref=f1e24]:
+      - generic [ref=f1e25]: 身份：客户方 · 顾佳（外部）（角色随账号绑定）
+      - generic [ref=f1e26]: "|"
+      - generic [ref=f1e27]: gu
+      - button "退出" [ref=f1e28]
+  - main [ref=f1e29]:
+    - generic [ref=f1e30]:
+      - generic [ref=f1e31]:
+        - textbox "问点什么……（跨系统问题也能答，每条证据带来源）" [ref=f1e32]: 李昂负责哪些 Case？
+        - button "检索中…" [disabled]
+      - generic [ref=f1e33]:
+        - button "李昂负责哪些 Case？" [active] [ref=f1e34]
+        - button "上月 CPA 最差的素材有哪些？" [ref=f1e35]
+        - button "信息流视频的时长规范是什么？" [ref=f1e36]
+        - button "效果差的素材和创意规范有没有关系？" [ref=f1e37]
+        - button "删掉 live 案例的素材 creative_992" [ref=f1e38]
+  - contentinfo [ref=f1e39]: 同一问题不同角色得到不同的行与字段——这不是功能，是本体权限的副作用

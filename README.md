@@ -212,11 +212,14 @@ seed 里两个 `creative_metrics_daily_*.csv` 各含同一素材的记录（同 
 ```text
 web/
 ├── src/
-│   ├── pages/    # ask（问答+证据）· graph（图谱展开）· guideline（规范检查）· review（人审队列）· ops（上传/审计）
-│   └── lib/      # API client：由 FastAPI OpenAPI 生成 TS 类型，API 变更编译期报错
+│   ├── routes/        # react-router 路由表 + RequireAuth 登录守卫（配置路由的地方）
+│   ├── pages/         # login（登录页）· home（主应用：问答/图谱页签装配）
+│   ├── features/      # ask（问答+证据卡）· graph（图谱展开）——按域加 guideline / review / ops
+│   ├── components/    # ui/（shadcn 生成件）· layout/（Header/Footer）
+│   └── lib/           # api.ts（HTTP 客户端+类型）· accounts.ts（演示账号表）· session.tsx（会话上下文）
 ```
 
-接入只有一条路：web → HTTP API 服务层（含认证），不直连 Neo4j / Postgres（十三的边界）；浏览器侧认证走反代（nginx / Caddy）登录后注入 Authorization 头，本地演示 `ADKG_DEV_AUTH=off`。
+UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务层（含认证），不直连 Neo4j / Postgres（十三的边界）；部署态浏览器侧由 nginx 按 `X-Adkg-Role` 注入 token（见 §9.7 角色头约定与 docs/deployment.md §四），本地演示 `ADKG_DEV_AUTH=off`。
 
 ## 五、技术栈与规模假设
 
@@ -461,7 +464,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 后台管理 = 知识运营台，**不做用户管理**：必须有 review_queue 人审界面（冲突对比 + unmatched 对齐——12.2 仲裁与 7.4 对齐闭环的落地）；最好有文档上传与审计查看；角色与 token 留在 `permissions.yaml` + `.env`（配置文件即管理界面），身份生命周期在外部（网关 / 引擎），做用户管理 UI 是负资产。
 
-**角色头约定**：web 调用端点时带 `X-Adkg-Role: <role>`（与 body/query 的 role 同值）——本地 dev 无认证、忽略此头；部署态由 nginx 按头注入对应角色的 Bearer token（token 只存服务器 nginx 配置，**不进前端包**；头缺失或陌生值 → Bearer 为空 → API 401 fail-closed）。边界与把门层次见 `docs/deployment.md` §四。
+**角色头约定**：web 调用端点时带 `X-Adkg-Role: <role>`（与 body/query 的 role 同值）——本地 dev 无认证、忽略此头；部署态由 nginx 按头注入对应角色的 Bearer token（token 只存服务器 nginx 配置，**不进前端包**；头缺失或陌生值 → Bearer 为空 → API 401 fail-closed）。边界与把门层次见 `docs/deployment.md` §四。**登录壳**：web 内置演示登录页（演示账号表↔角色绑定，纯前端校验）——它是演示体验件而非安全边界（账号表在前端包里可被读出），真实把门是 nginx 换 token + 限速；AdKG API 仍不做用户管理（本节拍板不变）。
 
 ## 十、快速开始（规划，代码就绪后生效）
 

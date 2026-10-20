@@ -20,7 +20,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Alias（shadcn / 目录化导入；TS7 已移除 baseUrl，paths 相对 tsconfig 所在目录） */
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src"]
 }
