@@ -1,10 +1,10 @@
-// 图谱页：实体展开 + 力导向图（echarts）+ 权限过滤计数
+// 图谱页：实体展开 + 力导向图（echarts）+ 案例统计卡 + 权限过滤计数
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { graphEntity, type Neighbor, type Persona } from '@/lib/api'
+import { graphEntity, type CaseStats, type Neighbor, type Persona } from '@/lib/api'
 
 const CLASS_COLOR: Record<string, string> = {
   Brand: '#0ea5e9', Product: '#6366f1', Case: '#10b981', Campaign: '#f59e0b',
@@ -25,6 +25,7 @@ export function GraphPage({ persona }: { persona: Persona }) {
   const [focus, setFocus] = useState('Person:li')
   const [status, setStatus] = useState('')
   const [filtered, setFiltered] = useState(0)
+  const [stats, setStats] = useState<CaseStats | null>(null)
 
   const render = () => {
     const cats = [...new Set([...nodes.current.values()].map((n) => n.category))]
@@ -63,6 +64,7 @@ export function GraphPage({ persona }: { persona: Persona }) {
         })
       })
       setFiltered((f) => f + g.filtered)
+      setStats(g.entity.class === 'Case' ? (g.stats ?? null) : null)
       setFocus(id)
       setStatus(`${g.entity.id}：${g.neighbors.length} 个邻居${g.filtered ? `（${g.filtered} 被权限过滤）` : ''}`)
       render()
@@ -105,6 +107,29 @@ export function GraphPage({ persona }: { persona: Persona }) {
         <span className="text-xs text-muted-foreground">{status}</span>
         {filtered > 0 && <Badge variant="destructive">{filtered} 条边被权限过滤</Badge>}
       </div>
+      {stats && (
+        <div className="flex flex-wrap items-center gap-4 px-5 py-2 text-xs">
+          <span className="font-semibold text-foreground">案例统计</span>
+          {([
+            ['消耗', `¥${Number(stats.cost).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`],
+            ['CTR', `${(Number(stats.ctr) * 100).toFixed(2)}%`],
+            ['CVR', `${(Number(stats.cvr) * 100).toFixed(2)}%`],
+            ['CPA', `¥${stats.cpa}`],
+            ['天数', `${stats.days}`],
+          ] as const).map(([k, v]) => (
+            <span key={k} className="rounded-md bg-muted/60 px-2 py-1">
+              <span className="text-muted-foreground">{k}</span>{' '}
+              <b className="font-mono text-foreground">{v}</b>
+            </span>
+          ))}
+          {stats.first_day && (
+            <span className="text-muted-foreground">
+              {stats.first_day} ~ {stats.last_day}
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground">比率型 = 汇总比（README §六）</span>
+        </div>
+      )}
       <div ref={ref} className="min-h-0 flex-1" />
       <div className="flex flex-wrap gap-3.5 px-5 py-2 text-[11px] text-muted-foreground">
         {Object.entries(CLASS_COLOR).map(([c, col]) => (

@@ -19,6 +19,9 @@ import psycopg
 _GEN_PROMPT = (
     "你是只读 SQL 生成器。仅基于视图 unified_metrics(%(dims)s, %(metrics)s) 写一条 "
     "PostgreSQL SELECT 回答问题；聚合函数随意（sum/avg/count/order by/group by）；"
+    "口径铁律：比率型指标跨行聚合必须用汇总比 sum(分子)/NULLIF(sum(分母),0)，"
+    "禁止 avg(比率列)——ctr=clicks/impressions、cvr=conversions/clicks、"
+    "cpa=cost/conversions、cpm=cost*1000/impressions；"
     "platform 列的值只能是 'douyin' 或 'xhs'（中文'抖音'=douyin、'小红书'=xhs）；"
     "creative_id/brand_id 等 ID 列的值带类前缀，如 'Creative:C-2025-003-cp1-cr1'、"
     "'Brand:B04'——问题里的实体 ID 原样使用；"
@@ -90,6 +93,19 @@ def enforce_semantics(sql: str) -> str:
 
 DIM_COLUMNS = ["platform", "date", "creative_id", "campaign_id", "case_id", "brand_id"]
 ALL_METRICS = ["cost", "impressions", "clicks", "conversions", "ctr", "cvr", "cpa", "cpm", "roi"]
+
+# 聚合口径铁律（README §六）：比率型指标跨行聚合 = 汇总比 sum(分子)/sum(分母)，
+# 禁止对行比率再求 avg——小分母行会带偏总量结论；粒度上卷（case/campaign/brand）同样适用
+_RATIO_NUM_DEN = {"ctr": ("clicks", "impressions"), "cvr": ("conversions", "clicks"),
+                  "cpa": ("cost", "conversions"), "cpm": ("cost * 1000", "impressions")}
+
+
+def _agg_expr(metric: str) -> str:
+    """指标聚合表达式：比率型=汇总比，总量型=sum。"""
+    if metric in _RATIO_NUM_DEN:
+        num, den = _RATIO_NUM_DEN[metric]
+        return f"round(sum({num})::numeric / NULLIF(sum({den}), 0), 4)"
+    return f"round(sum({metric})::numeric, 2)"
 
 # 口径感知（§六 Metric）：指标词 → 统一列；成本型越低越好、比率型越高越好
 METRIC_WORDS = {"点击率": "ctr", "ctr": "ctr", "转化率": "cvr", "cvr": "cvr",
@@ -170,7 +186,17 @@ def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
         return "top_metric", {"n": n, "metric": metric,
                               "direction": _direction(metric, question),
                               "platform": _platform_of(question),
-                              "window": _window_of(question)}
+                              "window": _window_of(question),
+                              "group": "case_id" if "案例" in question else "creative_id"}
+    if "案例" in question and ("率" in q or any(w in q for w in ("cpa", "消耗", "成本", "花费"))):
+        # 案例粒度统计/排名（§六 聚合口径铁律：比率型=汇总比）；"各案例"看全量
+        metric = _metric_of(question)
+        return "top_metric", {"n": 20 if ("各" in question or "所有" in question) else n,
+                              "metric": metric,
+                              "direction": _direction(metric, question),
+                              "platform": _platform_of(question),
+                              "window": _window_of(question),
+                              "group": "case_id"}
     if entity_ids:                                        # 归因串行：graph 圈的实体作条件
         return "entity_metrics", {"ids": entity_ids}
     return "platform_summary", {}
@@ -194,10 +220,15 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
             if params.get("window"):
                 w = params["window"]
                 conds2.append(f"date BETWEEN '{w[0]}' AND '{w[1]}'")
-            sql = (f"SELECT creative_id, round(avg({metric})::numeric, 4) AS avg_{metric},"
+            group = params.get("group", "creative_id")      # 粒度上卷：案例级统计（§六）
+            # 案例统计常一问多指标 → 输出指标全家桶（按问句指标排序）；素材榜保持单指标
+            stat_cols = ([f"{_agg_expr(c)} AS {c}" for c in ("cost", "ctr", "cvr", "cpa")
+                          if c in metrics] if group == "case_id"
+                         else [_agg_expr(metric) + f" AS {metric}"])
+            sql = (f"SELECT {group}, {', '.join(stat_cols)},"
                    f" count(*) AS days FROM unified_metrics"
                    f" WHERE {' AND '.join(conds2)} GROUP BY 1 HAVING count(*) >= 3"
-                   f" ORDER BY avg_{metric} {params['direction']}"
+                   f" ORDER BY {metric} {params['direction']}"
                    f" LIMIT {min(params.get('n', 5), 50)}")   # 闸 5：强制 LIMIT
         else:                                              # 指标不在白名单 → 降级汇总
             cols = ", ".join(f"round(sum({c})::numeric, 2) AS {c}"
@@ -206,7 +237,7 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
                    f" WHERE {' AND '.join(conds)} GROUP BY 1 LIMIT 20")
     elif name == "entity_metrics" and metrics:
         priority = [c for c in ("cpa", "ctr", "cvr", "cost") if c in metrics]
-        cols = ", ".join(f"round(avg({c})::numeric, 2) AS {c}"
+        cols = ", ".join(f"{_agg_expr(c)} AS {c}"
                          for c in priority + [m for m in metrics if m not in priority][:2])
         ids = [i for i in params["ids"] if i.startswith("Creative:")]
         sql = (f"SELECT creative_id, {cols} FROM unified_metrics"

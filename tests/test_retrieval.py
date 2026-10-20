@@ -141,7 +141,7 @@ class TestText2SQL:
         out = run("上月 CPA 最差的素材", planner.plan("management"),
                   os.environ["ADKG_PG_RO_DSN"])
         rows = out["evidence"][0]["rows"]
-        assert rows and "avg_cpa" in rows[0] and rows[0]["creative_id"]
+        assert rows and "cpa" in rows[0] and rows[0]["creative_id"]
 
     def test_客户行过滤与列白名单(self):
         import os
@@ -190,7 +190,16 @@ class TestTopMetric模板:
         sql, p = build_sql("上个月抖音的点击率最好的素材", self._plan())
         assert p["metric"] == "ctr" and p["direction"] == "DESC"    # 比率型越高越好
         assert p["platform"] == "douyin" and p["window"]
-        assert "platform = 'douyin'" in sql and "avg_ctr" in sql and "BETWEEN" in sql
+        # 聚合口径铁律：比率型 = 汇总比 sum(clicks)/sum(impressions)，非 avg 行比率
+        assert "platform = 'douyin'" in sql and "sum(clicks)" in sql and "BETWEEN" in sql
+
+    def test_案例粒度上卷(self):
+        from adkg.retrieval.text2sql import build_sql
+        sql, p = build_sql("各案例的平均转化率是多少", self._plan())
+        assert p.get("group") == "case_id" and p["metric"] == "cvr"
+        assert "SELECT case_id" in sql and "sum(conversions)" in sql
+        _, p2 = build_sql("CPA 最差的案例", self._plan())
+        assert p2.get("group") == "case_id" and p2["metric"] == "cpa"
 
     def test_cpa最好方向反转(self):
         from adkg.retrieval.text2sql import build_sql
@@ -253,7 +262,7 @@ class Test五道闸校验:
     def test_点名素材必须落在该素材(self):
         # 口径闸：全局均值冒充单素材答案 → 弃用生成回模板（G08/G31/G35 实测教训）
         from adkg.retrieval.text2sql import _named_creative_hit
-        good = ("SELECT creative_id, round(avg(cpa)::numeric, 2) AS avg_cpa"
+        good = ("SELECT creative_id, round(sum(cost)::numeric / NULLIF(sum(conversions), 0), 2) AS cpa"
                 " FROM unified_metrics"
                 " WHERE creative_id = 'Creative:C-2025-003-cp1-cr1' LIMIT 5")
         bad = ("SELECT round(avg(cpa)::numeric, 2) AS avg_cpa"

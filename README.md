@@ -261,7 +261,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 
 关键关系：`Case→for_brand→Brand`、`Case→for_product→Product`（N:1）、`Brand→has_product→Product`、`Campaign→belongs_to→Case`、`Campaign→uses→Creative`、`Campaign→in_channel→Channel`（N:1，与事实表的平台维度区分，不重复建模）、`Campaign→targets→Audience`（N:M）、`Creative→links_to→LandingPage`（N:1）、`Creative→complies_with / violates→Guideline`、`Creative→derived_from→Creative`、`Person→responsible_for→Case`、`Person→belongs_to_brand→Brand`（内部对接人归属）、`Person→external_for→Brand`（外部客户账号绑定，N:M，变更走人审）。`平台字段→maps_to→Metric` 是 mappings 层的映射谓词，不是图关系。
 
-Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指标词与 Text2SQL 可用指标白名单的依据；视图实现与 Metric 公式的一致性由 `mappings/` 保证；两平台不可比的指标在映射层不映射、视图列留空。`expr / grain / dedup_rule / valid_scope` 落在 schema.yaml。
+Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指标词与 Text2SQL 可用指标白名单的依据；视图实现与 Metric 公式的一致性由 `mappings/` 保证；两平台不可比的指标在映射层不映射、视图列留空。`expr / grain / dedup_rule / valid_scope` 落在 schema.yaml。**聚合口径铁律**：比率型指标（ctr / cvr / cpa / cpm）跨行聚合一律**汇总比** `sum(分子) / NULLIF(sum(分母), 0)`（如 cpa = sum(cost) / sum(conversions)），**禁止对行比率再求 avg**——小分母行会带偏总量结论；该铁律同时约束 Text2SQL 模板与 LLM 自由生成（粒度上卷到 campaign / case / brand 同样适用）。
 
 关键约束（`guards/action_check.py` 读取）：Case 状态迁移 `proposal→live｜lost`、`live→closed｜terminated`，closed / lost / terminated 为终态不可逆；lost 默认排除出可比案例检索（retrieval 按 stage 过滤）但保留复盘归因；terminated 必填终止原因；live / closed 的 Case 不可删除 Creative；任何写入必须带 provenance。完整迁移表进 `schema.yaml#constraints`。
 
@@ -462,7 +462,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | 页面 | 谁用 | 端点 |
 |---|---|---|
 | 问答 + 证据 | 所有人 | `/ask` |
-| 图谱展开 | AE、优化师 | `/graph/entity` |
+| 图谱展开 | AE、优化师 | `/graph/entity`（Case 类实体响应附 `stats`：案例级指标汇总比——cost/ctr/cvr/cpa/天数，行权限过滤，client 视角越权案例不出数） |
 | 规范检查 | 创意 / AIGC | `/guideline/check` |
 | 人审队列 | 知识运营 | `review_queue` + `/ingest` |
 

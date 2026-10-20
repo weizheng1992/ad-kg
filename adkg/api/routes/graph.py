@@ -63,4 +63,36 @@ def graph_entity(request: Request, id: str, hops: int = 1,
                       for r in edges],
         "filtered": filtered,
         "role": role,
+        "stats": _case_stats(env, plan, rec["class"], rec["id"]),
     }
+
+
+def _case_stats(env: dict, plan, cls: str | None, entity_id: str) -> dict | None:
+    """Case 实体附案例级指标统计（README §9.7）：汇总比口径（§六 铁律），
+    行权限用 plan.sql_predicate 同一道闸（client 看越权案例不出数）。"""
+    if cls != "Case":
+        return None
+    if plan.visible_entity_ids and entity_id not in plan.visible_entity_ids:
+        return None                                          # fail-closed：不可见即无统计
+    import psycopg
+    from psycopg.rows import dict_row
+
+    predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
+    try:
+        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+                             row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT round(sum(cost)::numeric, 2) AS cost,"
+                    " round(sum(clicks)::numeric / NULLIF(sum(impressions), 0), 4) AS ctr,"
+                    " round(sum(conversions)::numeric / NULLIF(sum(clicks), 0), 4) AS cvr,"
+                    " round(sum(cost)::numeric / NULLIF(sum(conversions), 0), 2) AS cpa,"
+                    " count(*) AS days, min(date)::text AS first_day, max(date)::text AS last_day"
+                    " FROM unified_metrics WHERE NOT unmatched AND case_id = %(id)s" + predicate,
+                    {"id": entity_id})
+                row = cur.fetchone()
+    except psycopg.Error:
+        return None                                          # 统计失败不阻塞图谱（§7.2 降级）
+    if not row or row["days"] == 0:
+        return None
+    return dict(row)

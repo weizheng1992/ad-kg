@@ -30,10 +30,21 @@ export interface Neighbor {
   confidence?: number
   provenance?: { source_type?: string; authority?: number }
 }
+/** Case 类实体的案例级指标统计（汇总比口径，README §六；行权限过滤后越权案例为 null） */
+export interface CaseStats {
+  cost: string
+  ctr: string
+  cvr: string
+  cpa: string
+  days: number
+  first_day?: string
+  last_day?: string
+}
 export interface GraphResponse {
   entity: { id: string; class: string; name?: string; stage?: string; authority?: number }
   neighbors: Neighbor[]
   filtered: number
+  stats?: CaseStats | null
 }
 
 export const ROLES: { role: string; user: string; label: string }[] = [

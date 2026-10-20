@@ -41,7 +41,7 @@ class TestAsk:
         body = r.json()
         assert body["intent"] == "fact"
         fact = next(e for e in body["evidence"] if e["type"] == "fact")
-        assert fact["rows"] and "avg_cpa" in fact["rows"][0]
+        assert fact["rows"] and "cpa" in fact["rows"][0]
 
     def test_客户越权_他牌案例被滤(self, client):
         r = client.post("/ask", json={"question": "Case:C-2025-006 的关系",
