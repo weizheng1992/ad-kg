@@ -24,6 +24,14 @@ PRODUCTS = [(f"P{i:02d}", f"{b[1]}App", b[2], "iOS/Android", AGE_BY_CATEGORY[b[2
             for i, b in enumerate(BRANDS, 1)]
 PRODUCTS += [(f"P{i:02d}", f"{b[1]}小程序", b[2], "微信", AGE_BY_CATEGORY[b[2]])
              for i, b in enumerate(BRANDS, 1)][:7]
+# SKU 形态商品（§六 Product 双形态）：规格/详情/价格齐备，投放案例与交易种子挂这三支
+SKUS = [
+    ("P16", "轻食即食鸡胸肉 7 日装", "餐饮", "7 日装 × 330g／冷藏锁鲜", "高蛋白低卡，健身餐搭配", "89.90", "B01"),
+    ("P17", "澄肌烟酰胺焕亮精华礼盒", "美妆个护", "30ml × 2 瓶／礼盒装", "烟酰胺精华，提亮修护套装", "169.00", "B04"),
+    ("P18", "喵汪到家上门洗护年卡", "宠物服务", "年卡 12 次／单次 60 分钟", "上门洗护服务，含深度除螨", "365.00", "B06"),
+]
+SKU_BY_BRAND = {sku[6]: sku[0] for sku in SKUS}
+SKU_PRICE = {sku[0]: float(sku[5]) for sku in SKUS}
 PEOPLE = [("li", "李昂", "AE"), ("wang", "王雪", "创意"), ("zhao", "赵岚", "优化师"),
           ("zhou", "周荃", "财务"), ("chen", "陈朔", "管理层"), ("sun", "孙苗", "优化师")]
 CLIENT = ("client_a", "顾佳", "客户对接人")          # 外部客户 principal
@@ -74,9 +82,12 @@ def gen_master() -> list[list[str]]:
     """brands_products.csv + org_people.csv + cases_campaigns.csv（含双平台同素材锚点）。"""
     _write_csv("brands_products.csv",
                ["brand_id", "brand_name", "category", "product_id", "app_name", "platform",
-                "target_age"],
-               [[f"Brand:{b[0]}", b[1], b[2], f"Product:{p[0]}", p[1], p[3], p[4]]
-                for b, p in zip(BRANDS, PRODUCTS[:8])])
+                "target_age", "spec", "detail", "price"],
+               [[f"Brand:{b[0]}", b[1], b[2], f"Product:{p[0]}", p[1], p[3], p[4], "", "", ""]
+                for b, p in zip(BRANDS, PRODUCTS[:8])]
+               + [[f"Brand:{s[6]}", next(b[1] for b in BRANDS if b[0] == s[6]), s[2],
+                   f"Product:{s[0]}", s[1], "电商", AGE_BY_CATEGORY[s[2]],
+                   s[3], s[4], s[5]] for s in SKUS])
     cases, rows, people_rows = [], [], []
     case_of_person: dict[str, str] = {}
     case_name_by_id: dict[str, str] = {}
@@ -86,6 +97,10 @@ def gen_master() -> list[list[str]]:
         # 商品归属同品牌（App/小程序都从该品牌取）——brand 按 i%8、product 按 i%15
         # 各选各的会错配出「澄肌研究所·途野露营App」这类假数据（2026-10-20 实测）
         product = PRODUCTS[8 + bi] if (i % 2 == 1 and bi < 7) else PRODUCTS[bi]
+        # 有 SKU 的品牌：奇数案例与 i%8==0 的案例推广 SKU（商品粒度统计的演示锚）
+        if brand[0] in SKU_BY_BRAND and (i % 2 == 1 or i % 8 == 0):
+            sku = next(s for s in SKUS if s[0] == SKU_BY_BRAND[brand[0]])
+            product = (sku[0], sku[1], sku[2], "电商", AGE_BY_CATEGORY[sku[2]])
         person = PEOPLE[i % len(PEOPLE)]
         case_id = f"Case:C-2025-{i:03d}"
         case_name = f"{brand[1]}·{product[1]}投放案例"     # 与案例文档标题同式（图上 Case.name）
@@ -215,6 +230,22 @@ def gen_audiences() -> None:
                ["audience_id", "name", "targeting_desc", "brand_id"], rows)
 
 
+def gen_product_orders() -> None:
+    """SKU 交易种子（§六 交易口径分列）：product_orders_daily.csv，近 90 天；
+    购买率 = orders / clicks（与投放点击按 product×day join，README §六）。"""
+    today = date.today()
+    rows = []
+    for sku in SKUS:
+        price = SKU_PRICE[sku[0]]
+        for d in range(90):
+            day = today - timedelta(days=d)
+            orders = rng.randint(3, 50)
+            rows.append([day.isoformat(), f"Product:{sku[0]}", orders,
+                         round(orders * price, 2)])
+    _write_csv("product_orders_daily.csv",
+               ["date", "product_id", "orders", "gmv"], rows)
+
+
 def gen_assertions() -> None:
     rows = [
         ["Creative:creative_992", "violates", "Guideline:G-01", "0.91"],
@@ -237,6 +268,7 @@ if __name__ == "__main__":
     gen_docs(cases)
     gen_facts()
     gen_audiences()
+    gen_product_orders()
     gen_assertions()
     n = sum(1 for p in SEED.rglob("*") if p.is_file())
     print(f"seed 生成完成：{n} 个文件 → data/seed/")

@@ -122,6 +122,20 @@ CREATE TABLE IF NOT EXISTS creative_metrics_daily_douyin (
     PRIMARY KEY (date, campaign_local_id, creative_local_id)
 );
 
+-- 维度物化补列（幂等）：product_id 由 case→for_product 推导（§八；2026-10-20 商品粒度统计）
+ALTER TABLE creative_metrics_daily_douyin ADD COLUMN IF NOT EXISTS product_id text;
+ALTER TABLE creative_metrics_daily_xhs   ADD COLUMN IF NOT EXISTS product_id text;
+
+-- 商品交易事实（§六 交易口径分列：购买率 = orders / clicks，需与投放点击按 product×day join）
+CREATE TABLE IF NOT EXISTS product_orders_daily (
+    date           date NOT NULL,
+    product_id     text NOT NULL,
+    orders         bigint NOT NULL,
+    gmv            numeric(14, 2) NOT NULL,
+    provenance_id  uuid NOT NULL REFERENCES provenance (id),
+    PRIMARY KEY (date, product_id)
+);
+
 -- 小红书侧：列结构与抖音对称（中文表头的设计留给 seed CSV——平台导出是中文表头，
 -- 由 etl_facts 按 mappings/xiaohongshu.yaml 翻译后进本表，映射层的演示在那一路）
 CREATE TABLE IF NOT EXISTS creative_metrics_daily_xhs (

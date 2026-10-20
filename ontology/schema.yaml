@@ -10,8 +10,8 @@ classes:
     properties: [category, owner_type]
 
   Product:
-    description: 商品（App / SKU）
-    properties: [name, app_id, platform, target_age]
+    description: 商品（App / SKU 双形态）
+    properties: [name, category, target_age, app_id, platform, spec, detail, price]
 
   Case:
     description: 主线实体，提案到结案的生命周期

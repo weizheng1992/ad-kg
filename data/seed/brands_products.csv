@@ -1,9 +1,12 @@
-brand_id,brand_name,category,product_id,app_name,platform,target_age
-Brand:B01,轻食日记,餐饮,Product:P01,轻食日记App,iOS/Android,20-35
-Brand:B02,律动星球,运动健身,Product:P02,律动星球App,iOS/Android,18-40
-Brand:B03,拾光书屋,文化阅读,Product:P03,拾光书屋App,iOS/Android,22-45
-Brand:B04,澄肌研究所,美妆个护,Product:P04,澄肌研究所App,iOS/Android,18-35
-Brand:B05,途野露营,户外旅行,Product:P05,途野露营App,iOS/Android,25-45
-Brand:B06,喵汪到家,宠物服务,Product:P06,喵汪到家App,iOS/Android,22-40
-Brand:B07,速算蜂,教育学习,Product:P07,速算蜂App,iOS/Android,28-45
-Brand:B08,眠海科技,健康睡眠,Product:P08,眠海科技App,iOS/Android,25-50
+brand_id,brand_name,category,product_id,app_name,platform,target_age,spec,detail,price
+Brand:B01,轻食日记,餐饮,Product:P01,轻食日记App,iOS/Android,20-35,,,
+Brand:B02,律动星球,运动健身,Product:P02,律动星球App,iOS/Android,18-40,,,
+Brand:B03,拾光书屋,文化阅读,Product:P03,拾光书屋App,iOS/Android,22-45,,,
+Brand:B04,澄肌研究所,美妆个护,Product:P04,澄肌研究所App,iOS/Android,18-35,,,
+Brand:B05,途野露营,户外旅行,Product:P05,途野露营App,iOS/Android,25-45,,,
+Brand:B06,喵汪到家,宠物服务,Product:P06,喵汪到家App,iOS/Android,22-40,,,
+Brand:B07,速算蜂,教育学习,Product:P07,速算蜂App,iOS/Android,28-45,,,
+Brand:B08,眠海科技,健康睡眠,Product:P08,眠海科技App,iOS/Android,25-50,,,
+Brand:B01,轻食日记,餐饮,Product:P16,轻食即食鸡胸肉 7 日装,电商,20-35,7 日装 × 330g／冷藏锁鲜,高蛋白低卡，健身餐搭配,89.90
+Brand:B04,澄肌研究所,美妆个护,Product:P17,澄肌烟酰胺焕亮精华礼盒,电商,18-35,30ml × 2 瓶／礼盒装,烟酰胺精华，提亮修护套装,169.00
+Brand:B06,喵汪到家,宠物服务,Product:P18,喵汪到家上门洗护年卡,电商,22-40,年卡 12 次／单次 60 分钟,上门洗护服务，含深度除螨,365.00

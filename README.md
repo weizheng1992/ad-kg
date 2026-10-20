@@ -250,7 +250,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 
 | 类 | 说明 | 关键属性 | 主要来源 |
 |---|---|---|---|
-| Brand / Product | 广告主、商品（App / SKU），主数据，关系的载体 | 名称、品类；app_id、平台、目标人群年龄（target_age，如「22-40」） | CRM、案例文档 |
+| Brand / Product | 广告主、商品（App / SKU 双形态），主数据，关系的载体 | 名称、品类、目标人群年龄（target_age，如「22-40」）；App 形态：app_id、平台；SKU 形态：spec（规格）、detail（详情摘要）、price（客单价）——投放统计经 `Case→for_product` 上卷到商品粒度（事实表物化 `product_id`） | CRM、案例文档、商品后台导出 |
 | **Case** | 主线实体，`stage ∈ {proposal, live, closed, lost, terminated}` | stage、bd_budget、gross_margin、settlement_status | 案例系统、proposal 文档 |
 | Campaign / Creative | 投放计划、素材 | 计划名（name）、status、daily_budget；素材名（name）、is_aigc、derived_from | 平台 API、导出表 |
 | Channel / LandingPage / Audience | 投放上下文：广告位 / 流量场景、落地页、定向人群 | 广告位类型；url；定向包描述 | 平台、配置 |
@@ -261,7 +261,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 
 关键关系：`Case→for_brand→Brand`、`Case→for_product→Product`（N:1）、`Brand→has_product→Product`、`Campaign→belongs_to→Case`、`Campaign→uses→Creative`、`Campaign→in_channel→Channel`（N:1，与事实表的平台维度区分，不重复建模）、`Campaign→targets→Audience`（N:M）、`Creative→links_to→LandingPage`（N:1）、`Creative→complies_with / violates→Guideline`、`Creative→derived_from→Creative`、`Person→responsible_for→Case`、`Person→belongs_to_brand→Brand`（内部对接人归属）、`Person→external_for→Brand`（外部客户账号绑定，N:M，变更走人审）。`平台字段→maps_to→Metric` 是 mappings 层的映射谓词，不是图关系。
 
-Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指标词与 Text2SQL 可用指标白名单的依据；视图实现与 Metric 公式的一致性由 `mappings/` 保证；两平台不可比的指标在映射层不映射、视图列留空。`expr / grain / dedup_rule / valid_scope` 落在 schema.yaml。**聚合口径铁律**：比率型指标（ctr / cvr / cpa / cpm）跨行聚合一律**汇总比** `sum(分子) / NULLIF(sum(分母), 0)`（如 cpa = sum(cost) / sum(conversions)），**禁止对行比率再求 avg**——小分母行会带偏总量结论；该铁律同时约束 Text2SQL 模板与 LLM 自由生成（粒度上卷到 campaign / case / brand 同样适用）。
+Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指标词与 Text2SQL 可用指标白名单的依据；视图实现与 Metric 公式的一致性由 `mappings/` 保证；两平台不可比的指标在映射层不映射、视图列留空。`expr / grain / dedup_rule / valid_scope` 落在 schema.yaml。**聚合口径铁律**：比率型指标（ctr / cvr / cpa / cpm）跨行聚合一律**汇总比** `sum(分子) / NULLIF(sum(分母), 0)`（如 cpa = sum(cost) / sum(conversions)），**禁止对行比率再求 avg**——小分母行会带偏总量结论；该铁律同时约束 Text2SQL 模板与 LLM 自由生成（粒度上卷到 campaign / case / brand 同样适用）。**交易口径分列**：购买率（purchase_rate = orders / clicks）是**交易侧**指标（grain=product×day，数据源=商品后台导出，§五 数据三层③ seam；演示期合成种子），与投放侧转化率（cvr = conversions / clicks，平台回传的转化目标）**分列定义、不得混用**。
 
 关键约束（`guards/action_check.py` 读取）：Case 状态迁移 `proposal→live｜lost`、`live→closed｜terminated`，closed / lost / terminated 为终态不可逆；lost 默认排除出可比案例检索（retrieval 按 stage 过滤）但保留复盘归因；terminated 必填终止原因；live / closed 的 Case 不可删除 Creative；任何写入必须带 provenance。完整迁移表进 `schema.yaml#constraints`。
 

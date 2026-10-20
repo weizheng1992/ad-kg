@@ -76,19 +76,21 @@ def etl_csv(pg_dsn: str, graph, mapping_path: Path, csv_path: Path,
         cur.executemany(
             f"INSERT INTO {mapping['table']}"
             " (date, campaign_local_id, creative_local_id, creative_id,"
-            "  campaign_id, case_id, brand_id, cost, impressions, clicks, conversions,"
+            "  campaign_id, case_id, brand_id, product_id, cost, impressions, clicks, conversions,"
             "  provenance_id)"
             " VALUES (%(date)s, %(campaign_local_id)s, %(creative_local_id)s,"
-            " %(creative_id)s, %(campaign_id)s, %(case_id)s, %(brand_id)s,"
+            " %(creative_id)s, %(campaign_id)s, %(case_id)s, %(brand_id)s, %(product_id)s,"
             " %(cost)s, %(impressions)s, %(clicks)s, %(conversions)s, %(_prov)s)"
             " ON CONFLICT (date, campaign_local_id, creative_local_id) DO UPDATE SET"
             " creative_id = EXCLUDED.creative_id, campaign_id = EXCLUDED.campaign_id,"
             " case_id = EXCLUDED.case_id, brand_id = EXCLUDED.brand_id,"
+            " product_id = EXCLUDED.product_id,"
             " cost = EXCLUDED.cost, impressions = EXCLUDED.impressions,"
             " clicks = EXCLUDED.clicks, conversions = EXCLUDED.conversions",
             [{**r, "campaign_id": contexts.get(r["creative_id"], {}).get("campaign_id"),
               "case_id": contexts.get(r["creative_id"], {}).get("case_id"),
               "brand_id": contexts.get(r["creative_id"], {}).get("brand_id"),
+              "product_id": contexts.get(r["creative_id"], {}).get("product_id"),
               "_prov": prov_id} for r in rows])
 
         if stats.unmatched:

@@ -6,12 +6,13 @@
 --
 -- Text2SQL 只对本视图与白名单视图生成（§7.3 五道闸）；
 -- per-role 视图（指标列权限的落点）Phase 4/5 再加，本期不建。
--- 幂等：CREATE OR REPLACE，可重复执行
+-- 幂等：DROP + CREATE（OR REPLACE 不允许在既有列之前插列，2026-10-20 实测）
 -- ==================================================================
 
-CREATE OR REPLACE VIEW unified_metrics AS
+DROP VIEW IF EXISTS unified_metrics;
+CREATE VIEW unified_metrics AS
 SELECT
-    platform, date, creative_local_id, creative_id, campaign_id, case_id, brand_id,
+    platform, date, creative_local_id, creative_id, campaign_id, case_id, brand_id, product_id,
     cost, impressions, clicks, conversions,
     -- 口径列：公式锚点 = Metric 定义；分母为零置 NULL，不编数
     clicks::numeric      / NULLIF(impressions, 0) AS ctr,
@@ -20,12 +21,12 @@ SELECT
     (creative_id IS NULL)                          AS unmatched
 FROM (
     SELECT 'douyin' AS platform, date, creative_local_id, creative_id,
-           campaign_id, case_id, brand_id,
+           campaign_id, case_id, brand_id, product_id,
            cost, impressions, clicks, conversions
     FROM creative_metrics_daily_douyin
     UNION ALL
     SELECT 'xhs' AS platform, date, creative_local_id, creative_id,
-           campaign_id, case_id, brand_id,
+           campaign_id, case_id, brand_id, product_id,
            cost, impressions, clicks, conversions
     FROM creative_metrics_daily_xhs
 ) t;

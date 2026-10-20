@@ -62,7 +62,7 @@ class GraphStore:
         return {"nodes": nodes, "relations": rels}
 
     def creative_contexts(self, creative_ids: list[str]) -> dict[str, dict]:
-        """etl_facts 物化维度列用（§八）：素材 → 所属计划/案例/品牌。"""
+        """etl_facts 物化维度列用（§八）：素材 → 所属计划/案例/品牌/商品。"""
         if not creative_ids:
             return {}
         with self.session() as s:
@@ -72,12 +72,15 @@ class GraphStore:
                 OPTIONAL MATCH (c:Entity {id: cid})<-[:uses]-(cp:Entity)
                     -[:belongs_to]->(cs:Entity)
                 OPTIONAL MATCH (cs)-[:for_brand]->(b:Entity)
+                OPTIONAL MATCH (cs)-[:for_product]->(p:Entity)
                 RETURN cid, head(collect(DISTINCT cp.id)) AS campaign_id,
                        head(collect(DISTINCT cs.id)) AS case_id,
-                       head(collect(DISTINCT b.id))  AS brand_id
+                       head(collect(DISTINCT b.id))  AS brand_id,
+                       head(collect(DISTINCT p.id))  AS product_id
                 """, ids=creative_ids)
             return {r["cid"]: {"campaign_id": r["campaign_id"], "case_id": r["case_id"],
-                               "brand_id": r["brand_id"]} for r in rows}
+                               "brand_id": r["brand_id"],
+                               "product_id": r["product_id"]} for r in rows}
 
     def creative_case_stage(self, creative_id: str) -> str | None:
         """action_check 用（§六）：素材 → 所属案例的 stage。"""

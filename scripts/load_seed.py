@@ -43,6 +43,8 @@ METRICS = [  # §六：Metric 口径定义（语义层手工定义）
     ("Metric:cpa", "cost / conversions", "creative×day", "两平台口径统一后可比", ""),
     ("Metric:cpm", "cost / impressions * 1000", "creative×day", "", ""),
     ("Metric:roi", "revenue / cost", "case×month", "需回传收入数据", ""),
+    ("Metric:purchase_rate", "orders / clicks", "product×day",
+     "交易口径——与投放侧 cvr 分列（orders 需与投放 clicks 按 product×day join）", ""),
 ]
 
 
@@ -70,8 +72,10 @@ def main() -> None:
             Entity(entity_class="Brand", entity_id=r["brand_id"],
                    props={"name": r["brand_name"], "category": r["category"]}, provenance=p_brand),
             Entity(entity_class="Product", entity_id=r["product_id"],
-                   props={"name": r["app_name"], "platform": r["platform"],
-                          "target_age": r["target_age"]}, provenance=p_brand)]
+                   props={**{"name": r["app_name"], "platform": r["platform"],
+                             "target_age": r["target_age"]},
+                          **({k: r[k] for k in ("spec", "detail", "price") if r.get(k)})},
+                   provenance=p_brand)]
         relations.append(Relation(source=r["brand_id"], predicate="has_product",
                                   target=r["product_id"], provenance=p_brand))
 
@@ -241,6 +245,24 @@ def main() -> None:
         st = etl_csv(pg, graph, ROOT / "ontology" / "mappings" / f"{mapping}.yaml",
                      SEED / csvf)
         print(f"数据路 {mapping}：{st.rows} 行（matched {st.matched} / unmatched {st.unmatched}）")
+
+    # ── 交易路：SKU 订单 → product_orders_daily（§六 交易口径分列）─────
+    with psycopg.connect(pg) as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM product_orders_daily")
+        cur.execute(
+            "INSERT INTO provenance (source_type, source_id, fetched_at, authority, version)"
+            " VALUES ('platform_api', 'ecommerce:seed:product_orders_daily.csv', %s, 80, %s)"
+            " RETURNING id", (FETCHED_AT, 1))
+        prov_id = cur.fetchone()[0]
+        orows = _rows("product_orders_daily.csv")
+        cur.executemany(
+            "INSERT INTO product_orders_daily (date, product_id, orders, gmv, provenance_id)"
+            " VALUES (%(date)s, %(product_id)s, %(orders)s, %(gmv)s, %(prov)s)"
+            " ON CONFLICT (date, product_id) DO UPDATE SET orders = EXCLUDED.orders,"
+            " gmv = EXCLUDED.gmv",
+            [{**r, "orders": int(r["orders"]), "gmv": float(r["gmv"]), "prov": prov_id}
+             for r in orows])
+    print(f"交易路 product_orders_daily：{len(orows)} 行")
     graph.close()
 
 

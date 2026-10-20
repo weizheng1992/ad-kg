@@ -94,7 +94,8 @@ def enforce_semantics(sql: str) -> str:
     return re.sub(r"(?i)(from\s+unified_metrics)",
                   r"\1 WHERE NOT unmatched", sql, count=1)
 
-DIM_COLUMNS = ["platform", "date", "creative_id", "campaign_id", "case_id", "brand_id"]
+DIM_COLUMNS = ["platform", "date", "creative_id", "campaign_id", "case_id", "brand_id",
+               "product_id"]
 ALL_METRICS = ["cost", "impressions", "clicks", "conversions", "ctr", "cvr", "cpa", "cpm", "roi"]
 
 # 聚合口径铁律（README §六）：比率型指标跨行聚合 = 汇总比 sum(分子)/sum(分母)，
@@ -200,6 +201,19 @@ def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
                               "platform": _platform_of(question),
                               "window": _window_of(question),
                               "group": "case_id"}
+    # 交易口径（§六 分列）：购买率/订单/GMV 走 product_orders join，与投放 cvr 不混
+    if "购买率" in q or "订单" in q or "成交" in q or "gmv" in q or "销售额" in q:
+        return "product_orders", {"window": _window_of(question)}
+    if any(w in question for w in ("商品", "单品", "套装", "礼盒", "套餐", "年卡")) and \
+            ("率" in q or any(w in q for w in ("cpa", "消耗", "成本", "花费"))):
+        # 商品粒度投放统计（product_id 由 case→for_product 物化，§八）
+        metric = _metric_of(question)
+        return "top_metric", {"n": 20 if ("各" in question or "所有" in question) else n,
+                              "metric": metric,
+                              "direction": _direction(metric, question),
+                              "platform": _platform_of(question),
+                              "window": _window_of(question),
+                              "group": "product_id"}
     if entity_ids:                                        # 归因串行：graph 圈的实体作条件
         return "entity_metrics", {"ids": entity_ids}
     return "platform_summary", {}
@@ -241,6 +255,20 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
                              for c in metrics[:4]) or "count(*) AS rows"
             sql = (f"SELECT platform, {cols} FROM unified_metrics"
                    f" WHERE {' AND '.join(conds)} GROUP BY 1 LIMIT 20")
+    elif name == "product_orders":
+        # 交易模板：orders/gmv 与投放 clicks 按 product×day join 出购买率（§六 分列口径）；
+        # LEFT JOIN——无投放覆盖的 SKU 仍出 orders/gmv，购买率留空（诚实，不编数）；
+        # 购买率分子限定在投放覆盖天（FILTER），与分母 clicks 时间窗对齐，防虚高
+        w = params.get("window")
+        wcond = (f" AND o.date BETWEEN '{w[0]}' AND '{w[1]}'" if w else "")
+        sql = ("SELECT o.product_id, sum(o.orders) AS orders,"
+               " round(sum(o.gmv)::numeric, 2) AS gmv,"
+               " round(sum(o.orders) FILTER (WHERE u.clicks IS NOT NULL)::numeric"
+               "   / NULLIF(sum(u.clicks), 0), 4) AS purchase_rate"
+               " FROM product_orders_daily o"
+               " LEFT JOIN unified_metrics u ON u.product_id = o.product_id AND u.date = o.date"
+               f" WHERE (u.unmatched = false OR u.unmatched IS NULL){wcond}"
+               " GROUP BY 1 ORDER BY orders DESC LIMIT 20")
     elif name == "entity_metrics" and metrics:
         priority = [c for c in ("cpa", "ctr", "cvr", "cost") if c in metrics]
         cols = ", ".join(f"{_agg_expr(c)} AS {c}"
