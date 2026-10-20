@@ -64,7 +64,7 @@ export function GraphPage({ persona }: { persona: Persona }) {
         })
       })
       setFiltered((f) => f + g.filtered)
-      setStats(g.entity.class === 'Case' || g.entity.class === 'Product'
+      setStats(['Case', 'Product', 'Creative'].includes(g.entity.class)
         ? (g.stats ?? null) : null)
       setFocus(id)
       setStatus(`${g.entity.id}：${g.neighbors.length} 个邻居${g.filtered ? `（${g.filtered} 被权限过滤）` : ''}`)

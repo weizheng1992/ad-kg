@@ -462,7 +462,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | 页面 | 谁用 | 端点 |
 |---|---|---|
 | 问答 + 证据 | 所有人 | `/ask` |
-| 图谱展开 | AE、优化师 | `/graph/entity`（Case/Product 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数） |
+| 图谱展开 | AE、优化师 | `/graph/entity`（Case/Product/Creative 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数；Creative 投放未对齐时不出卡——§7.4 对齐漏斗的诚实边界） |
 | 规范检查 | 创意 / AIGC | `/guideline/check` |
 | 人审队列 | 知识运营 | `review_queue` + `/ingest` |
 

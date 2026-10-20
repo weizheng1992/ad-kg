@@ -68,7 +68,7 @@ def graph_entity(request: Request, id: str, hops: int = 1,
 
 
 def _entity_stats(env: dict, plan, graph, cls: str | None, entity_id: str) -> dict | None:
-    """Case/Product 实体附统计卡（README §9.7）：汇总比口径（§六 铁律），
+    """Case/Product/Creative 实体附统计卡（README §9.7）：汇总比口径（§六 铁律），
     行权限用 plan.sql_predicate 同一道闸（client 看越权对象不出数）。"""
     if cls == "Case":
         if plan.visible_entity_ids and entity_id not in plan.visible_entity_ids:
@@ -80,6 +80,8 @@ def _entity_stats(env: dict, plan, graph, cls: str | None, entity_id: str) -> di
             return None
         st.update(_trade_stats(env, plan, graph, entity_id))
         return st
+    if cls == "Creative":
+        return _invest_stats(env, plan, "creative_id", entity_id)
     return None
 
 
