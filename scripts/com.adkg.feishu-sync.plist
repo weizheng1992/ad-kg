@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  飞书云文档定时增量（README §7.2）：每 10 分钟跑一轮 sync_feishu.py（幂等，无新版本即空转）。
+  安装（仓库根目录执行）：
+    mkdir -p data/logs && sed "s|__REPO__|$PWD|; s|__UV__|$(command -v uv)|" \
+      scripts/com.adkg.feishu-sync.plist > ~/Library/LaunchAgents/com.adkg.feishu-sync.plist
+    launchctl load ~/Library/LaunchAgents/com.adkg.feishu-sync.plist
+  卸载：
+    launchctl unload ~/Library/LaunchAgents/com.adkg.feishu-sync.plist && rm ~/Library/LaunchAgents/com.adkg.feishu-sync.plist
+  日志：data/logs/feishu-sync.log / feishu-sync.err.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.adkg.feishu-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string>
+    <string>run</string>
+    <string>python</string>
+    <string>__REPO__/scripts/sync_feishu.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>StartInterval</key>
+  <integer>600</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HF_ENDPOINT</key>
+    <string>https://hf-mirror.com</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__REPO__/data/logs/feishu-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/data/logs/feishu-sync.err.log</string>
+</dict>
+</plist>

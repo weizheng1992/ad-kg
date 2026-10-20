@@ -11,7 +11,7 @@ classes:
 
   Product:
     description: 商品（App / SKU）
-    properties: [app_id, platform]
+    properties: [name, app_id, platform, target_age]
 
   Case:
     description: 主线实体，提案到结案的生命周期
@@ -19,11 +19,11 @@ classes:
 
   Campaign:
     description: 投放计划
-    properties: [status, daily_budget]
+    properties: [name, status, daily_budget]
 
   Creative:
     description: 投放素材；AIGC 产物带 derived_from 链
-    properties: [is_aigc, derived_from]
+    properties: [name, is_aigc, derived_from]
 
   Channel:
     description: 广告位 / 流量场景；与事实表的平台维度区分，不重复建模

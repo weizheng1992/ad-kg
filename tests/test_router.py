@@ -15,6 +15,11 @@ class TestRuleRoute:
         assert intent_of("效果差的素材和创意规范有没有关系？") == "attribution"
         assert intent_of("帮我删掉这个素材") == "operation"
 
+    def test_属性型问题归graph路(self):
+        """实体自身属性（target_age 等属性证据项）走 graph 路而非 fact（§7.3）。"""
+        assert intent_of("轻食日记App 的目标人群是什么年龄段？") == "graph"
+        assert intent_of("这些小程序的人群画像是怎样的？") == "graph"
+
     def test_操作类不产生执行计划(self):
         d = rule_route("删掉 live 案例里的素材")
         assert d.intent == "operation" and d.plan is None

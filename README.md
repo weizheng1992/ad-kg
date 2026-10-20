@@ -235,7 +235,7 @@ web/
 
 **规模假设**（拍板值，非实测，按代投 App 引流、单人维护估计）：品牌 ~50、案例 ~200/年、素材 ~5k、事实行 ~百万级/年、chunk ~1 万、golden set 20 题起。该量级下 Postgres 三元组表也扛得住——选 Neo4j 看重的是 Cypher 多跳表达力与可视化演示，不是规模刚需；量级再涨两个数量级时重估。演示数据用 `data/seed/` 合成种子，量级取上表零头。
 
-**运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。
+**运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。同机部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`，经 docker 网络 `shared-infra` 按容器名直连；初始化脚本与连接串在 smartServe 仓库）——单机内存省一份 PG 实例，库间靠账号与 database 边界隔离。
 
 **数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）。
 
@@ -245,9 +245,9 @@ web/
 
 | 类 | 说明 | 关键属性 | 主要来源 |
 |---|---|---|---|
-| Brand / Product | 广告主、商品（App / SKU），主数据，关系的载体 | 品类；app_id、平台 | CRM、案例文档 |
+| Brand / Product | 广告主、商品（App / SKU），主数据，关系的载体 | 名称、品类；app_id、平台、目标人群年龄（target_age，如「22-40」） | CRM、案例文档 |
 | **Case** | 主线实体，`stage ∈ {proposal, live, closed, lost, terminated}` | stage、bd_budget、gross_margin、settlement_status | 案例系统、proposal 文档 |
-| Campaign / Creative | 投放计划、素材 | status、daily_budget；is_aigc、derived_from | 平台 API、导出表 |
+| Campaign / Creative | 投放计划、素材 | 计划名（name）、status、daily_budget；素材名（name）、is_aigc、derived_from | 平台 API、导出表 |
 | Channel / LandingPage / Audience | 投放上下文：广告位 / 流量场景、落地页、定向人群 | 广告位类型；url；定向包描述 | 平台、配置 |
 | **Metric** | 指标**口径定义**（非数值）：CTR / CVR / CPA / ROI 的统一公式 | expr、grain、dedup_rule、valid_scope | 语义层手工定义 |
 | Guideline | 创意规范、品牌 VI、广告法条款；可机判规范带结构化阈值属性 | 类型、max_duration 等阈值 | 文档 |
@@ -269,7 +269,7 @@ Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指�
 | 0 | 列 20 个真实问题并标注命中类型；golden set 骨架；本 README | `eval/golden_set.jsonl`、README | 2d | **完成**（20 题五类 5/4/4/4/3） |
 | 1 | 定 12 类本体、关系、约束；permissions、authority；`sql/`（含 audit_log、ingest_job）；docker-compose；models.py；run_eval 骨架；纸面评审 | `ontology/`、`sql/`、空库 | 4d | **完成** |
 | 2a | 文档路·本地：files connector、chunking、extraction（30 段人工标注回归，precision/recall ≥0.85 才放量）、resolution 前两级、向量 + 图入库；人工只校 schema 和前 50 实体 | 图里第一张关系网 | 6d | **完成**（抽取回归实测：glm-4-flash 批端点 6 篇 → 71 实体/57 关系，置信度分级与白名单滤噪生效；标注集 precision/recall 量化待 Phase 6 扩集时做） |
-| 2b | 文档路·飞书：feishu 按 revision 增量（外部依赖：自建应用审批与文档授权）、LLM 判别级对齐 | 云文档自动入库 | 4d | **进行中**（connector+版本链就绪，等文档授权） |
+| 2b | 文档路·飞书：feishu 按 revision 增量（外部依赖：自建应用审批与文档授权）、LLM 判别级对齐 | 云文档自动入库 | 4d | **进行中**（connector+版本链+定时增量（ingest_job 幂等跳过 / launchd / 同步即嵌入）就绪，6 篇文档已同步；LLM 判别级对齐待做） |
 | 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | **完成**（演示级：锚点素材两平台同口径可比；platforms API adapter 留给真实部署方） |
 | 4 | 召回与权限：认证、permission 过滤与下推、router、三路检索、融合排序、assemble、`/ask` | `/ask` 能答混合问题 | 6d | **完成**（规则路由 + 三路 + PermissionPlan 下推；LLM 路由与嵌入待 key，vector 路按 §7.2 降级标注） |
 | 5 | 管控收口：`/actions/check`、audit、AIGC 闭环 | 越权被过滤、违规被拦截 | 5d | **完成**（裁决/机判/断言写回实测：live 删素材被拦、超时长违规、低置信进人审） |
@@ -281,7 +281,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 数据侧三条常驻通道：
 
-- 文档按 revision 增量同步，新版本 `supersedes` 旧版本而不是删除
+- 云文档**定时增量**：`scripts/sync_feishu.py` 可手动跑，也可 launchd 挂 `StartInterval`（plist 模板在 `scripts/`，默认 10 分钟）。每轮按 `(source_id, version)` 幂等跳过：`ingest_job` 两段都已 done **且** chunks 仍有该文档块才跳过（不重分块、不重写 provenance；TRUNCATE 后 ingest_job 残留 done 时自动重灌自愈），只有新 revision 才进流水线；chunk 面**恒为最新版**（`(doc_id, chunk_index)` 冲突更新），历史版本在 raw（`@rev` 键）+ DocVersion `supersedes` 链里，不删除；嵌入随同步用本地模型当场生成，不依赖事后回填
 - 平台数据每日 T+1 ETL；上线首日先经后台导出文件路一次性回填近 12 个月（**平台报表接口回溯窗口有限，窗口外没有第二来源**，这一路不适用"数据留原地"），之后只做增量
 - Agent 对话中暴露的"文档没写 / 写错了"回流成 `review_queue` 条目，人审后入库
 
@@ -319,7 +319,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 **融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路 RRF 合并 → 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。路由计划 **RouterPlan**（steps 带依赖与置信度、fallback 标志）是 models.py 一等类型，`ask.py` 只解释执行——路由评测直接对 plan 断言，不起整条 LLM 链路。
 
-**权限下推**：`guards/permission.py` 把 permissions.yaml 翻译成 **PermissionPlan**（metadata_filter / 可见 ID 集 / SQL 谓词 + 列白名单 / 脱敏规则），vector、graph、text2sql 三路与 assemble 出口**只消费 plan、不读权限矩阵**——过滤在召回层内生效，assemble 只见过滤后结果，对外仅布尔 `permission_applied`（计数与明细进审计）。SQL 谓词**案例级优先、品牌级兜底**（optimizer 的"负责案例"粒度 ≠ 对接品牌，品牌级会错杀）；text2sql 的生成 SQL 经五道闸校验后还由系统**注入语义不变量**（NOT unmatched、行谓词）——不信任生成的 SQL。越权值不得参与聚合：top-N / 均值一律算在过滤后集合上。翻译收口在一处，越权测试集只打 PermissionPlan 这一个 interface。
+**权限下推**：`guards/permission.py` 把 permissions.yaml 翻译成 **PermissionPlan**（metadata_filter / 可见 ID 集 / SQL 谓词 + 列白名单 + **属性黑名单** / 脱敏规则），vector、graph、text2sql 三路与 assemble 出口**只消费 plan、不读权限矩阵**——过滤在召回层内生效，assemble 只见过滤后结果，对外仅布尔 `permission_applied`（计数与明细进审计）。graph 路命中实体的**自身属性作为 `entity` 证据项**随关系一起返回（`Product.target_age` 这类属性型问题由此可答），属性白名单（外部 `allow_properties`，fail-closed）与黑名单（内部 `deny_properties`）都在该出口执行——这是它们唯一的执行点。SQL 谓词**案例级优先、品牌级兜底**（optimizer 的"负责案例"粒度 ≠ 对接品牌，品牌级会错杀）；text2sql 的生成 SQL 经五道闸校验后还由系统**注入语义不变量**（NOT unmatched、行谓词）——不信任生成的 SQL。越权值不得参与聚合：top-N / 均值一律算在过滤后集合上。翻译收口在一处，越权测试集只打 PermissionPlan 这一个 interface。
 
 ### 7.4 实体对齐（四级漏斗）
 

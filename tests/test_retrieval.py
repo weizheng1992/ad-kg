@@ -90,6 +90,44 @@ class TestGraphSearch:
         assert out["evidence"] == [] and out["filtered"] >= 1
         g.close()
 
+    def test_实体属性证据与黑名单(self):
+        """属性型问题（target_age）由 entity 证据项可答；deny_properties 在该出口执行。"""
+        import os
+
+        from adkg.guards.permission import PermissionPlanner
+        from adkg.retrieval.graph_search import search
+        from adkg.store.graph import GraphStore
+
+        g = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
+                       os.environ["ADKG_NEO4J_PASSWORD"])
+        planner = PermissionPlanner(ROOT / "ontology/permissions.yaml", graph=g)
+        out = search("喵汪到家App 适合哪个年龄？", planner.plan("management"), g)
+        ents = {e["ref"]: e["props"] for e in out["evidence"] if e["type"] == "entity"}
+        assert ents.get("Product:P06", {}).get("target_age") == "22-40"
+        ae_out = search("Case:C-2025-006 预算多少", planner.plan("ae"), g)
+        case_props = next((e["props"] for e in ae_out["evidence"]
+                           if e["type"] == "entity" and e["ref"] == "Case:C-2025-006"), {})
+        assert "bd_budget" not in case_props and "stage" in case_props   # 黑名单只拦指定属性
+        g.close()
+
+    def test_外部角色属性白名单(self):
+        """client 只许 Case.stage / Campaign.status（§12.4 fail-closed），其余属性在证据出口剥掉。"""
+        import os
+
+        from adkg.guards.permission import PermissionPlanner
+        from adkg.retrieval.graph_search import search
+        from adkg.store.graph import GraphStore
+
+        g = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
+                       os.environ["ADKG_NEO4J_PASSWORD"])
+        planner = PermissionPlanner(ROOT / "ontology/permissions.yaml", graph=g)
+        out = search("Case:C-2025-011 的状态", planner.plan("client", person="Person:client_a"), g)
+        case_props = next((e["props"] for e in out["evidence"]
+                           if e["type"] == "entity" and e["ref"].startswith("Case:")), None)
+        assert case_props is not None
+        assert set(case_props) <= {"stage"}              # 白名单内属性才可见
+        g.close()
+
 
 @pytest.mark.skipif(not _dbs_up(), reason="数据库不在线")
 class TestText2SQL:

@@ -32,6 +32,16 @@ class TraceStore:
                 " SET raw_ref = EXCLUDED.raw_ref, updated_at = now()",
                 (source_id, version, raw_ref))
 
+    def job_done(self, source_id: str, version: str) -> bool:
+        """(source_id, version) 两段都已 done 才算同步完成——定时增量的跳过判据（§7.2）。"""
+        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT pg_status = 'done' AND neo4j_status = 'done'"
+                " FROM ingest_job WHERE source_id = %s AND version = %s",
+                (source_id, version))
+            row = cur.fetchone()
+            return bool(row and row[0])
+
     def job_mark(self, source_id: str, version: str, *, pg: str | None = None,
                  neo4j: str | None = None, error: str | None = None) -> None:
         with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:

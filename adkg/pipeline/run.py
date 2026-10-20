@@ -28,7 +28,8 @@ class RunStats:
     reconcile: dict = field(default_factory=dict)
 
 
-def _version_of(record: RawRecord) -> str:
+def version_of(record: RawRecord) -> str:
+    """幂等键的一半（§八）：缺省取 fetched_at 日期。定时增量跳过判据共用。"""
     return record.provenance.version or record.provenance.fetched_at.date().isoformat()
 
 
@@ -39,7 +40,7 @@ def run_docs(connector: Connector, raw: RawStore, vector, graph, trace,
     for record in connector.fetch():
         stats.docs += 1
         raw_rel, sha = raw.write(record.source_ref, record.text)
-        version = _version_of(record)
+        version = version_of(record)
         trace.job_upsert(record.provenance.source_id, version, f"{raw_rel}@{sha[:12]}")
 
         _, pieces = chunk_markdown(record.text, max_chars=max_chars)

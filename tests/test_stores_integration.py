@@ -73,6 +73,31 @@ class TestVectorStore:
         store.delete_by_doc(doc)
 
 
+@pg_only
+class TestTraceStore:
+    def test_job_done_双done才算完成(self):
+        """定时增量跳过判据（§7.2）：缺一段 status 或任一非 done 都不算完成。"""
+        import uuid
+
+        import psycopg
+
+        from adkg.store.provenance import TraceStore
+
+        trace = TraceStore(os.environ["ADKG_PG_DSN"])
+        source_id = f"itest:sync-{uuid.uuid4().hex[:8]}"
+        try:
+            assert trace.job_done(source_id, "1") is False      # 无记录
+            trace.job_upsert(source_id, "1", "raw@x")
+            assert trace.job_done(source_id, "1") is False      # 未标记
+            trace.job_mark(source_id, "1", pg="done")
+            assert trace.job_done(source_id, "1") is False      # 只做了 pg
+            trace.job_mark(source_id, "1", neo4j="done")
+            assert trace.job_done(source_id, "1") is True       # 两段全 done
+        finally:
+            with psycopg.connect(os.environ["ADKG_PG_DSN"]) as conn, conn.cursor() as cur:
+                cur.execute("DELETE FROM ingest_job WHERE source_id = %s", (source_id,))
+
+
 # ---------------------------------------------------------------- Neo4j
 @neo4j_only
 class TestGraphStore:

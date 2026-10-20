@@ -16,13 +16,24 @@ rng = random.Random(42)
 BRANDS = [("B01", "轻食日记", "餐饮"), ("B02", "律动星球", "运动健身"), ("B03", "拾光书屋", "文化阅读"),
           ("B04", "澄肌研究所", "美妆个护"), ("B05", "途野露营", "户外旅行"), ("B06", "喵汪到家", "宠物服务"),
           ("B07", "速算蜂", "教育学习"), ("B08", "眠海科技", "健康睡眠")]
-PRODUCTS = [(f"P{i:02d}", f"{b[1]}App", b[2], "iOS/Android") for i, b in enumerate(BRANDS, 1)]
-PRODUCTS += [(f"P{i:02d}", f"{b[1]}小程序", b[2], "微信") for i, b in enumerate(BRANDS, 1)][:7]
+AGE_BY_CATEGORY = {  # 目标人群年龄（岁），按品类取行业常见投放定向区间
+    "餐饮": "20-35", "运动健身": "18-40", "文化阅读": "22-45", "美妆个护": "18-35",
+    "户外旅行": "25-45", "宠物服务": "22-40", "教育学习": "28-45", "健康睡眠": "25-50"}
+PRODUCTS = [(f"P{i:02d}", f"{b[1]}App", b[2], "iOS/Android", AGE_BY_CATEGORY[b[2]])
+            for i, b in enumerate(BRANDS, 1)]
+PRODUCTS += [(f"P{i:02d}", f"{b[1]}小程序", b[2], "微信", AGE_BY_CATEGORY[b[2]])
+             for i, b in enumerate(BRANDS, 1)][:7]
 PEOPLE = [("li", "李昂", "AE"), ("wang", "王雪", "创意"), ("zhao", "赵岚", "优化师"),
           ("zhou", "周荃", "财务"), ("chen", "陈朔", "管理层"), ("sun", "孙苗", "优化师")]
 CLIENT = ("client_a", "顾佳", "客户对接人")          # 外部客户 principal
 STAGES = (["proposal"] * 4 + ["live"] * 4 + ["closed"] * 6 + ["lost"] * 3 + ["terminated"] * 3)
 CHANNELS = ["信息流", "搜索", "开屏"]
+CAMP_SEQ = ("A", "B")                                   # 每案例两支计划的代号
+TITLE_BY_CHANNEL = {                                    # 素材名：形式 + 规格，行业常见叫法
+    "信息流": ["场景短剧 15s 竖版", "痛点开箱 30s 竖版", "达人种草 20s 竖版", "UGC 口播 15s 竖版"],
+    "搜索": ["关键词创意图", "品牌专区图文", "长尾词图文"],
+    "开屏": ["品牌主视觉 5s 动态", "大促静态 4s"],
+}
 GUIDELINES = [
     ("G-01", "creative_spec", None, "信息流视频前 3 秒须出现品牌标识，不得纯文字开场。"),
     ("G-02", "creative_spec", 30, "信息流视频总时长不超过 {max_duration_s} 秒。"),
@@ -45,8 +56,9 @@ def _write_csv(rel: str, header: list[str], rows: list[list]) -> None:
 def gen_master() -> list[list[str]]:
     """brands_products.csv + org_people.csv + cases_campaigns.csv（含双平台同素材锚点）。"""
     _write_csv("brands_products.csv",
-               ["brand_id", "brand_name", "category", "product_id", "app_name", "platform"],
-               [[f"Brand:{b[0]}", b[1], b[2], f"Product:{p[0]}", p[1], p[3]]
+               ["brand_id", "brand_name", "category", "product_id", "app_name", "platform",
+                "target_age"],
+               [[f"Brand:{b[0]}", b[1], b[2], f"Product:{p[0]}", p[1], p[3], p[4]]
                 for b, p in zip(BRANDS, PRODUCTS[:8])])
     cases, rows, people_rows = [], [], []
     case_of_person: dict[str, str] = {}
@@ -59,27 +71,31 @@ def gen_master() -> list[list[str]]:
         case_of_person.setdefault(person[0], case_id)
         for c in range(2):                                # 每案例 2 计划
             camp = f"Campaign:{case_id.split(':')[1]}-cp{c + 1}"
+            channel = CHANNELS[(i + c) % 3]
+            camp_name = f"{channel}计划·{CAMP_SEQ[c]}"
             for k in range(2):                            # 每计划 2 素材
                 cid = f"Creative:{case_id.split(':')[1]}-cp{c + 1}-cr{k + 1}"
+                titles = TITLE_BY_CHANNEL[channel]
                 rows.append([case_id, stage, f"{(i * 7 + c * 3) % 9 + 1}0000",
                              "paid" if stage == "closed" else "unbilled",
-                             f"Brand:{brand[0]}", f"Product:{product[0]}", camp,
+                             f"Brand:{brand[0]}", f"Product:{product[0]}", camp, camp_name,
                              "delivering" if stage == "live" else "paused",
                              f"{(i + c) % 5 * 1000 + 3000}", cid,
+                             titles[(i + c + k) % len(titles)],
                              "1" if (i + k) % 3 == 0 else "0",
                              ["douyin", "xhs"][(i + c + k) % 2],
-                             CHANNELS[(i + c) % 3]])
+                             channel])
     # 双平台同素材锚点（§12.5）：同一本体素材在两平台各有 local id
     rows.append(["Case:C-2025-005", "live", "36000", "unbilled", "Brand:B06",
-                 "Product:P06", "Campaign:C-2025-005-cp1", "delivering", "4200",
-                 "Creative:creative_992", "1", "douyin", "信息流"])
+                 "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A", "delivering", "4200",
+                 "Creative:creative_992", "上门洗护种草 15s 竖版", "1", "douyin", "信息流"])
     rows.append(["Case:C-2025-005", "live", "36000", "unbilled", "Brand:B06",
-                 "Product:P06", "Campaign:C-2025-005-cp1", "delivering", "4200",
-                 "Creative:creative_992", "1", "xhs", "信息流"])
+                 "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A", "delivering", "4200",
+                 "Creative:creative_992", "上门洗护种草 15s 竖版", "1", "xhs", "信息流"])
     _write_csv("cases_campaigns.csv",
                ["case_id", "stage", "bd_budget", "settlement_status", "brand_id",
-                "product_id", "campaign_id", "campaign_status", "daily_budget",
-                "creative_id", "is_aigc", "platform", "channel"], rows)
+                "product_id", "campaign_id", "campaign_name", "campaign_status", "daily_budget",
+                "creative_id", "creative_title", "is_aigc", "platform", "channel"], rows)
     for idx, (pid, name, role) in enumerate(PEOPLE):
         people_rows.append([f"Person:{pid}", name, role,
                             f"Brand:{BRANDS[idx % 8][0]}", case_of_person[pid], "0"])

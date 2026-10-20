@@ -4,6 +4,9 @@
 # 原始层（不可变资产，体积大，走备份不进 git）
 data/raw/
 
+# 定时同步日志（launchd 重定向）
+data/logs/
+
 # 评测运行结果
 eval/runs/
 

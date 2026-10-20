@@ -108,5 +108,7 @@ class PermissionPlanner:
             visible_entity_ids=visible,
             sql_predicate=predicate,
             allowed_columns=self._allowed_columns(cfg),
+            deny_properties=frozenset(cfg.get("deny_properties", [])),
+            allow_properties=frozenset(cfg.get("allow_properties", [])),
             mask_rules=["person_name"] if cfg.get("external") else [],
         )

@@ -159,6 +159,8 @@ class PermissionPlan(BaseModel):
     visible_entity_ids: frozenset[str] = Field(default_factory=frozenset)  # graph 路：Cypher 白名单
     sql_predicate: str = ""  # text2sql 路：系统拼进 WHERE，不信任生成的 SQL
     allowed_columns: list[str] = Field(default_factory=list)  # 视图/列白名单
+    deny_properties: frozenset[str] = Field(default_factory=frozenset)  # graph 路证据的属性黑名单（Class.prop）
+    allow_properties: frozenset[str] = Field(default_factory=frozenset)  # 同出口的属性白名单（外部角色，空=不限）
     mask_rules: list[str] = Field(default_factory=list)  # assemble 出口脱敏（如 Person 姓名）
 
 

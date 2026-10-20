@@ -1,16 +1,17 @@
-"""飞书云文档增量同步（Phase 2b）：按 revision 入库，新版本 supersedes 旧版本（§7.2）。
+"""飞书云文档增量同步（Phase 2b / §7.2 定时增量）：按 revision 入库，新版本 supersedes 旧版本。
 
 用法：uv run python scripts/sync_feishu.py <doc_token> [<doc_token> ...]
-  或在 .env 配 FEISHU_DOCS=token1,token2 后直接运行
+  或在 .env 配 FEISHU_DOCS=token1,token2 后直接运行（launchd 定时跑同一入口）
 
-每篇文档：raw 落盘 → chunk 入 PG（doc_id 带 revision，历史版本共存不删）
-→ 图里 DocVersion 节点 + supersedes 指向上一版。
+每轮先查 ingest_job 幂等：(source_id, version) 两段都已 done 的 revision 直接跳过；
+新 revision 才走 raw 落盘 → chunk 入 PG（doc_id 不带 revision，冲突更新，检索面恒最新版）
+→ 本地嵌入当场生成 → 图里 DocVersion 节点 + supersedes 指向上一版
+（历史版本在 raw 的 @rev 键与 DocVersion 链里，不删除）。
 """
 from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,8 +21,9 @@ load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT))
 
 from adkg.connectors.feishu import FeishuConnector           # noqa: E402
-from adkg.models import Entity, Provenance, Relation         # noqa: E402
-from adkg.pipeline.run import run_docs                       # noqa: E402
+from adkg.llm import LLMClient                               # noqa: E402
+from adkg.models import Entity, Relation                     # noqa: E402
+from adkg.pipeline.run import run_docs, version_of           # noqa: E402
 from adkg.store.graph import GraphStore                      # noqa: E402
 from adkg.store.provenance import TraceStore                 # noqa: E402
 from adkg.store.raw import RawStore                          # noqa: E402
@@ -73,11 +75,24 @@ def main() -> None:
     pg = os.environ["ADKG_PG_DSN"]
     graph = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
                        os.environ["ADKG_NEO4J_PASSWORD"])
-    stats = run_docs(_Iter(records), RawStore(ROOT / "data" / "raw"),
-                     VectorStore(pg), graph, TraceStore(pg),
-                     extractor=None, embed_fn=None)
-    n_dv = upsert_docversions(graph, records)
-    print(f"飞书同步：{stats.docs} 篇 → {stats.chunks} 块；DocVersion {n_dv} 个（含 supersedes 链）")
+    trace = TraceStore(pg)
+    vector = VectorStore(pg)
+    # 跳过判据：ingest_job 双 done 且 chunks 仍有该文档块——自愈 TRUNCATE 后
+    # ingest_job 残留 done、检索面已丢的错位（此时自动重灌）
+    pending = [r for r in records
+               if not (trace.job_done(r.provenance.source_id, version_of(r))
+                       and vector.count_by_doc(r.provenance.source_id) > 0)]
+    skipped = len(records) - len(pending)
+    if not pending:
+        print(f"飞书同步：{len(records)} 篇全部为已同步版本（幂等跳过），本轮无操作")
+        graph.close()
+        return
+    stats = run_docs(_Iter(pending), RawStore(ROOT / "data" / "raw"),
+                     VectorStore(pg), graph, trace,
+                     extractor=None, embed_fn=LLMClient().embed)
+    n_dv = upsert_docversions(graph, pending)
+    print(f"飞书同步：新增 {stats.docs}/{len(records)} 篇（跳过 {skipped} 篇已同步版本）"
+          f"→ {stats.chunks} 块；DocVersion {n_dv} 个（含 supersedes 链）")
     print(f"对账：{graph.counts()}")            # 版本链写入后再对账
     graph.close()
 

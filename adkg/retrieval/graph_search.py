@@ -9,7 +9,9 @@ from __future__ import annotations
 import re
 
 _ID_PATTERN = re.compile(r"[A-Za-z]+:[A-Za-z0-9_\-]+")        # {class}:{slug} 完整形态
-_SLUG_PATTERN = re.compile(r"[Gg]-\d{2}|creative_\w+|[A-Za-z]+_\d+\w*")  # 裸 slug
+_SLUG_PATTERN = re.compile(
+    r"[Gg]-\d{2}|creative_\w+|[A-Za-z]+_\d+\w*"               # 规范 slug / 平台素材号
+    r"|C-\d{4}-\d{3}(?:-cp\d)?(?:-cr\d)?")                    # 案例-计划-素材短链（案例号本体的 slug 段）
 
 
 def search(question: str, plan, graph, *, limit: int = 50, person: str | None = None) -> dict:
@@ -61,9 +63,37 @@ def search(question: str, plan, graph, *, limit: int = 50, person: str | None = 
                              "conf": r2row["conf"], "psrc": r2row["psrc"],
                              "psid": r2row["psid"], "auth": r2row["auth"],
                              "dst": r2row["dst"]})
+        # 命中实体自身属性作证据项（属性型问题如 target_age 由此可答）；
+        # 属性黑名单 deny_properties 在此唯一执行（§7.3 权限下推）
+        prop_rows = s.run(
+            "UNWIND $ids AS eid MATCH (n:Entity {id: eid})"
+            " RETURN n.id AS id, n.class AS cls, n.prov_source AS psrc,"
+            " n.prov_source_id AS psid, n.authority AS auth, properties(n) AS props",
+            ids=sorted(ids)).data()
 
     global_classes = {"Metric", "Guideline", "Channel"}
     evidence, kept_ids, filtered = [], set(ids), 0
+    # entity 证据项：可见集 + 属性白名单（外部，fail-closed）/ 黑名单（内部）双过滤
+    # （prov_* 与 authority 是溯源不是业务属性；§12.6 人名对外掩码在此兜底）
+    deny, allow = plan.deny_properties, plan.allow_properties
+    for pr in prop_rows:
+        cls = pr["cls"] or pr["id"].split(":")[0]
+        if visible and pr["id"] not in visible and cls not in global_classes:
+            continue
+        props = {k: v for k, v in (pr["props"] or {}).items()
+                 if not k.startswith("prov_") and k not in ("id", "class", "authority")
+                 and f"{cls}.{k}" not in deny}
+        if allow:
+            props = {k: v for k, v in props.items() if f"{cls}.{k}" in allow}
+        if "person_name" in plan.mask_rules and cls == "Person" and "name" in props:
+            props["name"] = "＊＊"
+        evidence.append({
+            "type": "entity",
+            "ref": pr["id"],
+            "props": props,
+            "provenance": {"source_type": pr["psrc"], "source_id": pr["psid"],
+                           "authority": pr["auth"]},
+        })
     for r in rows:
         ref = r.get("ref") or f"({r['src']})-[:{r['rel']}]->({r['dst']})"
         ends = {r["src"], r["dst"]}

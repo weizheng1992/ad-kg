@@ -1,10 +1,19 @@
 # AdKG 本地双库（README §五 / §八）——单机演示与内部部署，不承诺 SLA（§11.3）
 # 凭据全部来自 .env（见 .env.example）；docker compose 自动读取同目录 .env
 
+# 共享网络 shared-infra（docker network create shared-infra，须先建）：
+# PG 借它给同机 smartServe 容器按服务名 adkg-postgres 直连（README §五 运行形态）
+networks:
+  shared-infra:
+    external: true
+
 services:
   postgres:
     image: pgvector/pgvector:pg18
     container_name: adkg-postgres
+    networks:
+      - default
+      - shared-infra
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

@@ -70,7 +70,8 @@ def main() -> None:
             Entity(entity_class="Brand", entity_id=r["brand_id"],
                    props={"name": r["brand_name"], "category": r["category"]}, provenance=p_brand),
             Entity(entity_class="Product", entity_id=r["product_id"],
-                   props={"name": r["app_name"], "platform": r["platform"]}, provenance=p_brand)]
+                   props={"name": r["app_name"], "platform": r["platform"],
+                          "target_age": r["target_age"]}, provenance=p_brand)]
         relations.append(Relation(source=r["brand_id"], predicate="has_product",
                                   target=r["product_id"], provenance=p_brand))
 
@@ -105,7 +106,8 @@ def main() -> None:
         if r["campaign_id"] not in seen_camp:
             seen_camp.add(r["campaign_id"])
             entities.append(Entity(entity_class="Campaign", entity_id=r["campaign_id"],
-                                   props={"status": r["campaign_status"],
+                                   props={"name": r["campaign_name"],
+                                          "status": r["campaign_status"],
                                           "daily_budget": r["daily_budget"]}, provenance=p_cc))
             relations += [
                 Relation(source=r["campaign_id"], predicate="belongs_to",
@@ -113,7 +115,8 @@ def main() -> None:
                 Relation(source=r["campaign_id"], predicate="in_channel",
                          target=f"Channel:{r['channel']}", provenance=p_cc)]
         entities.append(Entity(entity_class="Creative", entity_id=r["creative_id"],
-                               props={"is_aigc": r["is_aigc"] == "1"}, provenance=p_cc))
+                               props={"name": r["creative_title"],
+                                      "is_aigc": r["is_aigc"] == "1"}, provenance=p_cc))
         relations += [
             Relation(source=r["campaign_id"], predicate="uses",
                      target=r["creative_id"], provenance=p_cc),
@@ -193,13 +196,14 @@ def main() -> None:
                         (f"xhs_cr{i}", cid))
     print("entity_alias：双平台锚点 + 16 条平台回执对齐（其余 unmatched 留给人审演示）")
 
-    # ── 文档路：cases + guidelines 走流水线（raw + chunk 入 PG）──────
+    # ── 文档路：cases + guidelines 走流水线（raw + chunk 入 PG，嵌入本地当场生成）──
+    from adkg.llm import LLMClient
     for sub, stype in (("cases", "wiki"), ("guidelines", "official_doc")):
         stats = run_docs(FilesConnector(SEED / sub, source_type=stype),
                          RawStore(ROOT / "data" / "raw"),
                          VectorStore(pg), graph, trace,
-                         extractor=None, embed_fn=None)
-        print(f"文档路 {sub}/：{stats.docs} 篇 → {stats.chunks} 块（无 LLM key，抽取跳过——§7.2 降级）")
+                         extractor=None, embed_fn=LLMClient().embed)
+        print(f"文档路 {sub}/：{stats.docs} 篇 → {stats.chunks} 块（抽取跳过——§7.2 降级；嵌入本地 bge）")
     # chunk 权限元数据回填（§八 向量层：class / case_id 供检索按角色过滤）
     with psycopg.connect(pg) as conn, conn.cursor() as cur:
         cur.execute("UPDATE chunks SET entity_class='Guideline'"
