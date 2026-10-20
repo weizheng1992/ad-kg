@@ -30,7 +30,8 @@ export interface Neighbor {
   confidence?: number
   provenance?: { source_type?: string; authority?: number }
 }
-/** Case 类实体的案例级指标统计（汇总比口径，README §六；行权限过滤后越权案例为 null） */
+/** Case/Product 实体的统计卡（汇总比口径，README §六；行权限过滤后越权对象为 null）。
+ *  Product 额外带交易侧：orders/gmv 全量、purchase_rate 与投放 clicks 按天对齐（可 null） */
 export interface CaseStats {
   cost: string
   ctr: string
@@ -41,6 +42,9 @@ export interface CaseStats {
   days: number
   first_day?: string
   last_day?: string
+  orders?: string | null
+  gmv?: string | null
+  purchase_rate?: string | null
 }
 export interface GraphResponse {
   entity: { id: string; class: string; name?: string; stage?: string; authority?: number }

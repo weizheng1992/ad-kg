@@ -63,17 +63,28 @@ def graph_entity(request: Request, id: str, hops: int = 1,
                       for r in edges],
         "filtered": filtered,
         "role": role,
-        "stats": _case_stats(env, plan, rec["class"], rec["id"]),
+        "stats": _entity_stats(env, plan, graph, rec["class"], rec["id"]),
     }
 
 
-def _case_stats(env: dict, plan, cls: str | None, entity_id: str) -> dict | None:
-    """Case 实体附案例级指标统计（README §9.7）：汇总比口径（§六 铁律），
-    行权限用 plan.sql_predicate 同一道闸（client 看越权案例不出数）。"""
-    if cls != "Case":
-        return None
-    if plan.visible_entity_ids and entity_id not in plan.visible_entity_ids:
-        return None                                          # fail-closed：不可见即无统计
+def _entity_stats(env: dict, plan, graph, cls: str | None, entity_id: str) -> dict | None:
+    """Case/Product 实体附统计卡（README §9.7）：汇总比口径（§六 铁律），
+    行权限用 plan.sql_predicate 同一道闸（client 看越权对象不出数）。"""
+    if cls == "Case":
+        if plan.visible_entity_ids and entity_id not in plan.visible_entity_ids:
+            return None                                      # fail-closed：不可见即无统计
+        return _invest_stats(env, plan, "case_id", entity_id)
+    if cls == "Product":
+        st = _invest_stats(env, plan, "product_id", entity_id)
+        if st is None:
+            return None
+        st.update(_trade_stats(env, plan, graph, entity_id))
+        return st
+    return None
+
+
+def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
+    """投放侧统计：unified_metrics 按 case/product 维度汇总比聚合。"""
     import psycopg
     from psycopg.rows import dict_row
 
@@ -89,7 +100,8 @@ def _case_stats(env: dict, plan, cls: str | None, entity_id: str) -> dict | None
                     " round(sum(cost)::numeric / NULLIF(sum(conversions), 0), 2) AS cpa,"
                     " string_agg(DISTINCT platform::text, ',') AS platforms,"
                     " count(*) AS days, min(date)::text AS first_day, max(date)::text AS last_day"
-                    " FROM unified_metrics WHERE NOT unmatched AND case_id = %(id)s" + predicate,
+                    " FROM unified_metrics WHERE NOT unmatched AND "
+                    f"{dim_col} = %(id)s" + predicate,
                     {"id": entity_id})
                 row = cur.fetchone()
     except psycopg.Error:
@@ -97,3 +109,38 @@ def _case_stats(env: dict, plan, cls: str | None, entity_id: str) -> dict | None
     if not row or row["days"] == 0:
         return None
     return dict(row)
+
+
+def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
+    """交易侧统计（§六 交易口径分列）：orders/gmv 全量、购买率与投放 clicks 按
+    product×day 对齐；仅当商品挂至少一个可见案例时展示（client fail-closed）。"""
+    empty = {"orders": None, "gmv": None, "purchase_rate": None}
+    if plan.visible_entity_ids:
+        with graph.session() as s:
+            hit = s.run(
+                "MATCH (cs:Entity {class:'Case'})-[:for_product]->(p:Entity {id: $pid})"
+                " WHERE cs.id IN $visible RETURN count(*) AS c LIMIT 1",
+                pid=product_id, visible=sorted(plan.visible_entity_ids)).single()
+        if not hit or not hit["c"]:
+            return empty
+    import psycopg
+    from psycopg.rows import dict_row
+
+    try:
+        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+                             row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT sum(o.orders) AS orders,"
+                    " round(sum(o.gmv)::numeric, 2) AS gmv,"
+                    " round(sum(o.orders) FILTER (WHERE u.clicks IS NOT NULL)::numeric"
+                    "   / NULLIF(sum(u.clicks), 0), 4) AS purchase_rate"
+                    " FROM product_orders_daily o"
+                    " LEFT JOIN unified_metrics u"
+                    " ON u.product_id = o.product_id AND u.date = o.date"
+                    " AND NOT u.unmatched"
+                    " WHERE o.product_id = %(id)s", {"id": product_id})
+                row = cur.fetchone()
+    except psycopg.Error:
+        return empty
+    return dict(row) if row and row["orders"] is not None else empty

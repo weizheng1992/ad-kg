@@ -64,7 +64,8 @@ export function GraphPage({ persona }: { persona: Persona }) {
         })
       })
       setFiltered((f) => f + g.filtered)
-      setStats(g.entity.class === 'Case' ? (g.stats ?? null) : null)
+      setStats(g.entity.class === 'Case' || g.entity.class === 'Product'
+        ? (g.stats ?? null) : null)
       setFocus(id)
       setStatus(`${g.entity.id}：${g.neighbors.length} 个邻居${g.filtered ? `（${g.filtered} 被权限过滤）` : ''}`)
       render()
@@ -129,6 +130,22 @@ export function GraphPage({ persona }: { persona: Persona }) {
                   {p === 'douyin' ? '抖音' : p === 'xhs' ? '小红书' : p}
                 </Badge>
               ))}
+            </span>
+          )}
+          {stats.orders != null && (
+            <span className="flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1">
+              <span className="text-muted-foreground">交易</span>
+              <b className="font-mono text-foreground">{Number(stats.orders).toLocaleString('zh-CN')} 单</b>
+              <span className="text-muted-foreground">GMV</span>
+              <b className="font-mono text-foreground">
+                ¥{Number(stats.gmv).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}
+              </b>
+              {stats.purchase_rate != null && (
+                <>
+                  <span className="text-muted-foreground">购买率</span>
+                  <b className="font-mono text-foreground">{(Number(stats.purchase_rate) * 100).toFixed(2)}%</b>
+                </>
+              )}
             </span>
           )}
           {stats.first_day && (
