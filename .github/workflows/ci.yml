@@ -38,8 +38,9 @@ jobs:
           set -euo pipefail
           cd ~/ad-kg
           git pull --ff-only
-          uv sync --frozen
-          uv run python scripts/init_db.py   # 幂等：建表/账号/Neo4j 约束，重复执行无副作用
+          # uv 用全路径：非交互 SSH 不走 .bashrc，~/.local/bin 不在 PATH（首次部署实测踩坑）
+          "$HOME/.local/bin/uv" sync --frozen
+          "$HOME/.local/bin/uv" run python scripts/init_db.py   # 幂等：建表/账号/Neo4j 约束，重复执行无副作用
           sudo systemctl restart adkg-api
           REMOTE
           rm -f ~/deploy_key
