@@ -72,6 +72,12 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
   只能全开，key-only 登录 + fail2ban 兜底）；自家终端 SSH 也走 22
 - 一律不对公网开放：**5433（PG）/ 8000（API）/ 7687（bolt）/ 7474（Neo4j 浏览器）**——
   PG 只经隧道到 B 机；adkg API 将来被 smartServe 消费时填隧道地址 `10.10.0.1:8000`（现未接线）
+- **唯一公网面例外：web 演示（2026-10-20 拍板）**——80/TCP 经宿主机 nginx 开放：静态 `web/dist`
+  + 反代五个 API 路径（ask/graph/actions/guideline/ingest）到 `127.0.0.1:8000`。把门三层：
+  ① basic auth 共享密码 ② `X-Adkg-Role` 头换对应角色 token（token 只存 nginx 配置不进前端包；
+  头缺失/陌生 → Bearer 空 → API 401 fail-closed，约定见 README §9.7）③ limit_req 限速
+  （/ask 1r/s burst 3，防烧 LLM 配额；其余 API 路 10r/s）。8000 本体仍不对公网，nginx 是唯一入口；
+  演示数据全合成。web/dist 更新走 rsync（CI 自动化留待演示加厚时）
 - 凭据分层：`.env` 永不入库（两仓都是）；LLM key 只存服务器与本地，GitHub 只有 SSH 部署钥匙
 
 ## 五、边界约定（沿用 README §五 / §9.8 的精神）

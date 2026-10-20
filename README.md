@@ -461,6 +461,8 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 后台管理 = 知识运营台，**不做用户管理**：必须有 review_queue 人审界面（冲突对比 + unmatched 对齐——12.2 仲裁与 7.4 对齐闭环的落地）；最好有文档上传与审计查看；角色与 token 留在 `permissions.yaml` + `.env`（配置文件即管理界面），身份生命周期在外部（网关 / 引擎），做用户管理 UI 是负资产。
 
+**角色头约定**：web 调用端点时带 `X-Adkg-Role: <role>`（与 body/query 的 role 同值）——本地 dev 无认证、忽略此头；部署态由 nginx 按头注入对应角色的 Bearer token（token 只存服务器 nginx 配置，**不进前端包**；头缺失或陌生值 → Bearer 为空 → API 401 fail-closed）。边界与把门层次见 `docs/deployment.md` §四。
+
 ## 十、快速开始（规划，代码就绪后生效）
 
 ```bash

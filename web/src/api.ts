@@ -46,7 +46,7 @@ export const ROLES: { role: string; user: string; label: string }[] = [
 export async function ask(question: string, role: string, user: string): Promise<AskResponse> {
   const r = await fetch('/ask', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Adkg-Role': role },
     body: JSON.stringify({ question, role, user }),
   })
   if (!r.ok) throw new Error(`${r.status} ${(await r.json()).detail ?? ''}`)
@@ -55,7 +55,7 @@ export async function ask(question: string, role: string, user: string): Promise
 
 export async function graphEntity(id: string, role: string, user: string): Promise<GraphResponse> {
   const p = new URLSearchParams({ id, role, user })
-  const r = await fetch(`/graph/entity?${p}`)
+  const r = await fetch(`/graph/entity?${p}`, { headers: { 'X-Adkg-Role': role } })
   if (!r.ok) throw new Error(`${r.status}`)
   return r.json()
 }
