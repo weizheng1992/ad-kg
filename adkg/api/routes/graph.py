@@ -87,6 +87,7 @@ def _case_stats(env: dict, plan, cls: str | None, entity_id: str) -> dict | None
                     " round(sum(clicks)::numeric / NULLIF(sum(impressions), 0), 4) AS ctr,"
                     " round(sum(conversions)::numeric / NULLIF(sum(clicks), 0), 4) AS cvr,"
                     " round(sum(cost)::numeric / NULLIF(sum(conversions), 0), 2) AS cpa,"
+                    " string_agg(DISTINCT platform::text, ',') AS platforms,"
                     " count(*) AS days, min(date)::text AS first_day, max(date)::text AS last_day"
                     " FROM unified_metrics WHERE NOT unmatched AND case_id = %(id)s" + predicate,
                     {"id": entity_id})

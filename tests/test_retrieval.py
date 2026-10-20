@@ -197,7 +197,9 @@ class TestTopMetric模板:
         from adkg.retrieval.text2sql import build_sql
         sql, p = build_sql("各案例的平均转化率是多少", self._plan())
         assert p.get("group") == "case_id" and p["metric"] == "cvr"
+        # 附覆盖平台列（一案例常跨双平台，DISTINCT 聚合）
         assert "SELECT case_id" in sql and "sum(conversions)" in sql
+        assert "string_agg(DISTINCT platform::text, ',') AS platforms" in sql
         _, p2 = build_sql("CPA 最差的案例", self._plan())
         assert p2.get("group") == "case_id" and p2["metric"] == "cpa"
 

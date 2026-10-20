@@ -36,6 +36,8 @@ export interface CaseStats {
   ctr: string
   cvr: string
   cpa: string
+  /** 覆盖平台（一案例常跨双平台投放，DISTINCT 聚合，如 "douyin,xhs"） */
+  platforms?: string | null
   days: number
   first_day?: string
   last_day?: string

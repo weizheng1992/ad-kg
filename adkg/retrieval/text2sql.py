@@ -22,6 +22,8 @@ _GEN_PROMPT = (
     "口径铁律：比率型指标跨行聚合必须用汇总比 sum(分子)/NULLIF(sum(分母),0)，"
     "禁止 avg(比率列)——ctr=clicks/impressions、cvr=conversions/clicks、"
     "cpa=cost/conversions、cpm=cost*1000/impressions；"
+    "按案例/素材分组统计时建议附 string_agg(DISTINCT platform::text, ',') AS platforms（覆盖平台），"
+    "一案例常跨双平台投放；"
     "platform 列的值只能是 'douyin' 或 'xhs'（中文'抖音'=douyin、'小红书'=xhs）；"
     "creative_id/brand_id 等 ID 列的值带类前缀，如 'Creative:C-2025-003-cp1-cr1'、"
     "'Brand:B04'——问题里的实体 ID 原样使用；"
@@ -47,6 +49,7 @@ def validate_sql(sql: str, plan, *, view: str = "unified_metrics") -> tuple[str 
         "t", "days", "n", "as", "and", "or", "not", "null", "is", "in", "between",
         "desc", "asc", "group", "by", "order", "limit", "where", "select", "from",
         "avg", "sum", "count", "min", "max", "round", "numeric", "distinct", "date",
+        "string_agg",
         "coalesce", "case", "when", "then", "end", "else", "having", "interval", "as",
         view}
     stripped = re.sub(r"'[^']*'", "''", s)                # 剥字符串字面量再扫标识符
@@ -225,7 +228,10 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
             stat_cols = ([f"{_agg_expr(c)} AS {c}" for c in ("cost", "ctr", "cvr", "cpa")
                           if c in metrics] if group == "case_id"
                          else [_agg_expr(metric) + f" AS {metric}"])
-            sql = (f"SELECT {group}, {', '.join(stat_cols)},"
+            # 案例跨平台投放 → 附覆盖平台（一案例双平台各占行，DISTINCT 聚合成一列）
+            plat_col = ("string_agg(DISTINCT platform::text, ',') AS platforms, "
+                        if group == "case_id" else "")
+            sql = (f"SELECT {group}, {plat_col}{', '.join(stat_cols)},"
                    f" count(*) AS days FROM unified_metrics"
                    f" WHERE {' AND '.join(conds2)} GROUP BY 1 HAVING count(*) >= 3"
                    f" ORDER BY {metric} {params['direction']}"

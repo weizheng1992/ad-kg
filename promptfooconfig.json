@@ -109,7 +109,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const cols=f&&f.rows&&f.rows[0]?Object.keys(f.rows[0]):[]; return !cols.includes('avg_cpa'); })()"
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const cols=f&&f.rows&&f.rows[0]?Object.keys(f.rows[0]):[]; return !cols.includes('cpa'); })()"
         }
       ],
       "description": "C6 指标列白名单"
@@ -123,7 +123,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return f&&f.rows&&f.rows[0]&&('avg_cpa' in f.rows[0]); })()"
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); return f&&f.rows&&f.rows[0]&&('cpa' in f.rows[0]); })()"
         }
       ],
       "description": "R1 管理层见 CPA"
@@ -151,7 +151,7 @@
       "assert": [
         {
           "type": "javascript",
-          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const cols=f&&f.rows&&f.rows[0]?Object.keys(f.rows[0]):[]; return !cols.includes('avg_cpa'); })()"
+          "value": "!!(() => { const f=(output.evidence||[]).find(e=>e.type==='fact'); const cols=f&&f.rows&&f.rows[0]?Object.keys(f.rows[0]):[]; return !cols.includes('cpa'); })()"
         }
       ],
       "description": "R3 创意不见 CPA"

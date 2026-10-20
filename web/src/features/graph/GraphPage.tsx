@@ -122,6 +122,15 @@ export function GraphPage({ persona }: { persona: Persona }) {
               <b className="font-mono text-foreground">{v}</b>
             </span>
           ))}
+          {stats.platforms && (
+            <span className="flex items-center gap-1">
+              {stats.platforms.split(',').filter(Boolean).map((p) => (
+                <Badge key={p} variant="outline" className="px-1.5 py-0 text-[10px]">
+                  {p === 'douyin' ? '抖音' : p === 'xhs' ? '小红书' : p}
+                </Badge>
+              ))}
+            </span>
+          )}
           {stats.first_day && (
             <span className="text-muted-foreground">
               {stats.first_day} ~ {stats.last_day}
