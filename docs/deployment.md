@@ -1,0 +1,81 @@
+# 部署与自动发布（两机拓扑，2026-10-20 拍板）
+
+> A 机（付费 2C4G，本项目）+ B 机（免费 2C4G，smartServe/agent-all 仓库）。
+> 拆机动机是故障域隔离与免费机利用，不是性能——单机 2C4G 本可承载。
+> B 机侧细节见 agent-all 仓库 `docs/deploy.md`；本文管 A 机与两机关系。
+
+## 一、两机分工
+
+| | A 机（本项目） | B 机（agent-all） |
+|---|---|---|
+| 装什么 | **Docker + uv + git**（API 走 systemd 宿主机跑） | **只要 Docker + git**（构建在 GitHub Actions runner，机器只 pull 镜像） |
+| 常驻 | PG18 + Neo4j（compose）、adkg-api（systemd，`deploy/systemd/adkg-api.service`） | gateway / web / redis / migrate（compose，镜像取 GHCR） |
+| 镜像 | Ubuntu 24.04 + Docker 应用镜像（云商预装；别选纯 docker appliance——A 机要 systemd + uv 跑宿主进程） | 同左 |
+
+内存预算：A 机 ~2.2G/4G（Neo4j 1.2G + PG 0.2G + API 0.4G + OS 0.4G）；B 机 ~0.9G/4G（gateway 0.45G 单 worker + nginx 0.05G + redis + OS）。
+
+## 二、首次上线（一次性手工，此后 push 即发）
+
+```bash
+# ── A 机（本项目）────────────────────────────────────────────
+# 1) 装 docker（应用镜像已带则跳过）+ uv + git；克隆仓库
+git clone git@github.com:weizheng1992/ad-kg.git ~/ad-kg && cd ~/ad-kg
+cp .env.example .env && vim .env                 # 填 LLM key、token、PG/Neo4j 口令
+
+# 2) 基础设施（Neo4j 必须压内存，4G 机器默认配置会吃掉一半）
+#    docker-compose.yml 的 neo4j 服务 environment 加两行：
+#    NEO4J_server_memory_heap_max__size: 512m
+#    NEO4J_server_memory_pagecache_size: 256m
+docker network create shared-infra               # 跨机时 B 机也要建（空网即可，两机 compose 文件统一）
+docker compose up -d
+
+# 3) 数据 + 账号 + API 常驻
+uv sync
+uv run python scripts/init_db.py                 # 建表 + adkg_rw/adkg_ro + Neo4j 约束（幂等）
+HF_ENDPOINT=https://hf-mirror.com uv run python scripts/load_seed.py   # 种子+嵌入，2C 几分钟
+sed -i "s/__USER__/deploy/g" deploy/systemd/adkg-api.service   # 换实际用户名
+sudo cp deploy/systemd/adkg-api.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now adkg-api
+curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
+
+# ── B 机（agent-all，概要；全文见其 docs/deploy.md）──────────
+# 装 docker/git → 克隆 agent-all → 先配 WireGuard 隧道（§四）→ deploy/.env.prod
+#   DATABASE_URL=postgres://agent_user:***@10.10.0.1:5433/agent_platform   # 隧道地址
+# → ADKG_PG_HOST=10.10.0.1 ADKG_PG_ADMIN_PASSWORD=<A机PG口令> bash scripts/init_external_pg.sh
+# → db:push + db:seed → compose pull && compose up -d
+```
+
+## 三、自动发布（push main 即发）
+
+两仓同模式：`.github/workflows/ci.yml` —— PR 只跑测试；push main 测绿后 SSH 执行
+`git pull → 初始化/迁移 → 重启 → 健康断言`（A 机 `/docs` 探活，B 机 `/api/health`）。
+
+| 项 | A 机 | B 机 |
+|---|---|---|
+| Secrets | `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` | 同左（指向 B 机） |
+| 产物 | 无镜像，git pull + `uv sync --frozen` | GHCR `smartserve-{gateway,web}`（sha+latest 双 tag，runner 构建） |
+| 部署动作 | `init_db.py`（幂等）+ `systemctl restart adkg-api` | `compose pull && up -d`（migrate 自动先跑） |
+| 回滚 | `git revert` push，CI 自动重发 | compose tag 指回上一个 sha 再 `up -d` |
+
+部署用最小权限专用用户：git 拉取（deploy key）+ docker 组 + sudoers 仅 `systemctl restart adkg-api` 一条。
+
+**GHCR 注意**：首次 push 后到 GitHub → Packages 把 `smartserve-gateway` / `smartserve-web` 设 **public**（默认 private，B 机匿名 pull 会 401）；国内直连 ghcr 拉不动时走 daocloud 代理 retag（`docker pull docker.m.daocloud.io/ghcr.io/weizheng1992/...` 后 retag 回原名）。
+
+## 四、网络闸门（安全组是主边界）
+
+- **两机无内网 → WireGuard 点对点隧道**（2026-10-20 拍板）：A 机 `10.10.0.1`、B 机 `10.10.0.2`，
+  B→A 的 PG(5433) 全走隧道加密。配置：A 机 `[Interface] Address=10.10.0.1/24, ListenPort=51820` +
+  `[Peer]`（B 公钥，AllowedIPs=10.10.0.2/32）；B 机 `[Interface] Address=10.10.0.2/24` + `[Peer]`
+  （A 公钥，Endpoint=<A机公网IP>:51820，AllowedIPs=10.10.0.1/32，**PersistentKeepalive=25** 必须，
+  免得 NAT 断了隧道不自知）。`systemctl enable --now wg-quick@wg0`，`ping 10.10.0.1` 验证
+- **公网面只开**：A 机 UDP 51820（限 B 机 IP）+ 两台的 22（GitHub Actions 的 runner IP 动态，
+  只能全开，key-only 登录 + fail2ban 兜底）；自家终端 SSH 也走 22
+- 一律不对公网开放：**5433（PG）/ 8000（API）/ 7687（bolt）/ 7474（Neo4j 浏览器）**——
+  PG 只经隧道到 B 机；adkg API 将来被 smartServe 消费时填隧道地址 `10.10.0.1:8000`（现未接线）
+- 凭据分层：`.env` 永不入库（两仓都是）；LLM key 只存服务器与本地，GitHub 只有 SSH 部署钥匙
+
+## 五、边界约定（沿用 README §五 / §9.8 的精神）
+
+- 批任务（评测、promptfoo、批量抽取、嵌入回填）**永不上服务器**——本地跑，服务器只承检索与裁决端点
+- 服务器数据 = `load_seed` 种子 + 飞书增量（launchd 在本地，服务器侧不配）；重灌 = 本地重跑脚本推送
+- 改设计先改 README（本文件只放部署运维，不承载设计约定）

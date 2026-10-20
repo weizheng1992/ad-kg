@@ -1,0 +1,63 @@
+# 首条流水线（2026-10-20，两机部署拓扑的 A 机自动发布）：
+# push main → 离线 pytest → ssh A 机 git pull + systemd 重启；PR 只测不发。
+# A 机形态（README §9.8）：PG18/Neo4j 走 docker compose 常驻，API 走 systemd + uv 跑宿主机。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: pytest（双库不在线自动跳过集成）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - run: uv run pytest -q
+
+  deploy:
+    name: 部署 A 机（pull + init_db + systemd 重启）
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH 部署
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 600 /dev/null ~/deploy_key
+          echo "$SSH_KEY" > ~/deploy_key
+          ssh -i ~/deploy_key -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd ~/ad-kg
+          git pull --ff-only
+          uv sync --frozen
+          uv run python scripts/init_db.py   # 幂等：建表/账号/Neo4j 约束，重复执行无副作用
+          sudo systemctl restart adkg-api
+          REMOTE
+          rm -f ~/deploy_key
+      - name: 健康断言（/docs 无凭据探活）
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 600 /dev/null ~/deploy_key
+          echo "$SSH_KEY" > ~/deploy_key
+          ssh -i ~/deploy_key -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          for i in $(seq 1 18); do
+            if curl -fsS -m 5 http://127.0.0.1:8000/docs >/dev/null 2>&1; then
+              echo "adkg-api 健康 ✓"; exit 0
+            fi
+            sleep 10
+          done
+          echo "健康检查 3 分钟未过" >&2; exit 1
+          REMOTE
+          rm -f ~/deploy_key

@@ -10,6 +10,27 @@ from typing import Callable
 from openai import OpenAI
 
 
+def loads_json(text: str) -> dict:
+    """容错解析：模型偶发在 JSON 后带尾随文本——取首个配平对象（§7.2 降级不阻塞）。"""
+    import json
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        if start < 0:
+            raise
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    return json.loads(text[start:i + 1])
+        raise
+
+
 class LLMClient:
     def __init__(self) -> None:
         self._client = OpenAI(
@@ -35,8 +56,7 @@ class LLMClient:
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}],
         )
-        import json
-        return json.loads(resp.choices[0].message.content or "{}")
+        return loads_json(resp.choices[0].message.content or "{}")
 
     def batch_chat_json(self, system: str, user: str) -> dict:
         """批任务（抽取/批量判分）：走 ADKG_LLM_BATCH_* 配置——coding 端点
@@ -50,8 +70,7 @@ class LLMClient:
             model=model, response_format={"type": "json_object"}, temperature=0,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}])
-        import json
-        return json.loads(resp.choices[0].message.content or "{}")
+        return loads_json(resp.choices[0].message.content or "{}")
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """嵌入：配了 EMBED_BASE_URL 走 API（dimensions 按 ADKG_EMBED_DIM 下发），否则本地 sentence-transformers。"""

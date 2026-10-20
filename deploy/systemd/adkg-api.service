@@ -1,0 +1,31 @@
+# AdKG API 常驻单元 —— A 机宿主机跑（两机拓扑，docs/deployment.md）
+#
+# 安装（A 机一次性）：
+#   1. sed -i "s/__USER__/deploy/g" deploy/systemd/adkg-api.service   # 换成实际用户
+#   2. sudo cp deploy/systemd/adkg-api.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now adkg-api
+#
+# 前提：仓库在该用户 ~/ad-kg、uv 在 ~/.local/bin/uv（setup-uv 官方脚本默认位）、
+# .env 就位（代码内 load_dotenv 读取，无需 EnvironmentFile）。
+# 自动发布（.github/workflows/ci.yml 的 deploy job）只做 git pull + restart，不碰本文件。
+
+[Unit]
+Description=AdKG API (uvicorn, systemd + uv)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=/home/__USER__/ad-kg
+ExecStart=/home/__USER__/.local/bin/uv run --frozen uvicorn adkg.api.main:app --host 0.0.0.0 --port 8000
+# 崩溃即拉起；uvicorn 无 --reload（生产不热载，改代码走 CI 重启）
+Restart=always
+RestartSec=3
+# 嵌入模型加载峰值 ~500M；限 1.5G 防挤掉同机的 Neo4j/PG
+MemoryMax=1.5G
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

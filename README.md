@@ -235,7 +235,7 @@ web/
 
 **规模假设**（拍板值，非实测，按代投 App 引流、单人维护估计）：品牌 ~50、案例 ~200/年、素材 ~5k、事实行 ~百万级/年、chunk ~1 万、golden set 20 题起。该量级下 Postgres 三元组表也扛得住——选 Neo4j 看重的是 Cypher 多跳表达力与可视化演示，不是规模刚需；量级再涨两个数量级时重估。演示数据用 `data/seed/` 合成种子，量级取上表零头。
 
-**运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。同机部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`，经 docker 网络 `shared-infra` 按容器名直连；初始化脚本与连接串在 smartServe 仓库）——单机内存省一份 PG 实例，库间靠账号与 database 边界隔离。
+**运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`；同机走 docker 网络 `shared-infra` 直连，两机走内网 IP:5433）——省一份 PG 实例，库间靠账号与 database 边界隔离；拓扑与自动发布见 `docs/deployment.md`。
 
 **数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）。
 
@@ -273,7 +273,7 @@ Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指�
 | 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | **完成**（演示级：锚点素材两平台同口径可比；platforms API adapter 留给真实部署方） |
 | 4 | 召回与权限：认证、permission 过滤与下推、router、三路检索、融合排序、assemble、`/ask` | `/ask` 能答混合问题 | 6d | **完成**（规则路由 + 三路 + PermissionPlan 下推；LLM 路由与嵌入待 key，vector 路按 §7.2 降级标注） |
 | 5 | 管控收口：`/actions/check`、audit、AIGC 闭环 | 越权被过滤、违规被拦截 | 5d | **完成**（裁决/机判/断言写回实测：live 删素材被拦、超时长违规、低置信进人审） |
-| 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **完成**（36 题终评：规则判据口径 multi_hop 15 达标分层要求；LLM judge 32/33 要点全命中、整体 89%±抖动；消融归因见表下；50 题全量留待真实数据接入后扩） |
+| 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **完成**（38 题终评：规则判据口径 multi_hop 17/17 全过；LLM judge 33/35 要点全命中、整体 95%±抖动（G08 判据串债 / G15 judge 波动）；消融归因见表下；50 题全量留待真实数据接入后扩） |
 
 Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"落地为每阶段有分数。合计约 34 人日（单人粗估，不装精确）。
 

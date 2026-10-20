@@ -34,6 +34,9 @@ services:
     container_name: adkg-neo4j
     environment:
       NEO4J_AUTH: ${NEO4J_AUTH}
+      # 内存压限：4G 机器防 Neo4j 按默认比例抓满（docs/deployment.md §一）
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
     ports:
       - "7474:7474"                       # 浏览器可视化（演示用，§五）
       - "7687:7687"

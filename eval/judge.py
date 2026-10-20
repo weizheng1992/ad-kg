@@ -20,10 +20,13 @@ def judge_item(chat_json, question: str, points: list[str],
         return None
     trimmed = [{k: (v[:3] if isinstance(v, list) else v) for k, v in ev.items()}
                for ev in evidence[:8]]
-    payload = chat_json(
-        JUDGE_PROMPT,
-        json.dumps({"问题": question, "期望要点": points, "检索证据": trimmed},
-                   ensure_ascii=False, default=str))
+    try:
+        payload = chat_json(
+            JUDGE_PROMPT,
+            json.dumps({"问题": question, "期望要点": points, "检索证据": trimmed},
+                       ensure_ascii=False, default=str))
+    except Exception:                                   # 通道/解析失败 → 回退规则判据（§7.2）
+        return None
     if not isinstance(payload, dict) or "verdict" not in payload:
         return None
     return {"verdict": bool(payload.get("verdict")),
