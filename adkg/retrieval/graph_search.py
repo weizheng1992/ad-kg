@@ -63,6 +63,41 @@ def search(question: str, plan, graph, *, limit: int = 50, person: str | None = 
                              "conf": r2row["conf"], "psrc": r2row["psrc"],
                              "psid": r2row["psid"], "auth": r2row["auth"],
                              "dst": r2row["dst"]})
+        # 三跳定向：品牌/案例/计划 → targets → 人群包（§六 targets N:M）——
+        # "定向了哪些人群"类问题的直达链路；可见性过滤与一跳同闸（client 看不到
+        # 其可见案例之外品牌的人群包，fail-closed）
+        if "人群" in question or "定向" in question or "Audience" in allowed_classes:
+            for r3 in s.run(
+                """
+                UNWIND $ids AS eid
+                MATCH (a:Entity {id: eid})
+                CALL (a) {
+                    MATCH (a)<-[:for_brand]-(:Entity {class:'Case'})
+                          <-[:belongs_to]-(:Entity {class:'Campaign'})
+                          -[:targets]->(b:Entity {class:'Audience'})
+                    RETURN b, 'brand' AS via
+                    UNION
+                    MATCH (a)<-[:belongs_to]-(:Entity {class:'Campaign'})
+                          -[:targets]->(b:Entity {class:'Audience'})
+                    RETURN b, 'case' AS via
+                    UNION
+                    MATCH (a)-[:belongs_to]->(:Entity {class:'Campaign'})
+                          -[:targets]->(b:Entity {class:'Audience'})
+                    RETURN b, 'campaign' AS via
+                }
+                RETURN a.id AS src, b.id AS dst, via,
+                       b.prov_source AS psrc, b.prov_source_id AS psid,
+                       b.authority AS auth LIMIT $limit
+                """, ids=list(ids), limit=limit).data():
+                via_ref = {
+                    "brand": "({src})<-[:for_brand]-(:Case)<-[:belongs_to]-(:Campaign)-[:targets]->({dst})",
+                    "case": "({src})<-[:belongs_to]-(:Campaign)-[:targets]->({dst})",
+                    "campaign": "({src})-[:belongs_to]->(:Campaign)-[:targets]->({dst})",
+                }[r3["via"]]
+                rows.append({"src": r3["src"],
+                             "ref": via_ref.format(src=r3["src"], dst=r3["dst"]),
+                             "conf": None, "psrc": r3["psrc"], "psid": r3["psid"],
+                             "auth": r3["auth"], "dst": r3["dst"]})
         # 命中实体自身属性作证据项（属性型问题如 target_age 由此可答）；
         # 属性黑名单 deny_properties 在此唯一执行（§7.3 权限下推）
         prop_rows = s.run(

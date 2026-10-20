@@ -45,6 +45,22 @@ GUIDELINES = [
     ("G-07", "ad_law", None, "功效类表述须有证明材料，广告中须显著标明。"),
     ("G-08", "creative_spec", None, "结尾 2 秒固定品牌收尾卡，含 slogan 与下载引导。"),
 ]
+# 定向人群包（Audience，§六 targets N:M）：每品牌一个主包 + 前四品牌各一个次包，
+# 描述与品类强相关（真实感）；Campaign targets 本品牌的全部人群包
+AUDIENCES = {
+    "B01": [("人群包·轻食白领", "一二线城市 20-35 岁白领，工作日午餐外卖高频，关注控卡轻食"),
+            ("人群包·健身轻食党", "运动健身App 重度用户，偏好高蛋白低卡餐")],
+    "B02": [("人群包·运动发烧友", "18-40 岁运动App 月活用户，跑靴/健身装备近期浏览者"),
+            ("人群包·减脂新手", "搜索过减脂餐/居家训练的 22-30 岁用户")],
+    "B03": [("人群包·阅读爱好者", "22-45 岁电子书/听书App 付费用户，社科与新书高频点击者"),
+            ("人群包·学生备考族", "高校集中区域 18-24 岁，考试季活跃")],
+    "B04": [("人群包·精致护肤党", "18-35 岁女性，美妆垂类内容互动者，近期浏览过功效护肤"),
+            ("人群包·学生党平价护肤", "高校人群，客单价敏感，国货偏好")],
+    "B05": [("人群包·露营亲子家庭", "25-45 岁有孩家庭，节假日近郊游搜索者，露营装备浏览者")],
+    "B06": [("人群包·城市宠物主", "22-40 岁一 二线城市养宠人群，宠物服务/用品近期购买者")],
+    "B07": [("人群包·职场进阶族", "28-45 岁一线城市职场人，效率/技能类课程近期学习者")],
+    "B08": [("人群包·失眠改善人群", "25-50 岁，睡眠监测App 用户或助眠产品近期搜索者")],
+}
 
 
 def _write_csv(rel: str, header: list[str], rows: list[list]) -> None:
@@ -188,6 +204,17 @@ def gen_facts() -> None:
                ["日期", "计划ID", "素材ID", "消耗", "曝光量", "点击量", "转化量"], xhs)
 
 
+def gen_audiences() -> None:
+    """定向人群包（§六 targets N:M）：audiences.csv 静态提交；targets 边由
+    load_seed 推导（campaign → case → brand → 本品牌全部人群包）。"""
+    rows = []
+    for bi, (bid, _, _) in enumerate(BRANDS, 1):
+        for k, (name, desc) in enumerate(AUDIENCES[bid], 1):
+            rows.append([f"Audience:aud-{bid.lower()}-{k}", name, desc, f"Brand:{bid}"])
+    _write_csv("audiences.csv",
+               ["audience_id", "name", "targeting_desc", "brand_id"], rows)
+
+
 def gen_assertions() -> None:
     rows = [
         ["Creative:creative_992", "violates", "Guideline:G-01", "0.91"],
@@ -209,6 +236,7 @@ if __name__ == "__main__":
     cases = gen_master()
     gen_docs(cases)
     gen_facts()
+    gen_audiences()
     gen_assertions()
     n = sum(1 for p in SEED.rglob("*") if p.is_file())
     print(f"seed 生成完成：{n} 个文件 → data/seed/")

@@ -88,9 +88,20 @@ def main() -> None:
             relations.append(Relation(source=r["person_id"], predicate="responsible_for",
                                       target=r["case_id"], provenance=p_people))
 
+    # ── 定向人群包：Audience 实体 + Campaign targets 推导边（§六 targets N:M）──
+    p_aud = prov("seed:audiences.csv")
+    aud_by_brand: dict[str, list[str]] = {}
+    for r in _rows("audiences.csv"):
+        entities.append(Entity(entity_class="Audience", entity_id=r["audience_id"],
+                               props={"name": r["name"],
+                                      "targeting_desc": r["targeting_desc"]},
+                               provenance=p_aud))
+        aud_by_brand.setdefault(r["brand_id"], []).append(r["audience_id"])
+
     # ── 案例-计划-素材主数据 ─────────────────────────────────────────
     p_cc = prov("seed:cases_campaigns.csv")
     seen_case, seen_camp = set(), set()
+    camp_brand: dict[str, str] = {}                        # campaign → brand（targets 推导用）
     for r in _rows("cases_campaigns.csv"):
         if r["case_id"] not in seen_case:
             seen_case.add(r["case_id"])
@@ -106,6 +117,7 @@ def main() -> None:
                          target=r["product_id"], provenance=p_cc)]
         if r["campaign_id"] not in seen_camp:
             seen_camp.add(r["campaign_id"])
+            camp_brand[r["campaign_id"]] = r["brand_id"]
             entities.append(Entity(entity_class="Campaign", entity_id=r["campaign_id"],
                                    props={"name": r["campaign_name"],
                                           "status": r["campaign_status"],
@@ -124,6 +136,12 @@ def main() -> None:
             Relation(source=r["creative_id"], predicate="links_to",
                      target=f"LandingPage:lp-{r['campaign_id'].split('-cp')[0][-3:]}",
                      provenance=p_cc)]
+
+    # 计划 → 定向人群包（targets N:M）：本品牌的计划定向本品牌的全部人群包
+    for camp_id, bid in sorted(camp_brand.items()):
+        for aud_id in aud_by_brand.get(bid, []):
+            relations.append(Relation(source=camp_id, predicate="targets",
+                                      target=aud_id, provenance=p_aud))
 
     # 渠道与落地页节点
     for ch in ("信息流", "搜索", "开屏"):

@@ -1,0 +1,13 @@
+audience_id,name,targeting_desc,brand_id
+Audience:aud-b01-1,人群包·轻食白领,一二线城市 20-35 岁白领，工作日午餐外卖高频，关注控卡轻食,Brand:B01
+Audience:aud-b01-2,人群包·健身轻食党,运动健身App 重度用户，偏好高蛋白低卡餐,Brand:B01
+Audience:aud-b02-1,人群包·运动发烧友,18-40 岁运动App 月活用户，跑靴/健身装备近期浏览者,Brand:B02
+Audience:aud-b02-2,人群包·减脂新手,搜索过减脂餐/居家训练的 22-30 岁用户,Brand:B02
+Audience:aud-b03-1,人群包·阅读爱好者,22-45 岁电子书/听书App 付费用户，社科与新书高频点击者,Brand:B03
+Audience:aud-b03-2,人群包·学生备考族,高校集中区域 18-24 岁，考试季活跃,Brand:B03
+Audience:aud-b04-1,人群包·精致护肤党,18-35 岁女性，美妆垂类内容互动者，近期浏览过功效护肤,Brand:B04
+Audience:aud-b04-2,人群包·学生党平价护肤,高校人群，客单价敏感，国货偏好,Brand:B04
+Audience:aud-b05-1,人群包·露营亲子家庭,25-45 岁有孩家庭，节假日近郊游搜索者，露营装备浏览者,Brand:B05
+Audience:aud-b06-1,人群包·城市宠物主,22-40 岁一 二线城市养宠人群，宠物服务/用品近期购买者,Brand:B06
+Audience:aud-b07-1,人群包·职场进阶族,28-45 岁一线城市职场人，效率/技能类课程近期学习者,Brand:B07
+Audience:aud-b08-1,人群包·失眠改善人群,25-50 岁，睡眠监测App 用户或助眠产品近期搜索者,Brand:B08
