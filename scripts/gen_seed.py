@@ -130,12 +130,23 @@ def gen_docs(cases) -> None:
 
 def gen_facts() -> None:
     """两平台素材粒度事实（~2k 行）；xhs 故意用中文表头（§四）。埋 3 个 CPA 异常素材。"""
+    from datetime import date as _date
     douyin, xhs = [], []
     bad = {"C-25118-cp1-cr1", "C-25103-cp0-cr1", "C-25009-cp1-cr0"}
-    anchors = [("2025-06-15", "dy_c1", "dy_889"), ("2025-06-15", "xhs_c1", "xhs_77")]
+    # 近 12 个整月滚动窗口（不含本月）：数据始终新鲜，"上月"类时间窗问题有数可答
+    y, m = _date.today().year, _date.today().month
+    months = []
+    for _ in range(12):
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+        months.append((y, m))
+    months.reverse()                                     # 旧 → 新
+    anchor = f"{months[2][0]}-{months[2][1]:02d}-15"     # 同素材锚点日：第 3 个整月月中
+    anchors = [(anchor, "dy_c1", "dy_889"), (anchor, "xhs_c1", "xhs_77")]
     for i in range(900):
-        month = i % 12 + 1
-        date = f"2025-{month:02d}-{i % 28 + 1:02d}"
+        yy, mm = months[i % 12]
+        date = f"{yy}-{mm:02d}-{i % 28 + 1:02d}"
         imp = rng.randint(8000, 60000)
         clk = int(imp * rng.uniform(0.004, 0.02))
         douyin.append([date, f"dy_c{i % 40}", f"dy_cr{i % 80}",
@@ -143,12 +154,12 @@ def gen_facts() -> None:
                        max(1, int(clk * rng.uniform(0.02, 0.08)))])
         imp2 = rng.randint(5000, 40000)
         clk2 = int(imp2 * rng.uniform(0.003, 0.015))
-        xhs.append([date, f"xhs_c{i % 35}", f"xhs_cr{i % 70}",
+        xhs.append([date, f"xhs_c{i % 35}", f"xhs_cr{i % 37}",   # 37 质数：行键联合周期 > 行数，防撞唯一约束
                     round(rng.uniform(60, 300), 2), imp2, clk2,
                     max(1, int(clk2 * rng.uniform(0.02, 0.07)))])
     for date, camp, cre in anchors[:1]:                  # 同素材锚点：抖音 dy_889
         douyin.append([date, camp, cre, 86.0, 10000, 90, 1])
-    xhs.append(["2025-06-15", "xhs_c1", "xhs_77", 120.0, 20000, 100, 2])
+    xhs.append([anchor, "xhs_c1", "xhs_77", 120.0, 20000, 100, 2])
     _write_csv("creative_metrics_daily_douyin.csv",
                ["date", "campaign_local_id", "creative_local_id",
                 "cost", "impressions", "clicks", "conversions"], douyin)

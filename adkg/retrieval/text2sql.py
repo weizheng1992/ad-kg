@@ -229,9 +229,12 @@ def run(question: str, plan, dsn_ro: str, entity_ids: list[str] | None = None,
             sql, params = build_sql(question, plan, entity_ids)
             source, rows = "template(fallback)", q(sql)
         if not rows and "BETWEEN" in sql:
-            # 空窗口回退：所问自然月无数据（演示数据窗口错位）→ 回退全量并注明
+            # 空窗口回退：所问时间窗无数据（权限过滤/数据窗口）→ 回退全量并注明实际覆盖范围
             rows = q(re.sub(r" AND date BETWEEN '[^']+' AND '[^']+'", "", sql))
-            note = "所问时间窗口内无数据，以下为全量统计（unified_metrics 实际覆盖 2025-01..12）"
+            span = q("SELECT min(date)::text AS a, max(date)::text AS b FROM unified_metrics")
+            note = (f"所问时间窗口内无可比数据，以下为全量统计"
+                    f"（unified_metrics 实际覆盖 {span[0]['a']} ~ {span[0]['b']}）") if span else \
+                   "所问时间窗口内无可比数据，以下为全量统计"
     return {"evidence": [{
         "type": "fact",
         "ref": f"unified_metrics · {(sql.split('FROM')[1].split()[0] if 'FROM' in sql.upper()

@@ -146,7 +146,8 @@ def ask(request: Request, body: dict,
     answer, answer_source = _summarize(question, out, decision), "template"
     if llm is not None and out["evidence"]:
         try:                                                # agent 总结：只依据证据（§11.3 溯源）
-            answer, answer_source = _agent_answer(llm, question, out["evidence"]), "agent"
+            name_map = _id_name_map(out["evidence"], graph)  # ID → 中文名（答案可读性）
+            answer, answer_source = _agent_answer(llm, question, out["evidence"], name_map), "agent"
         except Exception:
             pass                                            # 回模板（§7.2）
     _audit(env, role, person, question, "info", f"intent={decision.intent}")
@@ -164,16 +165,36 @@ def _summarize(question: str, out: dict, decision) -> str:
 _ANSWER_PROMPT = (
     "你是知识中台的回答助手。只依据【证据】回答【问题】，输出 3-6 句中文："
     "直接给结论（清单/数字/人名），每个事实后标注证据编号如 [#1]；"
+    "提到素材/计划/案例/品牌等实体必须用【名称映射】里的中文名（映射没有的可用证据里的可读字段），"
+    "禁止输出 Creative:C-xxx 这类裸 ID；日期统一写成 YYYY-MM；"
     "证据不足以回答的部分明说'证据中未涵盖'，禁止编造。"
 )
 
 
-def _agent_answer(llm, question: str, evidence: list[dict]) -> str:
+def _id_name_map(evidence: list[dict], graph) -> dict[str, str]:
+    """证据中出现的本体 ID → 图上中文名（答案可读性：不让 LLM 对用户输出裸 ID）。"""
+    import json as _json
+    import re
+
+    ids = set(re.findall(r"(?:Brand|Product|Campaign|Creative|Case|Person|Guideline|Metric"
+                         r"|Channel|Audience|LandingPage):[A-Za-z0-9_\-.]+",
+                         _json.dumps(evidence, ensure_ascii=False, default=str)))
+    if not ids:
+        return {}
+    with graph.session() as s:
+        rows = s.run("MATCH (e:Entity) WHERE e.id IN $ids AND e.name IS NOT NULL "
+                     "RETURN e.id AS id, e.name AS name", ids=sorted(ids)).data()
+    return {r["id"]: r["name"] for r in rows}
+
+
+def _agent_answer(llm, question: str, evidence: list[dict],
+                  name_map: dict[str, str] | None = None) -> str:
     import json
 
     payload = llm.chat_json(
         _ANSWER_PROMPT + ' 只输出 JSON：{"answer": "…"}。',
         json.dumps({"问题": question,
+                    "名称映射": name_map or {},
                     "证据": [{"#": f"#{i}", **{k: v for k, v in ev.items() if k != "rows"},
                               "rows": ev.get("rows", [])[:5]}
                              for i, ev in enumerate(evidence[:10], 1)]},
