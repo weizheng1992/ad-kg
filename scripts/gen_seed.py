@@ -1,6 +1,6 @@
 """生成合成种子数据（§五 数据三层①）：静态文件提交进 repo，可重生成。
 
-确定性：random.seed(42)，重跑产出逐字节一致（diff 干净）。
+确定性：random.seed(42)，同日重跑产出逐字节一致（diff 干净）；事实日期为滚动窗口（见 gen_facts），重生成即滚动到当月。
 规模取规模假设零头：品牌 8 / 商品 15 / 案例 20（覆盖 5 个 stage）/
 素材 ~80（含 1 对同素材双平台锚点）/ 事实行 ~2k / 规范 8 / 断言 10。
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import random
+from datetime import date, timedelta
 from pathlib import Path
 
 SEED = Path(__file__).resolve().parents[1] / "data" / "seed"
@@ -62,11 +63,14 @@ def gen_master() -> list[list[str]]:
                 for b, p in zip(BRANDS, PRODUCTS[:8])])
     cases, rows, people_rows = [], [], []
     case_of_person: dict[str, str] = {}
+    case_name_by_id: dict[str, str] = {}
     for i, stage in enumerate(STAGES, 1):
         brand = BRANDS[i % len(BRANDS)]
         product = PRODUCTS[i % len(PRODUCTS)]
         person = PEOPLE[i % len(PEOPLE)]
         case_id = f"Case:C-2025-{i:03d}"
+        case_name = f"{brand[1]}·{product[1]}投放案例"     # 与案例文档标题同式（图上 Case.name）
+        case_name_by_id[case_id] = case_name
         cases.append((case_id, stage, brand, product, person))
         case_of_person.setdefault(person[0], case_id)
         for c in range(2):                                # 每案例 2 计划
@@ -76,7 +80,7 @@ def gen_master() -> list[list[str]]:
             for k in range(2):                            # 每计划 2 素材
                 cid = f"Creative:{case_id.split(':')[1]}-cp{c + 1}-cr{k + 1}"
                 titles = TITLE_BY_CHANNEL[channel]
-                rows.append([case_id, stage, f"{(i * 7 + c * 3) % 9 + 1}0000",
+                rows.append([case_id, case_name, stage, f"{(i * 7 + c * 3) % 9 + 1}0000",
                              "paid" if stage == "closed" else "unbilled",
                              f"Brand:{brand[0]}", f"Product:{product[0]}", camp, camp_name,
                              "delivering" if stage == "live" else "paused",
@@ -86,14 +90,16 @@ def gen_master() -> list[list[str]]:
                              ["douyin", "xhs"][(i + c + k) % 2],
                              channel])
     # 双平台同素材锚点（§12.5）：同一本体素材在两平台各有 local id
-    rows.append(["Case:C-2025-005", "live", "36000", "unbilled", "Brand:B06",
-                 "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A", "delivering", "4200",
-                 "Creative:creative_992", "上门洗护种草 15s 竖版", "1", "douyin", "信息流"])
-    rows.append(["Case:C-2025-005", "live", "36000", "unbilled", "Brand:B06",
-                 "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A", "delivering", "4200",
-                 "Creative:creative_992", "上门洗护种草 15s 竖版", "1", "xhs", "信息流"])
+    rows.append(["Case:C-2025-005", case_name_by_id["Case:C-2025-005"], "live", "36000", "unbilled",
+                 "Brand:B06", "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A",
+                 "delivering", "4200", "Creative:creative_992", "上门洗护种草 15s 竖版",
+                 "1", "douyin", "信息流"])
+    rows.append(["Case:C-2025-005", case_name_by_id["Case:C-2025-005"], "live", "36000", "unbilled",
+                 "Brand:B06", "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A",
+                 "delivering", "4200", "Creative:creative_992", "上门洗护种草 15s 竖版",
+                 "1", "xhs", "信息流"])
     _write_csv("cases_campaigns.csv",
-               ["case_id", "stage", "bd_budget", "settlement_status", "brand_id",
+               ["case_id", "case_name", "stage", "bd_budget", "settlement_status", "brand_id",
                 "product_id", "campaign_id", "campaign_name", "campaign_status", "daily_budget",
                 "creative_id", "creative_title", "is_aigc", "platform", "channel"], rows)
     for idx, (pid, name, role) in enumerate(PEOPLE):
@@ -128,13 +134,26 @@ def gen_docs(cases) -> None:
             fm + f"# {gid} {gtype}\n\n{body}\n", encoding="utf-8")
 
 
+def _fact_date(i: int, per: int, j_max: int, months: list[tuple[int, int]]) -> str:
+    """行号 → 日期（滚动窗口，README §八 数据三层）。
+
+    对齐素材（各平台 local id 前 10 个，对应 load_seed 的 entity_alias）末 3 次
+    出现钉进最新月 5/13/21 日（隔 8 天）——top-N 口径 HAVING count>=3 对"上月"
+    类问句常青命中；其余按月均匀铺。日期只改分布不改数值（rng 调用序与日期
+    解耦），全量口径聚合与非窗口类 golden 期望稳定。
+    """
+    k, j = i % per, i // per
+    if k < 10 and j > j_max - 3:
+        yy, mm = months[-1]
+        return f"{yy}-{mm:02d}-{21 - (j_max - j) * 8:02d}"
+    yy, mm = months[i % 12]
+    return f"{yy}-{mm:02d}-{i % 28 + 1:02d}"
+
+
 def gen_facts() -> None:
     """两平台素材粒度事实（~2k 行）；xhs 故意用中文表头（§四）。埋 3 个 CPA 异常素材。"""
-    from datetime import date as _date
-    douyin, xhs = [], []
-    bad = {"C-25118-cp1-cr1", "C-25103-cp0-cr1", "C-25009-cp1-cr0"}
     # 近 12 个整月滚动窗口（不含本月）：数据始终新鲜，"上月"类时间窗问题有数可答
-    y, m = _date.today().year, _date.today().month
+    y, m = date.today().year, date.today().month
     months = []
     for _ in range(12):
         m -= 1
@@ -143,22 +162,21 @@ def gen_facts() -> None:
         months.append((y, m))
     months.reverse()                                     # 旧 → 新
     anchor = f"{months[2][0]}-{months[2][1]:02d}-15"     # 同素材锚点日：第 3 个整月月中
-    anchors = [(anchor, "dy_c1", "dy_889"), (anchor, "xhs_c1", "xhs_77")]
+    douyin, xhs = [], []
     for i in range(900):
-        yy, mm = months[i % 12]
-        date = f"{yy}-{mm:02d}-{i % 28 + 1:02d}"
+        d = _fact_date(i, 80, 11, months)
         imp = rng.randint(8000, 60000)
         clk = int(imp * rng.uniform(0.004, 0.02))
-        douyin.append([date, f"dy_c{i % 40}", f"dy_cr{i % 80}",
+        douyin.append([d, f"dy_c{i % 40}", f"dy_cr{i % 80}",
                        round(rng.uniform(80, 400), 2), imp, clk,
                        max(1, int(clk * rng.uniform(0.02, 0.08)))])
         imp2 = rng.randint(5000, 40000)
         clk2 = int(imp2 * rng.uniform(0.003, 0.015))
-        xhs.append([date, f"xhs_c{i % 35}", f"xhs_cr{i % 37}",   # 37 质数：行键联合周期 > 行数，防撞唯一约束
+        xhs.append([_fact_date(i, 37, 24, months),      # 37 质数：行键联合周期 > 行数，防撞唯一约束
+                    f"xhs_c{i % 35}", f"xhs_cr{i % 37}",
                     round(rng.uniform(60, 300), 2), imp2, clk2,
                     max(1, int(clk2 * rng.uniform(0.02, 0.07)))])
-    for date, camp, cre in anchors[:1]:                  # 同素材锚点：抖音 dy_889
-        douyin.append([date, camp, cre, 86.0, 10000, 90, 1])
+    douyin.append([anchor, "dy_c1", "dy_889", 86.0, 10000, 90, 1])   # 同素材锚点：抖音 dy_889
     xhs.append([anchor, "xhs_c1", "xhs_77", 120.0, 20000, 100, 2])
     _write_csv("creative_metrics_daily_douyin.csv",
                ["date", "campaign_local_id", "creative_local_id",

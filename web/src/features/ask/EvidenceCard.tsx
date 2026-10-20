@@ -30,7 +30,14 @@ export function EvidenceCard({ ev, idx }: { ev: Evidence; idx: number }) {
         <span className="ml-auto text-slate-300">#{idx + 1}</span>
       </CardHeader>
       <CardContent className="px-3.5 pb-3.5 pt-0">
-        <div className="mb-1 break-all font-mono text-xs">{ev.ref}</div>
+        {ev.readable_ref ? (
+          <>
+            <div className="leading-relaxed">{ev.readable_ref}</div>
+            <div className="mt-1 break-all font-mono text-[11px] text-muted-foreground/70">{ev.ref}</div>
+          </>
+        ) : (
+          <div className="mb-1 break-all font-mono text-xs">{ev.ref}</div>
+        )}
         {ev.quote && (
           <div className="rounded-md border-l-3 border-border bg-muted/50 px-2.5 py-1.5 text-[13px] text-slate-700">
             “{ev.quote}”

@@ -3,6 +3,8 @@ export interface Persona { role: string; user: string }
 export interface Evidence {
   type: string
   ref: string
+  /** ref 的可读版（中文名 + 中文关系词）；ref 原串作溯源锚仍保留 */
+  readable_ref?: string
   quote?: string
   rows?: Record<string, unknown>[]
   score?: number

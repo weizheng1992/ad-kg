@@ -250,6 +250,36 @@ class Test五道闸校验:
         # 返回危险 SQL 也被闸门拒
         assert generate_sql(lambda s, u: {"sql": "DROP TABLE chunks"}, "q", self._plan()) is None
 
+    def test_点名素材必须落在该素材(self):
+        # 口径闸：全局均值冒充单素材答案 → 弃用生成回模板（G08/G31/G35 实测教训）
+        from adkg.retrieval.text2sql import _named_creative_hit
+        good = ("SELECT creative_id, round(avg(cpa)::numeric, 2) AS avg_cpa"
+                " FROM unified_metrics"
+                " WHERE creative_id = 'Creative:C-2025-003-cp1-cr1' LIMIT 5")
+        bad = ("SELECT round(avg(cpa)::numeric, 2) AS avg_cpa"
+               " FROM unified_metrics LIMIT 5")
+        q = "Creative:C-2025-003-cp1-cr1 的平均 CPA 多少？"
+        assert _named_creative_hit(q, good)
+        assert not _named_creative_hit(q, bad)
+        # creative_id 只在 WHERE（如 IS NOT NULL）不在 SELECT → 证据无实体，仍拒
+        where_only = ("SELECT round(avg(cpa)::numeric, 2) AS avg_cpa FROM unified_metrics"
+                      " WHERE creative_id IS NOT NULL LIMIT 5")
+        assert not _named_creative_hit(q, where_only)
+        assert _named_creative_hit("上月 CPA 最差的素材有哪些？", bad)   # 未点名不设限
+
+    def test_本体ID连字符叫法可识别(self):
+        from adkg.retrieval.text2sql import _named_creative_of
+        assert _named_creative_of("Creative:C-2025-003-cp1-cr1 的平均 CPA 多少？") == \
+            "C-2025-003-cp1-cr1"
+        assert _named_creative_of("creative_992 的 CPA 是多少") == "creative_992"
+        assert _named_creative_of("上月 CPA 最差的素材") is None
+
+    def test_点名素材走单素材模板(self):
+        from adkg.retrieval.text2sql import build_sql
+        sql, p = build_sql("Creative:C-2025-003-cp1-cr1 的平均 CPA 多少？", self._plan())
+        # ID 走参数绑定（%(ids)s），SQL 里有 creative_id 列
+        assert p["ids"] == ["Creative:C-2025-003-cp1-cr1"] and "creative_id" in sql
+
 
 class Test语义不变量注入:
     def test_unmatched条件强制(self):

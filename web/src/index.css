@@ -58,3 +58,10 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* agent 答案 markdown 渲染的最小样式（README §9.4：answer 为 markdown 文本） */
+.md-answer p { margin: 0.25rem 0; }
+.md-answer ul, .md-answer ol { margin: 0.25rem 0; padding-left: 1.25rem; }
+.md-answer table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 13px; }
+.md-answer th, .md-answer td { border: 1px solid var(--border); padding: 0.3rem 0.6rem; text-align: left; }
+.md-answer th { background: color-mix(in oklab, var(--muted) 60%, transparent); font-weight: 600; }

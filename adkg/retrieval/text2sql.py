@@ -137,14 +137,34 @@ def _window_of(question: str, today: date | None = None) -> tuple[str, str] | No
     return None
 
 
+_SLUG_RE = re.compile(r"(creative_\w+|[A-Z](?:-\d+)+-cp\d+-cr\d+)")
+
+
+def _named_creative_of(question: str) -> str | None:
+    """问题里点名的素材（creative_992 / C-2025-003-cp1-cr1 两种叫法）。"""
+    m = _SLUG_RE.search(question)
+    return m.group(1) if m else None
+
+
+def _named_creative_hit(question: str, sql: str) -> bool:
+    """点名素材的题，生成 SQL 必须真落在该素材上：SELECT 段带 creative_id 列（证据
+    可溯源到实体）+ slug 字面量在场（确证按该素材过滤）。静态五道闸拦不住"全局
+    均值冒充单素材答案"，这道口径闸不过就弃用生成、回模板（2026-10-20 评测实测）。"""
+    slug = _named_creative_of(question)
+    if not slug:
+        return True
+    select_part = sql.lower().split("from")[0]
+    return slug in sql and "creative_id" in select_part
+
+
 def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
     """问题 → (模板名, 参数)。模板是固定 SQL 骨架，只有参数可变。"""
     q = question.lower()
     n = next((int(x) for x in re.findall(r"([一二三四五六七八九十\d]+)\s*[个条]", q)), 5)
     # 问题里点名具体素材（"X 的平均 CPA"）→ 单素材模板
-    slug = re.search(r"(creative_\w+|[A-Z]{1}\d{3}-cp\d-cr\d)", question)
+    slug = _named_creative_of(question)
     if slug and ("cpa" in q or "平均" in question or "多少" in question):
-        return "entity_metrics", {"ids": [f"Creative:{slug.group(1)}"]}
+        return "entity_metrics", {"ids": [f"Creative:{slug}"]}
     if "最差" in question or "最好" in question or "最佳" in question:
         metric = _metric_of(question)
         return "top_metric", {"n": n, "metric": metric,
@@ -205,7 +225,7 @@ def run(question: str, plan, dsn_ro: str, entity_ids: list[str] | None = None,
     sql, params, source = None, None, "template"
     if generator is not None:
         gen = generate_sql(generator, question, plan)
-        if gen:
+        if gen and _named_creative_hit(question, gen):
             sql = enforce_semantics(enforce_predicate(gen, plan))
             source = "llm+五道闸"
     if sql is None:

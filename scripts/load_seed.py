@@ -95,7 +95,8 @@ def main() -> None:
         if r["case_id"] not in seen_case:
             seen_case.add(r["case_id"])
             entities.append(Entity(entity_class="Case", entity_id=r["case_id"],
-                                   props={"stage": r["stage"], "bd_budget": r["bd_budget"],
+                                   props={"name": r["case_name"], "stage": r["stage"],
+                                          "bd_budget": r["bd_budget"],
                                           "settlement_status": r["settlement_status"]},
                                    provenance=p_cc))
             relations += [

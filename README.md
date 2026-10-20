@@ -2,6 +2,8 @@
 
 > 把"文档知识"与"平台效果数据"按同一套领域本体建模，用知识图谱 + 向量 + Text2SQL 三路召回回答跨系统问题，并以本体为边界对 Agent 的检索与操作做管控，全链路可溯源。
 
+**▶ 在线演示**：<http://152.136.165.95>（数据全合成；演示账号在登录页自取，凭据不入文档）
+
 - 业务域：App 引流效果广告（抖音 / 小红书投放），主线实体是**案例**（proposal → live → closed）
 - 定位：知识与管控层。它不是 Agent 引擎，而是 Agent 引擎（如 smartServe）"查什么、能动什么"的依据
 - 状态：**设计阶段**。本 README 是目录结构与框架的稳定基线，代码按路线图（7.1）逐步实现
@@ -240,7 +242,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 
 **运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`；同机走 docker 网络 `shared-infra` 直连，两机走内网 IP:5433）——省一份 PG 实例，库间靠账号与 database 边界隔离；拓扑与自动发布见 `docs/deployment.md`。
 
-**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）。
+**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）。事实日期为**滚动窗口**：gen_seed 取生成日近 12 个月、止于上月末，对齐素材在最近月各保 ≥3 天（top-N 口径 `HAVING count>=3` 常青命中）——相对时间问句（上月/近 N 天）不因时间流逝空窗；日期只改分布不改数值，全量口径聚合稳定，同日重跑逐字节一致；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）。
 
 ## 六、本体概览
 
@@ -407,6 +409,8 @@ Authorization: Bearer <service-token>
 }
 ```
 
+`answer` 为 **markdown 文本**：agent 总结结论先行、每条事实带 `[#N]` 引用；清单/排名/多条对比用表格输出，前端按 markdown 渲染（LLM 不可用时降级为纯文本模板摘要）。
+
 操作类请求走独立的裁决端点（AdKG 只裁决，不代执行）：
 
 ```http
@@ -453,7 +457,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 ### 9.7 前端与运营台（web/，Phase 5 后）
 
-定位只做三件事：**自助看数、演示、知识运营**——不做对话。内部用户的日常主力界面是 smartServe 的对话（独立项目，见十三）；web 的问答页只作演示、评测可视化，以及无对话入口角色（财务、管理层）的兜底。
+定位只做三件事：**自助看数、演示、知识运营**——不做对话。内部用户的日常主力界面是 smartServe 的对话（独立项目，见十三）；web 的问答页只作演示、评测可视化，以及无对话入口角色（财务、管理层）的兜底。演示入口见 README 顶部；部署边界（nginx 80 唯一公网面）见 `docs/deployment.md` §四。
 
 | 页面 | 谁用 | 端点 |
 |---|---|---|
@@ -554,13 +558,13 @@ confidence  : 抽取置信度 0–1（事实表恒为 1）；≥0.7 入图、0.4
 
 ```json
 {"id": "G01", "type": "multi_hop", "question": "A 品牌对接人名下还有哪些 live 案例？",
- "data_window": "2025-01..2025-12",
+ "data_window": "滚动近 12 月",
  "expected_routes": ["graph"], "must_hit": ["Person", "Case"],
  "expected_answer": {"points": ["对接人姓名", "live 案例清单"], "must_entities": ["Case:C-2025-118"], "must_numbers": []},
  "notes": "默认分母：该对接人名下全部 live 案例"}
 ```
 
-`type ∈ {multi_hop, fact, concept, attribution, operation}`，20 题种子按 5 / 4 / 4 / 4 / 3 分布，扩至 50 题（multi_hop ≥15）挂 Phase 6。rubric：正确 = 要点命中 + 数字一致 + 引用可溯源。`data_window` 标明题目依赖的数据窗口——超出已沉淀窗口的题在 Phase 0 当场改写，不留给评测日爆雷。
+`type ∈ {multi_hop, fact, concept, attribution, operation}`，20 题种子按 5 / 4 / 4 / 4 / 3 分布，扩至 50 题（multi_hop ≥15）挂 Phase 6。rubric：正确 = 要点命中 + 数字一致 + 引用可溯源。`data_window` 标明题目依赖的数据窗口——种子为滚动窗口（止于上月），窗口类题（上月/近 N 天）的期望数字随数据重生成联动改写；超出已沉淀窗口的题在 Phase 0 当场改写，不留给评测日爆雷。
 
 ### 12.4 权限矩阵（`permissions.yaml`）
 

@@ -1,5 +1,6 @@
 // 问答页：提问 → 回答卡（intent/路由/权限/缺席）→ 证据列表
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -65,7 +66,9 @@ export function AskPage({ persona }: { persona: Persona }) {
       ) : (
         <div className="mt-4.5 flex flex-col gap-2.5">
           <Card>
-            <CardContent className="px-4.5 py-4 text-[15px] leading-relaxed">{res.answer}</CardContent>
+            <CardContent className="px-4.5 py-4 text-[15px] leading-relaxed">
+              <div className="md-answer"><ReactMarkdown>{res.answer}</ReactMarkdown></div>
+            </CardContent>
           </Card>
 
           <div className="flex flex-wrap items-center gap-2">

@@ -142,11 +142,12 @@ def ask(request: Request, body: dict,
                 "MATCH (p:Entity) WHERE p.class='Person' AND p.name IS NOT NULL RETURN p.name AS n").data()]
     out = assemble(results, plan, decision, person_names=person_names)
 
+    name_map = _id_name_map(out["evidence"], graph)         # ID → 中文名（答案/证据可读性）
+    _readable_refs(out["evidence"], name_map)
 
     answer, answer_source = _summarize(question, out, decision), "template"
     if llm is not None and out["evidence"]:
         try:                                                # agent 总结：只依据证据（§11.3 溯源）
-            name_map = _id_name_map(out["evidence"], graph)  # ID → 中文名（答案可读性）
             answer, answer_source = _agent_answer(llm, question, out["evidence"], name_map), "agent"
         except Exception:
             pass                                            # 回模板（§7.2）
@@ -163,7 +164,8 @@ def _summarize(question: str, out: dict, decision) -> str:
 
 
 _ANSWER_PROMPT = (
-    "你是知识中台的回答助手。只依据【证据】回答【问题】，输出 3-6 句中文："
+    "你是知识中台的回答助手。只依据【证据】回答【问题】，输出中文 markdown（结论先行）："
+    "清单/排名/多条对比用 markdown 表格（少量条目可用列表），关键数字加粗；"
     "直接给结论（清单/数字/人名），每个事实后标注证据编号如 [#1]；"
     "提到素材/计划/案例/品牌等实体必须用【名称映射】里的中文名（映射没有的可用证据里的可读字段），"
     "禁止输出 Creative:C-xxx 这类裸 ID；日期统一写成 YYYY-MM；"
@@ -185,6 +187,33 @@ def _id_name_map(evidence: list[dict], graph) -> dict[str, str]:
         rows = s.run("MATCH (e:Entity) WHERE e.id IN $ids AND e.name IS NOT NULL "
                      "RETURN e.id AS id, e.name AS name", ids=sorted(ids)).data()
     return {r["id"]: r["name"] for r in rows}
+
+
+_REL_CN = {                                                 # schema.yaml 14 关系的展示词
+    "for_brand": "投放品牌", "for_product": "推广产品", "has_product": "旗下产品",
+    "belongs_to": "属于", "uses": "使用", "in_channel": "投放渠道", "targets": "定向",
+    "links_to": "落地页", "complies_with": "符合", "violates": "违反",
+    "derived_from": "衍生自", "responsible_for": "负责", "belongs_to_brand": "所属品牌",
+    "external_for": "客户对接", "supersedes": "替代",
+}
+
+
+def _readable_refs(evidence: list[dict], name_map: dict[str, str]) -> None:
+    """ref 原串保留作溯源锚（评测判据锚它）；readable_ref 给前端主行——中文名 + 中文关系词。"""
+    import re
+
+    for ev in evidence:
+        ref = ev.get("ref")
+        if not ref or "-[:" not in ref:
+            continue
+        text = ref
+        for eid, name in name_map.items():
+            text = text.replace(eid, f"「{name}」")
+        text = re.sub(r"<-\[:(\w+)\]-", lambda m: f"←{_REL_CN.get(m[1], m[1])}—", text)
+        text = re.sub(r"-\[:(\w+)\]->", lambda m: f"—{_REL_CN.get(m[1], m[1])}→", text)
+        text = re.sub(r"-\[:(\w+)\]-", lambda m: f"—{_REL_CN.get(m[1], m[1])}—", text)
+        text = re.sub(r"\(([^()]+)\)", r"\1", text)         # 去括号；未映射 ID 原样保留
+        ev["readable_ref"] = text
 
 
 def _agent_answer(llm, question: str, evidence: list[dict],

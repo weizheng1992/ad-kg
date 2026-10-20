@@ -1,83 +1,83 @@
-case_id,stage,bd_budget,settlement_status,brand_id,product_id,campaign_id,campaign_name,campaign_status,daily_budget,creative_id,creative_title,is_aigc,platform,channel
-Case:C-2025-001,proposal,80000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp1,搜索计划·A,paused,4000,Creative:C-2025-001-cp1-cr1,品牌专区图文,0,xhs,搜索
-Case:C-2025-001,proposal,80000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp1,搜索计划·A,paused,4000,Creative:C-2025-001-cp1-cr2,长尾词图文,0,douyin,搜索
-Case:C-2025-001,proposal,20000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp2,开屏计划·B,paused,5000,Creative:C-2025-001-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-001,proposal,20000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp2,开屏计划·B,paused,5000,Creative:C-2025-001-cp2-cr2,大促静态 4s,0,xhs,开屏
-Case:C-2025-002,proposal,60000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp1,开屏计划·A,paused,5000,Creative:C-2025-002-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-002,proposal,60000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp1,开屏计划·A,paused,5000,Creative:C-2025-002-cp1-cr2,大促静态 4s,1,xhs,开屏
-Case:C-2025-002,proposal,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp2,信息流计划·B,paused,6000,Creative:C-2025-002-cp2-cr1,UGC 口播 15s 竖版,0,xhs,信息流
-Case:C-2025-002,proposal,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp2,信息流计划·B,paused,6000,Creative:C-2025-002-cp2-cr2,场景短剧 15s 竖版,1,douyin,信息流
-Case:C-2025-003,proposal,40000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp1,信息流计划·A,paused,6000,Creative:C-2025-003-cp1-cr1,UGC 口播 15s 竖版,1,xhs,信息流
-Case:C-2025-003,proposal,40000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp1,信息流计划·A,paused,6000,Creative:C-2025-003-cp1-cr2,场景短剧 15s 竖版,0,douyin,信息流
-Case:C-2025-003,proposal,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp2,搜索计划·B,paused,7000,Creative:C-2025-003-cp2-cr1,品牌专区图文,1,douyin,搜索
-Case:C-2025-003,proposal,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp2,搜索计划·B,paused,7000,Creative:C-2025-003-cp2-cr2,长尾词图文,0,xhs,搜索
-Case:C-2025-004,proposal,20000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp1,搜索计划·A,paused,7000,Creative:C-2025-004-cp1-cr1,品牌专区图文,0,douyin,搜索
-Case:C-2025-004,proposal,20000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp1,搜索计划·A,paused,7000,Creative:C-2025-004-cp1-cr2,长尾词图文,0,xhs,搜索
-Case:C-2025-004,proposal,50000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp2,开屏计划·B,paused,3000,Creative:C-2025-004-cp2-cr1,大促静态 4s,0,xhs,开屏
-Case:C-2025-004,proposal,50000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp2,开屏计划·B,paused,3000,Creative:C-2025-004-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-005,live,90000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,开屏计划·A,delivering,3000,Creative:C-2025-005-cp1-cr1,大促静态 4s,0,xhs,开屏
-Case:C-2025-005,live,90000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,开屏计划·A,delivering,3000,Creative:C-2025-005-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏
-Case:C-2025-005,live,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp2,信息流计划·B,delivering,4000,Creative:C-2025-005-cp2-cr1,达人种草 20s 竖版,0,douyin,信息流
-Case:C-2025-005,live,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp2,信息流计划·B,delivering,4000,Creative:C-2025-005-cp2-cr2,UGC 口播 15s 竖版,1,xhs,信息流
-Case:C-2025-006,live,70000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp1,信息流计划·A,delivering,4000,Creative:C-2025-006-cp1-cr1,达人种草 20s 竖版,1,douyin,信息流
-Case:C-2025-006,live,70000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp1,信息流计划·A,delivering,4000,Creative:C-2025-006-cp1-cr2,UGC 口播 15s 竖版,0,xhs,信息流
-Case:C-2025-006,live,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp2,搜索计划·B,delivering,5000,Creative:C-2025-006-cp2-cr1,品牌专区图文,1,xhs,搜索
-Case:C-2025-006,live,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp2,搜索计划·B,delivering,5000,Creative:C-2025-006-cp2-cr2,长尾词图文,0,douyin,搜索
-Case:C-2025-007,live,50000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp1,搜索计划·A,delivering,5000,Creative:C-2025-007-cp1-cr1,品牌专区图文,0,xhs,搜索
-Case:C-2025-007,live,50000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp1,搜索计划·A,delivering,5000,Creative:C-2025-007-cp1-cr2,长尾词图文,0,douyin,搜索
-Case:C-2025-007,live,80000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp2,开屏计划·B,delivering,6000,Creative:C-2025-007-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-007,live,80000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp2,开屏计划·B,delivering,6000,Creative:C-2025-007-cp2-cr2,大促静态 4s,0,xhs,开屏
-Case:C-2025-008,live,30000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp1,开屏计划·A,delivering,6000,Creative:C-2025-008-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-008,live,30000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp1,开屏计划·A,delivering,6000,Creative:C-2025-008-cp1-cr2,大促静态 4s,1,xhs,开屏
-Case:C-2025-008,live,60000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp2,信息流计划·B,delivering,7000,Creative:C-2025-008-cp2-cr1,痛点开箱 30s 竖版,0,xhs,信息流
-Case:C-2025-008,live,60000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp2,信息流计划·B,delivering,7000,Creative:C-2025-008-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流
-Case:C-2025-009,closed,10000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp1,信息流计划·A,paused,7000,Creative:C-2025-009-cp1-cr1,痛点开箱 30s 竖版,1,xhs,信息流
-Case:C-2025-009,closed,10000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp1,信息流计划·A,paused,7000,Creative:C-2025-009-cp1-cr2,达人种草 20s 竖版,0,douyin,信息流
-Case:C-2025-009,closed,40000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp2,搜索计划·B,paused,3000,Creative:C-2025-009-cp2-cr1,品牌专区图文,1,douyin,搜索
-Case:C-2025-009,closed,40000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp2,搜索计划·B,paused,3000,Creative:C-2025-009-cp2-cr2,长尾词图文,0,xhs,搜索
-Case:C-2025-010,closed,80000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp1,搜索计划·A,paused,3000,Creative:C-2025-010-cp1-cr1,品牌专区图文,0,douyin,搜索
-Case:C-2025-010,closed,80000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp1,搜索计划·A,paused,3000,Creative:C-2025-010-cp1-cr2,长尾词图文,0,xhs,搜索
-Case:C-2025-010,closed,20000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp2,开屏计划·B,paused,4000,Creative:C-2025-010-cp2-cr1,大促静态 4s,0,xhs,开屏
-Case:C-2025-010,closed,20000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp2,开屏计划·B,paused,4000,Creative:C-2025-010-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-011,closed,60000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp1,开屏计划·A,paused,4000,Creative:C-2025-011-cp1-cr1,大促静态 4s,0,xhs,开屏
-Case:C-2025-011,closed,60000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp1,开屏计划·A,paused,4000,Creative:C-2025-011-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏
-Case:C-2025-011,closed,90000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp2,信息流计划·B,paused,5000,Creative:C-2025-011-cp2-cr1,场景短剧 15s 竖版,0,douyin,信息流
-Case:C-2025-011,closed,90000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp2,信息流计划·B,paused,5000,Creative:C-2025-011-cp2-cr2,痛点开箱 30s 竖版,1,xhs,信息流
-Case:C-2025-012,closed,40000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp1,信息流计划·A,paused,5000,Creative:C-2025-012-cp1-cr1,场景短剧 15s 竖版,1,douyin,信息流
-Case:C-2025-012,closed,40000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp1,信息流计划·A,paused,5000,Creative:C-2025-012-cp1-cr2,痛点开箱 30s 竖版,0,xhs,信息流
-Case:C-2025-012,closed,70000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp2,搜索计划·B,paused,6000,Creative:C-2025-012-cp2-cr1,品牌专区图文,1,xhs,搜索
-Case:C-2025-012,closed,70000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp2,搜索计划·B,paused,6000,Creative:C-2025-012-cp2-cr2,长尾词图文,0,douyin,搜索
-Case:C-2025-013,closed,20000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp1,搜索计划·A,paused,6000,Creative:C-2025-013-cp1-cr1,品牌专区图文,0,xhs,搜索
-Case:C-2025-013,closed,20000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp1,搜索计划·A,paused,6000,Creative:C-2025-013-cp1-cr2,长尾词图文,0,douyin,搜索
-Case:C-2025-013,closed,50000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp2,开屏计划·B,paused,7000,Creative:C-2025-013-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-013,closed,50000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp2,开屏计划·B,paused,7000,Creative:C-2025-013-cp2-cr2,大促静态 4s,0,xhs,开屏
-Case:C-2025-014,closed,90000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp1,开屏计划·A,paused,7000,Creative:C-2025-014-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-014,closed,90000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp1,开屏计划·A,paused,7000,Creative:C-2025-014-cp1-cr2,大促静态 4s,1,xhs,开屏
-Case:C-2025-014,closed,30000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp2,信息流计划·B,paused,3000,Creative:C-2025-014-cp2-cr1,UGC 口播 15s 竖版,0,xhs,信息流
-Case:C-2025-014,closed,30000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp2,信息流计划·B,paused,3000,Creative:C-2025-014-cp2-cr2,场景短剧 15s 竖版,1,douyin,信息流
-Case:C-2025-015,lost,70000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp1,信息流计划·A,paused,3000,Creative:C-2025-015-cp1-cr1,UGC 口播 15s 竖版,1,xhs,信息流
-Case:C-2025-015,lost,70000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp1,信息流计划·A,paused,3000,Creative:C-2025-015-cp1-cr2,场景短剧 15s 竖版,0,douyin,信息流
-Case:C-2025-015,lost,10000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp2,搜索计划·B,paused,4000,Creative:C-2025-015-cp2-cr1,品牌专区图文,1,douyin,搜索
-Case:C-2025-015,lost,10000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp2,搜索计划·B,paused,4000,Creative:C-2025-015-cp2-cr2,长尾词图文,0,xhs,搜索
-Case:C-2025-016,lost,50000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp1,搜索计划·A,paused,4000,Creative:C-2025-016-cp1-cr1,品牌专区图文,0,douyin,搜索
-Case:C-2025-016,lost,50000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp1,搜索计划·A,paused,4000,Creative:C-2025-016-cp1-cr2,长尾词图文,0,xhs,搜索
-Case:C-2025-016,lost,80000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp2,开屏计划·B,paused,5000,Creative:C-2025-016-cp2-cr1,大促静态 4s,0,xhs,开屏
-Case:C-2025-016,lost,80000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp2,开屏计划·B,paused,5000,Creative:C-2025-016-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-017,lost,30000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp1,开屏计划·A,paused,5000,Creative:C-2025-017-cp1-cr1,大促静态 4s,0,xhs,开屏
-Case:C-2025-017,lost,30000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp1,开屏计划·A,paused,5000,Creative:C-2025-017-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏
-Case:C-2025-017,lost,60000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp2,信息流计划·B,paused,6000,Creative:C-2025-017-cp2-cr1,达人种草 20s 竖版,0,douyin,信息流
-Case:C-2025-017,lost,60000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp2,信息流计划·B,paused,6000,Creative:C-2025-017-cp2-cr2,UGC 口播 15s 竖版,1,xhs,信息流
-Case:C-2025-018,terminated,10000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp1,信息流计划·A,paused,6000,Creative:C-2025-018-cp1-cr1,达人种草 20s 竖版,1,douyin,信息流
-Case:C-2025-018,terminated,10000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp1,信息流计划·A,paused,6000,Creative:C-2025-018-cp1-cr2,UGC 口播 15s 竖版,0,xhs,信息流
-Case:C-2025-018,terminated,40000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp2,搜索计划·B,paused,7000,Creative:C-2025-018-cp2-cr1,品牌专区图文,1,xhs,搜索
-Case:C-2025-018,terminated,40000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp2,搜索计划·B,paused,7000,Creative:C-2025-018-cp2-cr2,长尾词图文,0,douyin,搜索
-Case:C-2025-019,terminated,80000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp1,搜索计划·A,paused,7000,Creative:C-2025-019-cp1-cr1,品牌专区图文,0,xhs,搜索
-Case:C-2025-019,terminated,80000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp1,搜索计划·A,paused,7000,Creative:C-2025-019-cp1-cr2,长尾词图文,0,douyin,搜索
-Case:C-2025-019,terminated,20000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp2,开屏计划·B,paused,3000,Creative:C-2025-019-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-019,terminated,20000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp2,开屏计划·B,paused,3000,Creative:C-2025-019-cp2-cr2,大促静态 4s,0,xhs,开屏
-Case:C-2025-020,terminated,60000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp1,开屏计划·A,paused,3000,Creative:C-2025-020-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
-Case:C-2025-020,terminated,60000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp1,开屏计划·A,paused,3000,Creative:C-2025-020-cp1-cr2,大促静态 4s,1,xhs,开屏
-Case:C-2025-020,terminated,90000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp2,信息流计划·B,paused,4000,Creative:C-2025-020-cp2-cr1,痛点开箱 30s 竖版,0,xhs,信息流
-Case:C-2025-020,terminated,90000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp2,信息流计划·B,paused,4000,Creative:C-2025-020-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流
-Case:C-2025-005,live,36000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,信息流计划·A,delivering,4200,Creative:creative_992,上门洗护种草 15s 竖版,1,douyin,信息流
-Case:C-2025-005,live,36000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,信息流计划·A,delivering,4200,Creative:creative_992,上门洗护种草 15s 竖版,1,xhs,信息流
+case_id,case_name,stage,bd_budget,settlement_status,brand_id,product_id,campaign_id,campaign_name,campaign_status,daily_budget,creative_id,creative_title,is_aigc,platform,channel
+Case:C-2025-001,律动星球·律动星球App投放案例,proposal,80000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp1,搜索计划·A,paused,4000,Creative:C-2025-001-cp1-cr1,品牌专区图文,0,xhs,搜索
+Case:C-2025-001,律动星球·律动星球App投放案例,proposal,80000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp1,搜索计划·A,paused,4000,Creative:C-2025-001-cp1-cr2,长尾词图文,0,douyin,搜索
+Case:C-2025-001,律动星球·律动星球App投放案例,proposal,20000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp2,开屏计划·B,paused,5000,Creative:C-2025-001-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-001,律动星球·律动星球App投放案例,proposal,20000,unbilled,Brand:B02,Product:P02,Campaign:C-2025-001-cp2,开屏计划·B,paused,5000,Creative:C-2025-001-cp2-cr2,大促静态 4s,0,xhs,开屏
+Case:C-2025-002,拾光书屋·拾光书屋App投放案例,proposal,60000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp1,开屏计划·A,paused,5000,Creative:C-2025-002-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-002,拾光书屋·拾光书屋App投放案例,proposal,60000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp1,开屏计划·A,paused,5000,Creative:C-2025-002-cp1-cr2,大促静态 4s,1,xhs,开屏
+Case:C-2025-002,拾光书屋·拾光书屋App投放案例,proposal,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp2,信息流计划·B,paused,6000,Creative:C-2025-002-cp2-cr1,UGC 口播 15s 竖版,0,xhs,信息流
+Case:C-2025-002,拾光书屋·拾光书屋App投放案例,proposal,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-002-cp2,信息流计划·B,paused,6000,Creative:C-2025-002-cp2-cr2,场景短剧 15s 竖版,1,douyin,信息流
+Case:C-2025-003,澄肌研究所·澄肌研究所App投放案例,proposal,40000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp1,信息流计划·A,paused,6000,Creative:C-2025-003-cp1-cr1,UGC 口播 15s 竖版,1,xhs,信息流
+Case:C-2025-003,澄肌研究所·澄肌研究所App投放案例,proposal,40000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp1,信息流计划·A,paused,6000,Creative:C-2025-003-cp1-cr2,场景短剧 15s 竖版,0,douyin,信息流
+Case:C-2025-003,澄肌研究所·澄肌研究所App投放案例,proposal,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp2,搜索计划·B,paused,7000,Creative:C-2025-003-cp2-cr1,品牌专区图文,1,douyin,搜索
+Case:C-2025-003,澄肌研究所·澄肌研究所App投放案例,proposal,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-003-cp2,搜索计划·B,paused,7000,Creative:C-2025-003-cp2-cr2,长尾词图文,0,xhs,搜索
+Case:C-2025-004,途野露营·途野露营App投放案例,proposal,20000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp1,搜索计划·A,paused,7000,Creative:C-2025-004-cp1-cr1,品牌专区图文,0,douyin,搜索
+Case:C-2025-004,途野露营·途野露营App投放案例,proposal,20000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp1,搜索计划·A,paused,7000,Creative:C-2025-004-cp1-cr2,长尾词图文,0,xhs,搜索
+Case:C-2025-004,途野露营·途野露营App投放案例,proposal,50000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp2,开屏计划·B,paused,3000,Creative:C-2025-004-cp2-cr1,大促静态 4s,0,xhs,开屏
+Case:C-2025-004,途野露营·途野露营App投放案例,proposal,50000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-004-cp2,开屏计划·B,paused,3000,Creative:C-2025-004-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-005,喵汪到家·喵汪到家App投放案例,live,90000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,开屏计划·A,delivering,3000,Creative:C-2025-005-cp1-cr1,大促静态 4s,0,xhs,开屏
+Case:C-2025-005,喵汪到家·喵汪到家App投放案例,live,90000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,开屏计划·A,delivering,3000,Creative:C-2025-005-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏
+Case:C-2025-005,喵汪到家·喵汪到家App投放案例,live,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp2,信息流计划·B,delivering,4000,Creative:C-2025-005-cp2-cr1,达人种草 20s 竖版,0,douyin,信息流
+Case:C-2025-005,喵汪到家·喵汪到家App投放案例,live,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp2,信息流计划·B,delivering,4000,Creative:C-2025-005-cp2-cr2,UGC 口播 15s 竖版,1,xhs,信息流
+Case:C-2025-006,速算蜂·速算蜂App投放案例,live,70000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp1,信息流计划·A,delivering,4000,Creative:C-2025-006-cp1-cr1,达人种草 20s 竖版,1,douyin,信息流
+Case:C-2025-006,速算蜂·速算蜂App投放案例,live,70000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp1,信息流计划·A,delivering,4000,Creative:C-2025-006-cp1-cr2,UGC 口播 15s 竖版,0,xhs,信息流
+Case:C-2025-006,速算蜂·速算蜂App投放案例,live,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp2,搜索计划·B,delivering,5000,Creative:C-2025-006-cp2-cr1,品牌专区图文,1,xhs,搜索
+Case:C-2025-006,速算蜂·速算蜂App投放案例,live,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-006-cp2,搜索计划·B,delivering,5000,Creative:C-2025-006-cp2-cr2,长尾词图文,0,douyin,搜索
+Case:C-2025-007,眠海科技·眠海科技App投放案例,live,50000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp1,搜索计划·A,delivering,5000,Creative:C-2025-007-cp1-cr1,品牌专区图文,0,xhs,搜索
+Case:C-2025-007,眠海科技·眠海科技App投放案例,live,50000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp1,搜索计划·A,delivering,5000,Creative:C-2025-007-cp1-cr2,长尾词图文,0,douyin,搜索
+Case:C-2025-007,眠海科技·眠海科技App投放案例,live,80000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp2,开屏计划·B,delivering,6000,Creative:C-2025-007-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-007,眠海科技·眠海科技App投放案例,live,80000,unbilled,Brand:B08,Product:P08,Campaign:C-2025-007-cp2,开屏计划·B,delivering,6000,Creative:C-2025-007-cp2-cr2,大促静态 4s,0,xhs,开屏
+Case:C-2025-008,轻食日记·轻食日记小程序投放案例,live,30000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp1,开屏计划·A,delivering,6000,Creative:C-2025-008-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-008,轻食日记·轻食日记小程序投放案例,live,30000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp1,开屏计划·A,delivering,6000,Creative:C-2025-008-cp1-cr2,大促静态 4s,1,xhs,开屏
+Case:C-2025-008,轻食日记·轻食日记小程序投放案例,live,60000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp2,信息流计划·B,delivering,7000,Creative:C-2025-008-cp2-cr1,痛点开箱 30s 竖版,0,xhs,信息流
+Case:C-2025-008,轻食日记·轻食日记小程序投放案例,live,60000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-008-cp2,信息流计划·B,delivering,7000,Creative:C-2025-008-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流
+Case:C-2025-009,律动星球·律动星球小程序投放案例,closed,10000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp1,信息流计划·A,paused,7000,Creative:C-2025-009-cp1-cr1,痛点开箱 30s 竖版,1,xhs,信息流
+Case:C-2025-009,律动星球·律动星球小程序投放案例,closed,10000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp1,信息流计划·A,paused,7000,Creative:C-2025-009-cp1-cr2,达人种草 20s 竖版,0,douyin,信息流
+Case:C-2025-009,律动星球·律动星球小程序投放案例,closed,40000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp2,搜索计划·B,paused,3000,Creative:C-2025-009-cp2-cr1,品牌专区图文,1,douyin,搜索
+Case:C-2025-009,律动星球·律动星球小程序投放案例,closed,40000,paid,Brand:B02,Product:P02,Campaign:C-2025-009-cp2,搜索计划·B,paused,3000,Creative:C-2025-009-cp2-cr2,长尾词图文,0,xhs,搜索
+Case:C-2025-010,拾光书屋·拾光书屋小程序投放案例,closed,80000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp1,搜索计划·A,paused,3000,Creative:C-2025-010-cp1-cr1,品牌专区图文,0,douyin,搜索
+Case:C-2025-010,拾光书屋·拾光书屋小程序投放案例,closed,80000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp1,搜索计划·A,paused,3000,Creative:C-2025-010-cp1-cr2,长尾词图文,0,xhs,搜索
+Case:C-2025-010,拾光书屋·拾光书屋小程序投放案例,closed,20000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp2,开屏计划·B,paused,4000,Creative:C-2025-010-cp2-cr1,大促静态 4s,0,xhs,开屏
+Case:C-2025-010,拾光书屋·拾光书屋小程序投放案例,closed,20000,paid,Brand:B03,Product:P03,Campaign:C-2025-010-cp2,开屏计划·B,paused,4000,Creative:C-2025-010-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-011,澄肌研究所·澄肌研究所小程序投放案例,closed,60000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp1,开屏计划·A,paused,4000,Creative:C-2025-011-cp1-cr1,大促静态 4s,0,xhs,开屏
+Case:C-2025-011,澄肌研究所·澄肌研究所小程序投放案例,closed,60000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp1,开屏计划·A,paused,4000,Creative:C-2025-011-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏
+Case:C-2025-011,澄肌研究所·澄肌研究所小程序投放案例,closed,90000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp2,信息流计划·B,paused,5000,Creative:C-2025-011-cp2-cr1,场景短剧 15s 竖版,0,douyin,信息流
+Case:C-2025-011,澄肌研究所·澄肌研究所小程序投放案例,closed,90000,paid,Brand:B04,Product:P04,Campaign:C-2025-011-cp2,信息流计划·B,paused,5000,Creative:C-2025-011-cp2-cr2,痛点开箱 30s 竖版,1,xhs,信息流
+Case:C-2025-012,途野露营·途野露营小程序投放案例,closed,40000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp1,信息流计划·A,paused,5000,Creative:C-2025-012-cp1-cr1,场景短剧 15s 竖版,1,douyin,信息流
+Case:C-2025-012,途野露营·途野露营小程序投放案例,closed,40000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp1,信息流计划·A,paused,5000,Creative:C-2025-012-cp1-cr2,痛点开箱 30s 竖版,0,xhs,信息流
+Case:C-2025-012,途野露营·途野露营小程序投放案例,closed,70000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp2,搜索计划·B,paused,6000,Creative:C-2025-012-cp2-cr1,品牌专区图文,1,xhs,搜索
+Case:C-2025-012,途野露营·途野露营小程序投放案例,closed,70000,paid,Brand:B05,Product:P05,Campaign:C-2025-012-cp2,搜索计划·B,paused,6000,Creative:C-2025-012-cp2-cr2,长尾词图文,0,douyin,搜索
+Case:C-2025-013,喵汪到家·喵汪到家小程序投放案例,closed,20000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp1,搜索计划·A,paused,6000,Creative:C-2025-013-cp1-cr1,品牌专区图文,0,xhs,搜索
+Case:C-2025-013,喵汪到家·喵汪到家小程序投放案例,closed,20000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp1,搜索计划·A,paused,6000,Creative:C-2025-013-cp1-cr2,长尾词图文,0,douyin,搜索
+Case:C-2025-013,喵汪到家·喵汪到家小程序投放案例,closed,50000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp2,开屏计划·B,paused,7000,Creative:C-2025-013-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-013,喵汪到家·喵汪到家小程序投放案例,closed,50000,paid,Brand:B06,Product:P06,Campaign:C-2025-013-cp2,开屏计划·B,paused,7000,Creative:C-2025-013-cp2-cr2,大促静态 4s,0,xhs,开屏
+Case:C-2025-014,速算蜂·速算蜂小程序投放案例,closed,90000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp1,开屏计划·A,paused,7000,Creative:C-2025-014-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-014,速算蜂·速算蜂小程序投放案例,closed,90000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp1,开屏计划·A,paused,7000,Creative:C-2025-014-cp1-cr2,大促静态 4s,1,xhs,开屏
+Case:C-2025-014,速算蜂·速算蜂小程序投放案例,closed,30000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp2,信息流计划·B,paused,3000,Creative:C-2025-014-cp2-cr1,UGC 口播 15s 竖版,0,xhs,信息流
+Case:C-2025-014,速算蜂·速算蜂小程序投放案例,closed,30000,paid,Brand:B07,Product:P07,Campaign:C-2025-014-cp2,信息流计划·B,paused,3000,Creative:C-2025-014-cp2-cr2,场景短剧 15s 竖版,1,douyin,信息流
+Case:C-2025-015,眠海科技·轻食日记App投放案例,lost,70000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp1,信息流计划·A,paused,3000,Creative:C-2025-015-cp1-cr1,UGC 口播 15s 竖版,1,xhs,信息流
+Case:C-2025-015,眠海科技·轻食日记App投放案例,lost,70000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp1,信息流计划·A,paused,3000,Creative:C-2025-015-cp1-cr2,场景短剧 15s 竖版,0,douyin,信息流
+Case:C-2025-015,眠海科技·轻食日记App投放案例,lost,10000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp2,搜索计划·B,paused,4000,Creative:C-2025-015-cp2-cr1,品牌专区图文,1,douyin,搜索
+Case:C-2025-015,眠海科技·轻食日记App投放案例,lost,10000,unbilled,Brand:B08,Product:P01,Campaign:C-2025-015-cp2,搜索计划·B,paused,4000,Creative:C-2025-015-cp2-cr2,长尾词图文,0,xhs,搜索
+Case:C-2025-016,轻食日记·律动星球App投放案例,lost,50000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp1,搜索计划·A,paused,4000,Creative:C-2025-016-cp1-cr1,品牌专区图文,0,douyin,搜索
+Case:C-2025-016,轻食日记·律动星球App投放案例,lost,50000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp1,搜索计划·A,paused,4000,Creative:C-2025-016-cp1-cr2,长尾词图文,0,xhs,搜索
+Case:C-2025-016,轻食日记·律动星球App投放案例,lost,80000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp2,开屏计划·B,paused,5000,Creative:C-2025-016-cp2-cr1,大促静态 4s,0,xhs,开屏
+Case:C-2025-016,轻食日记·律动星球App投放案例,lost,80000,unbilled,Brand:B01,Product:P02,Campaign:C-2025-016-cp2,开屏计划·B,paused,5000,Creative:C-2025-016-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-017,律动星球·拾光书屋App投放案例,lost,30000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp1,开屏计划·A,paused,5000,Creative:C-2025-017-cp1-cr1,大促静态 4s,0,xhs,开屏
+Case:C-2025-017,律动星球·拾光书屋App投放案例,lost,30000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp1,开屏计划·A,paused,5000,Creative:C-2025-017-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏
+Case:C-2025-017,律动星球·拾光书屋App投放案例,lost,60000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp2,信息流计划·B,paused,6000,Creative:C-2025-017-cp2-cr1,达人种草 20s 竖版,0,douyin,信息流
+Case:C-2025-017,律动星球·拾光书屋App投放案例,lost,60000,unbilled,Brand:B02,Product:P03,Campaign:C-2025-017-cp2,信息流计划·B,paused,6000,Creative:C-2025-017-cp2-cr2,UGC 口播 15s 竖版,1,xhs,信息流
+Case:C-2025-018,拾光书屋·澄肌研究所App投放案例,terminated,10000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp1,信息流计划·A,paused,6000,Creative:C-2025-018-cp1-cr1,达人种草 20s 竖版,1,douyin,信息流
+Case:C-2025-018,拾光书屋·澄肌研究所App投放案例,terminated,10000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp1,信息流计划·A,paused,6000,Creative:C-2025-018-cp1-cr2,UGC 口播 15s 竖版,0,xhs,信息流
+Case:C-2025-018,拾光书屋·澄肌研究所App投放案例,terminated,40000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp2,搜索计划·B,paused,7000,Creative:C-2025-018-cp2-cr1,品牌专区图文,1,xhs,搜索
+Case:C-2025-018,拾光书屋·澄肌研究所App投放案例,terminated,40000,unbilled,Brand:B03,Product:P04,Campaign:C-2025-018-cp2,搜索计划·B,paused,7000,Creative:C-2025-018-cp2-cr2,长尾词图文,0,douyin,搜索
+Case:C-2025-019,澄肌研究所·途野露营App投放案例,terminated,80000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp1,搜索计划·A,paused,7000,Creative:C-2025-019-cp1-cr1,品牌专区图文,0,xhs,搜索
+Case:C-2025-019,澄肌研究所·途野露营App投放案例,terminated,80000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp1,搜索计划·A,paused,7000,Creative:C-2025-019-cp1-cr2,长尾词图文,0,douyin,搜索
+Case:C-2025-019,澄肌研究所·途野露营App投放案例,terminated,20000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp2,开屏计划·B,paused,3000,Creative:C-2025-019-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-019,澄肌研究所·途野露营App投放案例,terminated,20000,unbilled,Brand:B04,Product:P05,Campaign:C-2025-019-cp2,开屏计划·B,paused,3000,Creative:C-2025-019-cp2-cr2,大促静态 4s,0,xhs,开屏
+Case:C-2025-020,途野露营·喵汪到家App投放案例,terminated,60000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp1,开屏计划·A,paused,3000,Creative:C-2025-020-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏
+Case:C-2025-020,途野露营·喵汪到家App投放案例,terminated,60000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp1,开屏计划·A,paused,3000,Creative:C-2025-020-cp1-cr2,大促静态 4s,1,xhs,开屏
+Case:C-2025-020,途野露营·喵汪到家App投放案例,terminated,90000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp2,信息流计划·B,paused,4000,Creative:C-2025-020-cp2-cr1,痛点开箱 30s 竖版,0,xhs,信息流
+Case:C-2025-020,途野露营·喵汪到家App投放案例,terminated,90000,unbilled,Brand:B05,Product:P06,Campaign:C-2025-020-cp2,信息流计划·B,paused,4000,Creative:C-2025-020-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流
+Case:C-2025-005,喵汪到家·喵汪到家App投放案例,live,36000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,信息流计划·A,delivering,4200,Creative:creative_992,上门洗护种草 15s 竖版,1,douyin,信息流
+Case:C-2025-005,喵汪到家·喵汪到家App投放案例,live,36000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,信息流计划·A,delivering,4200,Creative:creative_992,上门洗护种草 15s 竖版,1,xhs,信息流
