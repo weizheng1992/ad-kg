@@ -65,8 +65,11 @@ def gen_master() -> list[list[str]]:
     case_of_person: dict[str, str] = {}
     case_name_by_id: dict[str, str] = {}
     for i, stage in enumerate(STAGES, 1):
-        brand = BRANDS[i % len(BRANDS)]
-        product = PRODUCTS[i % len(PRODUCTS)]
+        bi = i % len(BRANDS)
+        brand = BRANDS[bi]
+        # 商品归属同品牌（App/小程序都从该品牌取）——brand 按 i%8、product 按 i%15
+        # 各选各的会错配出「澄肌研究所·途野露营App」这类假数据（2026-10-20 实测）
+        product = PRODUCTS[8 + bi] if (i % 2 == 1 and bi < 7) else PRODUCTS[bi]
         person = PEOPLE[i % len(PEOPLE)]
         case_id = f"Case:C-2025-{i:03d}"
         case_name = f"{brand[1]}·{product[1]}投放案例"     # 与案例文档标题同式（图上 Case.name）

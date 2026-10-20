@@ -468,7 +468,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 后台管理 = 知识运营台，**不做用户管理**：必须有 review_queue 人审界面（冲突对比 + unmatched 对齐——12.2 仲裁与 7.4 对齐闭环的落地）；最好有文档上传与审计查看；角色与 token 留在 `permissions.yaml` + `.env`（配置文件即管理界面），身份生命周期在外部（网关 / 引擎），做用户管理 UI 是负资产。
 
-**角色头约定**：web 调用端点时带 `X-Adkg-Role: <role>`（与 body/query 的 role 同值）——本地 dev 无认证、忽略此头；部署态由 nginx 按头注入对应角色的 Bearer token（token 只存服务器 nginx 配置，**不进前端包**；头缺失或陌生值 → Bearer 为空 → API 401 fail-closed）。边界与把门层次见 `docs/deployment.md` §四。**登录壳**：web 内置演示登录页（演示账号表↔角色绑定，纯前端校验）——它是演示体验件而非安全边界（账号表在前端包里可被读出），真实把门是 nginx 换 token + 限速；AdKG API 仍不做用户管理（本节拍板不变）。
+**角色头约定**：web 调用端点时带 `X-Adkg-Role: <role>`（与 body/query 的 role 同值）——本地 dev 无认证、忽略此头；部署态由 nginx 按头注入对应角色的 Bearer token（token 只存服务器 nginx 配置，**不进前端包**；头缺失或陌生值 → Bearer 为空 → API 401 fail-closed）。边界与把门层次见 `docs/deployment.md` §四。**登录壳**：web 内置演示登录页（演示账号表↔角色绑定，纯前端校验）——它是演示体验件而非安全边界（账号表在前端包里可被读出），真实把门是 nginx 换 token + 限速；**管理员与管理层账号可在六个演示身份间自由切换**（切角色即切 `X-Adkg-Role`，部署态 nginx 换发对应 token，页面结果随切换清空），其余业务账号角色随账号绑定——权限隔离演示更真实；AdKG API 仍不做用户管理（本节拍板不变）。
 
 ## 十、快速开始（规划，代码就绪后生效）
 

@@ -24,7 +24,8 @@ export function LoginPage() {
     }
     login({
       account: account.name, label: account.label,
-      admin: account.admin ?? false, persona: account.persona,
+      admin: account.admin ?? false,
+      baseRole: account.persona.role, persona: account.persona,
     })
     navigate('/', { replace: true })
   }

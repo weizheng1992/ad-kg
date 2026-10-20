@@ -24,7 +24,14 @@ export interface Session {
   account: string
   label: string
   admin: boolean
+  /** 登录账号绑定的角色（切换资格看它，不随视角切换而变） */
+  baseRole: string
   persona: Persona
+}
+
+/** 管理员与管理层账号可自由切换演示身份（README §9.7）；其余账号角色随账号绑定。 */
+export function canSwitchRoles(s: Session): boolean {
+  return s.admin || s.baseRole === 'management'
 }
 
 const KEY = 'adkg.session'
@@ -32,7 +39,10 @@ const KEY = 'adkg.session'
 export function loadSession(): Session | null {
   try {
     const raw = sessionStorage.getItem(KEY)
-    return raw ? (JSON.parse(raw) as Session) : null
+    if (!raw) return null
+    const s = JSON.parse(raw) as Session
+    // 兼容切换功能上线前的旧会话：baseRole 缺失时按当前视角角色兜底
+    return { ...s, baseRole: s.baseRole ?? s.persona?.role ?? 'management' }
   } catch {
     return null
   }

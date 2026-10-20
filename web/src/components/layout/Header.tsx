@@ -1,8 +1,8 @@
-// 顶栏：品牌 + 页签 + 角色身份（业务账号锁定 / admin 可切换）+ 退出
+// 顶栏：品牌 + 页签 + 角色身份（业务账号锁定 / 管理员与管理层可切换，README §9.7）+ 退出
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ROLES } from '@/lib/api'
-import type { Session } from '@/lib/accounts'
+import { canSwitchRoles, type Session } from '@/lib/accounts'
 
 export type Tab = 'ask' | 'graph'
 
@@ -14,7 +14,7 @@ export function Header({ tab, onTab, session, persona, onPersona, onLogout }: {
   onPersona: (role: string, user: string) => void
   onLogout: () => void
 }) {
-  const roleByUser = (user: string) => ROLES.find((r) => r.user === user) ?? ROLES[0]
+  const roleOf = (role: string) => ROLES.find((r) => r.role === role) ?? ROLES[0]
 
   return (
     <header className="sticky top-0 z-5 flex items-center gap-6 border-b bg-card px-7 py-3.5">
@@ -29,16 +29,17 @@ export function Header({ tab, onTab, session, persona, onPersona, onLogout }: {
       </nav>
 
       <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-        {session.admin ? (
+        {canSwitchRoles(session) ? (
           <label className="flex items-center gap-2">
             当前角色
-            <Select value={persona.user} onValueChange={(user) => { const r = roleByUser(user); onPersona(r.role, r.user) }}>
+            {/* 以 role（唯一）寻址：同一人可挂多角色（李昂=优化师/AE），按 user 会串 */}
+            <Select value={persona.role} onValueChange={(role) => { const r = roleOf(role); onPersona(r.role, r.user) }}>
               <SelectTrigger size="sm" className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {ROLES.map((r) => (
-                  <SelectItem key={r.user} value={r.user}>{r.label}</SelectItem>
+                  <SelectItem key={r.role} value={r.role}>{r.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -9,10 +9,11 @@ import { useSession } from '@/lib/session'
 import type { Persona } from '@/lib/api'
 
 export function HomePage() {
-  const { session, logout } = useSession()
+  const { session, logout, switchPersona } = useSession()
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('ask')
-  const [persona, setPersona] = useState<Persona>(session?.persona ?? { role: 'management', user: 'Person:chen' })
+  // 身份单一事实源 = session.persona（切换写回，刷新不丢，README §9.7）
+  const persona: Persona = session?.persona ?? { role: 'management', user: 'Person:chen' }
 
   // RequireAuth 保证挂载时必有会话；类型上仍给兜底避免窄化噪音
   if (!session) return null
@@ -20,10 +21,12 @@ export function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header tab={tab} onTab={setTab} session={session} persona={persona}
-              onPersona={(role, user) => setPersona({ role, user })}
+              onPersona={(role, user) => switchPersona({ role, user })}
               onLogout={() => { logout(); navigate('/login', { replace: true }) }} />
       <main className="flex-1">
-        {tab === 'ask' ? <AskPage persona={persona} /> : <GraphPage persona={persona} />}
+        {/* key=角色：切换演示身份即清空上一角色的查询结果，防证据误导（README §9.7） */}
+        {tab === 'ask' ? <AskPage key={persona.role} persona={persona} />
+                       : <GraphPage key={persona.role} persona={persona} />}
       </main>
       <Footer />
     </div>
