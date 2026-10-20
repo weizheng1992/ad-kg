@@ -21,3 +21,6 @@ web/dist/
 
 # promptfoo 运行缓存
 .promptfoo/
+
+# 浏览器测试产物
+.playwright-mcp/
