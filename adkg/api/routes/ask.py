@@ -74,6 +74,8 @@ def ask(request: Request, body: dict,
         raise HTTPException(422, "question 不能为空")
 
     planner = _planner(request)
+    if role not in planner.roles:                        # dev 路可传任意值，fail-closed（§十二）
+        raise HTTPException(401, f"未知角色：{role}")
     plan = planner.plan(role, person=person)
     llm = _llm(request)
     decision = rule_route(question)

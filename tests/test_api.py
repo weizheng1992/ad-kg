@@ -61,6 +61,11 @@ class TestAsk:
         c = _client(ADKG_DEV_AUTH="on")
         assert c.post("/ask", json={"question": "x", "role": "management"}).status_code == 401
 
+    def test_dev模式未知角色401不500(self, client):
+        """dev 认证放行 body role，但未知角色必须 fail-closed 401（部署实测 500 教训）。"""
+        r = client.post("/ask", json={"question": "x", "role": "hacker"})
+        assert r.status_code == 401
+
     def test_真token认证(self, client):
         r = client.post("/ask", json={"question": "消耗多少"},
                         headers={"Authorization": "Bearer change-me-management"})

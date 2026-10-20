@@ -24,8 +24,11 @@ def graph_entity(request: Request, id: str, hops: int = 1,
         raise HTTPException(401, "缺有效 service token")
 
     from adkg.api.routes.ask import _graph, _planner
+    planner = _planner(request)
+    if role not in planner.roles:                        # dev 路可传任意值，fail-closed（§十二）
+        raise HTTPException(401, f"未知角色：{role}")
     graph = _graph(request)
-    plan = _planner(request).plan(role, person=user)
+    plan = planner.plan(role, person=user)
     visible = plan.visible_entity_ids
     allowed_classes = set(plan.metadata_filter.get("entity_class__in", []))
 

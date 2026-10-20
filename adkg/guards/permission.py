@@ -96,6 +96,11 @@ class PermissionPlanner:
         return frozenset(ids), predicate
 
     # ----------------------------------------------------- 主入口
+    @property
+    def roles(self) -> frozenset[str]:
+        """全部合法角色——API 层对 dev 路传入的 role 做 fail-closed 预检（§十二）。"""
+        return frozenset(self.perms["roles"])
+
     def plan(self, role: str, person: str | None = None) -> PermissionPlan:
         cfg = self.perms["roles"][role]
         classes = [c for c in cfg["classes"]]
