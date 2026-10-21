@@ -57,10 +57,13 @@ def upsert_docversions(graph: GraphStore, records) -> int:
 
 def main() -> None:
     tokens = sys.argv[1:] or [t.strip() for t in os.environ.get("FEISHU_DOCS", "").split(",") if t.strip()]
-    if not tokens:
-        sys.exit("用法：sync_feishu.py <doc_token>... 或在 .env 配 FEISHU_DOCS")
+    folders = [f.strip() for f in os.environ.get("FEISHU_FOLDER", "").split(",") if f.strip()]
+    if not tokens and not folders:
+        sys.exit("用法：sync_feishu.py <doc_token>... 或在 .env 配 FEISHU_DOCS / FEISHU_FOLDER"
+                 "（共享文件夹模式：应用加为文件夹协作者，自动列目录逐篇同步）")
 
-    conn = FeishuConnector(os.environ["FEISHU_APP_ID"], os.environ["FEISHU_APP_SECRET"], tokens)
+    conn = FeishuConnector(os.environ["FEISHU_APP_ID"], os.environ["FEISHU_APP_SECRET"],
+                           tokens, folder_tokens=folders)
     try:
         records = list(conn.fetch())
     except RuntimeError as e:

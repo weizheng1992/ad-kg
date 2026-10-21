@@ -14,11 +14,13 @@ from adkg.connectors.feishu import FeishuConnector
 class FakeFeishu:
     """按路径返回预置响应，记录调用以验证 token 缓存。"""
 
-    def __init__(self, *, code=0, docs=("doctoken1", "doctoken2"), empty_doc=False):
+    def __init__(self, *, code=0, docs=("doctoken1", "doctoken2"), empty_doc=False,
+                 folder_files=(("foldoc1", "docx"), ("sheet1", "sheet"), ("foldoc2", "docx"))):
         self.calls: list[str] = []
         self.code = code
         self.docs = docs
         self.empty_doc = empty_doc
+        self.folder_files = folder_files
 
     def __call__(self, method, url, *, headers=None, json=None):
         self.calls.append(url)
@@ -26,6 +28,9 @@ class FakeFeishu:
             if self.code:
                 return {"code": self.code, "msg": "app secret 不匹配"}
             return {"code": 0, "tenant_access_token": "t-fake", "expire": 7200}
+        if "/drive/v1/files" in url:
+            files = [{"token": t, "type": ty} for t, ty in self.folder_files]
+            return {"code": 0, "data": {"files": files, "has_more": False}}
         if "/raw_content" in url:
             token = url.split("/documents/")[1].split("/")[0]
             return {"code": 0, "data": {"content": "" if self.empty_doc else f"# 文档 {token}\n\n正文"}}
@@ -60,6 +65,26 @@ class TestFeishuConnector:
         conn = FeishuConnector("id", "sec", ["doctoken1"], transport=FakeFeishu(code=99991663))
         with pytest.raises(RuntimeError, match="99991663"):
             list(conn.fetch())
+
+    def test_文件夹模式展开docx并过滤其他类型(self):
+        """FEISHU_FOLDER 模式（§五 数据三层③）：列目录只吃 docx，sheet 等跳过。"""
+        conn = FeishuConnector("id", "sec", [], folder_tokens=["fold1"],
+                               transport=FakeFeishu())
+        records = list(conn.fetch())
+        assert sorted(r.provenance.source_id for r in records) == [
+            "feishu:doc:foldoc1", "feishu:doc:foldoc2"]
+
+    def test_显式token与文件夹去重(self):
+        conn = FeishuConnector("id", "sec", ["doctoken1", "foldoc1"], folder_tokens=["fold1"],
+                               transport=FakeFeishu())
+        ids = [r.provenance.source_id for r in list(conn.fetch())]
+        assert ids.count("feishu:doc:foldoc1") == 1        # 显式与目录重叠只同步一次
+        assert "feishu:doc:doctoken1" in ids
+
+    def test_列目录请求带folder参数(self):
+        fake = FakeFeishu()
+        list(FeishuConnector("id", "sec", [], folder_tokens=["fold1"], transport=fake).fetch())
+        assert any("/drive/v1/files?" in u and "fold1" in u for u in fake.calls)
 
 
 _CRED = bool(os.environ.get("FEISHU_APP_ID") and os.environ.get("FEISHU_APP_SECRET")

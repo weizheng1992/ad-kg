@@ -242,7 +242,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 
 **运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`；同机走 docker 网络 `shared-infra` 直连，两机走内网 IP:5433）——省一份 PG 实例，库间靠账号与 database 边界隔离；拓扑与自动发布见 `docs/deployment.md`。
 
-**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）。事实日期为**滚动窗口**：gen_seed 取生成日近 12 个月、止于上月末，对齐素材在最近月各保 ≥3 天（top-N 口径 `HAVING count>=3` 常青命中）——相对时间问句（上月/近 N 天）不因时间流逝空窗；日期只改分布不改数值，全量口径聚合稳定，同日重跑逐字节一致；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）。
+**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）。事实日期为**滚动窗口**：gen_seed 取生成日近 12 个月、止于上月末，对齐素材在最近月各保 ≥3 天（top-N 口径 `HAVING count>=3` 常青命中）——相对时间问句（上月/近 N 天）不因时间流逝空窗；日期只改分布不改数值，全量口径聚合稳定，同日重跑逐字节一致；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）——两种来源：`FEISHU_DOCS` 显式 token 列表，或 `FEISHU_FOLDER` **共享文件夹模式**（应用加为文件夹协作者一次，全公司可往里放文档，同步自动列目录逐篇摄取、类型过滤只吃 docx，零逐篇授权）。
 
 ## 六、本体概览
 

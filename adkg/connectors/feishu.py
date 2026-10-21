@@ -33,10 +33,12 @@ def httpx_transport(method: str, url: str, *, headers: dict | None = None,
 
 class FeishuConnector:
     def __init__(self, app_id: str, app_secret: str, doc_tokens: list[str],
+                 folder_tokens: list[str] | None = None,
                  transport: Transport = httpx_transport, base: str = BASE) -> None:
         self.app_id = app_id
         self.app_secret = app_secret
         self.doc_tokens = doc_tokens
+        self.folder_tokens = folder_tokens or []
         self._transport = transport
         self._base = base
         self._token: str | None = None        # 惰性 + 进程内缓存（expire ~2h）
@@ -74,9 +76,33 @@ class FeishuConnector:
             raise RuntimeError(f"wiki 节点 {wiki_token} 不是 docx（{node.get('obj_type')}），暂不支持")
         return node["obj_token"], node.get("title", "")
 
+    def _list_folder(self, folder_token: str) -> list[str]:
+        """共享文件夹内全部 docx 文档 token（分页；sheet/file/ folder 等类型跳过）。
+
+        前置：应用加为文件夹协作者 + 云空间只读 scope（drive:drive:readonly 或
+        drive:file:readonly）。§五 数据三层③ FEISHU_FOLDER 模式：全公司往文件夹
+        放文档，同步自动列目录，零逐篇授权。
+        """
+        tokens: list[str] = []
+        page: str | None = None
+        while True:
+            params: dict = {"folder_token": folder_token, "page_size": 100}
+            if page:
+                params["page_token"] = page
+            data = self._get("/open-apis/drive/v1/files",
+                             f"列出文件夹 {folder_token}", params=params)["data"]
+            tokens += [f["token"] for f in data.get("files", [])
+                       if f.get("type") == "docx"]
+            page = data.get("next_page_token")
+            if not page or not data.get("has_more"):
+                return tokens
+
     # ---------------------------------------------------------------- fetch
     def fetch(self) -> Iterator[RawRecord]:
-        for token in self.doc_tokens:
+        tokens = list(self.doc_tokens)                      # 显式列表优先，靠前去重
+        for ft in self.folder_tokens:
+            tokens += [t for t in self._list_folder(ft) if t not in tokens]
+        for token in tokens:
             doc_token, wiki_ref = token, None
             if token.startswith("wiki:"):                       # wiki 节点 token
                 wiki_ref = token.removeprefix("wiki:")
