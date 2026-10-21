@@ -22,6 +22,9 @@ ExecStart=/home/__USER__/.local/bin/uv run --frozen uvicorn adkg.api.main:app --
 # 崩溃即拉起；uvicorn 无 --reload（生产不热载，改代码走 CI 重启）
 Restart=always
 RestartSec=3
+# 嵌入模型已本地缓存：禁用 HF 联网校验（hf-mirror 慢时每次嵌入都超时重试拖慢 /ask）
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
 # 嵌入模型加载峰值 ~500M；限 1.5G 防挤掉同机的 Neo4j/PG
 MemoryMax=1.5G
 NoNewPrivileges=true
