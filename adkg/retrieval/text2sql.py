@@ -157,6 +157,26 @@ def _window_of(question: str, today: date | None = None) -> tuple[str, str] | No
     return None
 
 
+_NUM_CN = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+           "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def _count_of(q: str) -> int:
+    """数量词 → N（top-N 模板）：阿拉伯数字直取；中文数字查表 + 十位组合（十二→12）。
+    解析不了的片段跳过，整体解析不了维持默认 5。2026-10-21 线上：int('一') 曾崩穿 /ask。"""
+    for m in re.findall(r"([一二三四五六七八九十两\d]+)\s*[个条]", q):
+        try:
+            return int(m)
+        except ValueError:
+            pass
+        if m in _NUM_CN:                                    # 单字：一个 / 两条
+            return _NUM_CN[m]
+        if "十" in m:                                       # 组合：十 / 十二 / 二十三
+            a, _, b = m.partition("十")
+            return (_NUM_CN.get(a, 1) if a else 1) * 10 + _NUM_CN.get(b, 0)
+    return 5
+
+
 _SLUG_RE = re.compile(r"(creative_\w+|[A-Z](?:-\d+)+-cp\d+-cr\d+)")
 
 
@@ -180,7 +200,7 @@ def _named_creative_hit(question: str, sql: str) -> bool:
 def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
     """问题 → (模板名, 参数)。模板是固定 SQL 骨架，只有参数可变。"""
     q = question.lower()
-    n = next((int(x) for x in re.findall(r"([一二三四五六七八九十\d]+)\s*[个条]", q)), 5)
+    n = _count_of(q)
     # 问题里点名具体素材（"X 的平均 CPA"）→ 单素材模板
     slug = _named_creative_of(question)
     if slug and ("cpa" in q or "平均" in question or "多少" in question):

@@ -214,6 +214,17 @@ class TestTopMetric模板:
         assert p["metric"] == "cvr" and p["direction"] == "ASC" and p["platform"] == "xhs"
         assert "platform = 'xhs'" in sql
 
+    def test_中文数量词解析(self):
+        # 2026-10-21 线上 500：int('一') 崩在模板入口，问题带「一个/两条」即 /ask 全挂
+        from adkg.retrieval.text2sql import build_sql
+        for q, n in (("表现最好的一个案例", 1), ("最差的两条素材", 2),
+                     ("十二个案例里 CPA 最好的", 12),
+                     ("CPA 最好的素材", 5)):                      # 无数量词维持默认
+            _, p = build_sql(q, self._plan())
+            assert p.get("n") == n, f"{q!r} → n={p.get('n')}，应为 {n}"
+        sql, _ = build_sql("第3个案例", self._plan())            # 不进 top_metric，但不许崩
+        assert "platform" in sql
+
 
 class Test五道闸校验:
     """LLM 生成 SQL 的静态闸门（§7.3：不信任生成的 SQL）。"""
