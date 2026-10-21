@@ -58,6 +58,18 @@ class LLMClient:
         )
         return loads_json(resp.choices[0].message.content or "{}")
 
+    def chat_json_slow(self, system: str, user: str, *, timeout: int = 180) -> dict:
+        """长生成（素材草稿等大证据 prompt）：默认 30s 远不够；单次不重试，失败快回。"""
+        client = self._client.with_options(timeout=timeout, max_retries=0)
+        resp = client.chat.completions.create(
+            model=self._model,
+            response_format={"type": "json_object"},
+            temperature=0,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+        )
+        return loads_json(resp.choices[0].message.content or "{}")
+
     def batch_chat_json(self, system: str, user: str) -> dict:
         """批任务（抽取/批量判分）：走 ADKG_LLM_BATCH_* 配置——coding 端点
         为交互设计限流严格，批式走普通端点免费档（glm-4-flash），缺省回落主配置。"""
