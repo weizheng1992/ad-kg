@@ -17,6 +17,8 @@ export default defineConfig({
       '/actions': 'http://127.0.0.1:8000',
       '/guideline': 'http://127.0.0.1:8000',
       '/ingest': 'http://127.0.0.1:8000',
+      '/creative': 'http://127.0.0.1:8000',
+      '/agent': 'http://127.0.0.1:8000',
     },
   },
 })

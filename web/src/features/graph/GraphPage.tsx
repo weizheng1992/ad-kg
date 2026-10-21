@@ -17,7 +17,7 @@ interface GEdge { source: string; target: string; label?: string }
 
 const SEEDS = ['Person:li', 'Brand:B04', 'Guideline:G-01', 'Metric:cpa']
 
-export function GraphPage({ persona }: { persona: Persona }) {
+export function GraphPage({ persona, focusEntity }: { persona: Persona; focusEntity?: string | null }) {
   const ref = useRef<HTMLDivElement>(null)
   const chart = useRef<echarts.ECharts | null>(null)
   const nodes = useRef<Map<string, GNode>>(new Map())
@@ -96,6 +96,12 @@ export function GraphPage({ persona }: { persona: Persona }) {
     SEEDS.forEach((s) => expand(s))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persona.role, persona.user])
+
+  // 案例生成页确认入图后跳转聚焦新 Case（案例生成 → 图谱的衔接）
+  useEffect(() => {
+    if (focusEntity && chart.current) expand(focusEntity)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusEntity])
 
   return (
     <div className="flex h-[calc(100vh-8.5rem)] flex-col">

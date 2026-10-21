@@ -5,12 +5,13 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
-from adkg.api.routes import actions, ask, guideline, graph, ingest  # noqa: E402
+from adkg.api.routes import actions, agent, ask, creative, guideline, graph, ingest  # noqa: E402
 
 
 def create_app(env: dict[str, str] | None = None) -> FastAPI:
@@ -19,12 +20,22 @@ def create_app(env: dict[str, str] | None = None) -> FastAPI:
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                        allow_headers=["*"])          # dev 演示；生产经反代收敛（§9.7）
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        # 未捕获异常统一 JSON 500：Starlette 默认纯文本 body，HTTP 消费方（smartServe/
+        # web）.json() 会直接抛 SyntaxError 掩盖真错；traceback 仍由 uvicorn 记录
+        return JSONResponse(status_code=500,
+                            content={"detail": f"internal error: {type(exc).__name__}"})
+
     app.state.env = dict(env or os.environ)
     app.include_router(ask.router)
     app.include_router(graph.router)
     app.include_router(actions.router)
     app.include_router(guideline.router)
     app.include_router(ingest.router)
+    app.include_router(creative.router)
+    app.include_router(agent.router)
     return app
 
 

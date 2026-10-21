@@ -170,10 +170,12 @@ ad-kg/
 │       ├── main.py
 │       └── routes/
 │           ├── ask.py             #     POST /ask：三路召回，只收查询类，返回带 provenance 的答案
-│           ├── ingest.py          #     POST /ingest/doc · /ingest/facts · /ingest/assertion（断言写回）
+│           ├── ingest.py          #     POST /ingest/assertion（断言写回）· /ingest/docs · /ingest/case-draft · /ingest/case-commit（文档→案例草稿确认入图）
 │           ├── graph.py           #     GET  /graph/entity：实体、关系展开、来源
 │           ├── actions.py         #     POST /actions/check：操作裁决 allow/deny + 约束依据 + audit_id
-│           └── guideline.py       #     POST /guideline/check：生成前查规范 + 机判阈值校验（时长/尺寸等）
+│           ├── guideline.py       #     POST /guideline/check：生成前查规范 + 机判阈值校验（时长/尺寸等）
+│           ├── creative.py        #     GET /creative/brands · POST /creative/draft：商品知识 × 最好相关案例 × 规范 → 素材草稿
+│           └── agent.py           #     POST /agent/chat：对话式 agent——ReAct 循环调只读工具，产出案例/素材草稿
 │
 ├── sql/                           # 【资产】建表脚本
 │   ├── 001_init.sql               #   chunks / facts / provenance / entity_alias / review_queue / audit_log / ingest_job
@@ -309,6 +311,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 | T+1 ETL 失败 | 原始层已存 API 原始响应，次日自动补跑，缺口行留状态标记 |
 | 抽取失败 | 登记 ingest_job 待重放（原始层保底） |
 | Neo4j 不可用 | graph 路跳过并标注；Postgres 不可用则服务不可用（事实与向量同库，接受该单点） |
+| 端点未捕获异常 | 全局 handler 统一返回 **JSON 500**（`detail` 带异常类名）——Starlette 默认纯文本 body 会让消费方 `.json()` 抛 SyntaxError 掩盖真错（2026-10-21 实测教训） |
 
 ### 7.3 路由决策
 
@@ -430,6 +433,16 @@ X-ADKG-Actor: agent:aigc-01
 
 AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 机判阈值结果（时长 / 尺寸等结构化项，不做语义比对）；`POST /ingest/assertion` 生成后写回断言（`{"subject": "Creative:creative_1007", "predicate": "violates", "object": "Guideline:G-03", "confidence": 0.91}`，provenance 为 conversation / 20）。语义 / 多模态比对归 smartServe 的 AIGC Agent 或人工，AdKG 收口规范检索与断言写回，过权限与审计。
 
+文档→案例三端点（Agent 对话的确认入图链路，亦供 HTTP 消费方直用；定时同步只入 chunks 不建实体，这组端点补"文档 → 图谱实体"最后一跳）：
+
+- `GET /ingest/docs?q=`：列已同步飞书文档（chunks 聚合 + ingest_job 版本；标题取 chunk#0 首行）
+- `POST /ingest/case-draft` `{"doc_id": "feishu:doc:xxx"}`：LLM 抽 Brand / Product / Case 草稿 + [7.4](#74-实体对齐) L1 对齐——命中既有实体复用其 id（`existing: true`），未命中的 Person 一律丢弃（未对齐不入图，[12](#十二约定) 铁律）；**不写任何库**
+- `POST /ingest/case-commit` `{"draft": {…}}`：人工确认后入图。服务端重校验（类 / 谓词 / 三元组契约 / 属性白名单），新实体 provenance 为 **official_doc / 60**（低于 system_of_record，冲突仲裁保护主数据）、`source_id=doc_id` 可溯源；注册 `entity_alias(name)`；写 audit。同文档重复 commit 幂等（Case id 复用 + MERGE）
+
+素材草稿两端点（表单式生成，Agent 对话内同样能力经工具提供）：商品知识（vector 路）× 最好相关案例素材（text2sql top 口径 + 图上下文过滤同类目）× 创意规范（机判阈值）→ LLM 生成素材草稿（前 3 秒钩子 / 分镜脚本 / 投放文案，带证据编号与 provenance）。证据三路全过 PermissionPlan 过滤（§12.4）；草稿为灵感件，投放前须过 `/guideline/check` 机判与人工审。
+
+对话式 agent：`POST /agent/chat` `{"messages": [...]}`——web「Agent 助手」唯一对话入口，**问答与生成合一**。ReAct 循环（纯 JSON 契约）自选只读工具（ask_knowledge / list_brands / search_product_knowledge / search_best_creatives / get_guidelines / list_synced_docs，全部过 PermissionPlan；问答经 ask_knowledge 走 `/ask` 三路管线），产出 `case_draft`（前端确认后仍走 `/ingest/case-commit` 服务端重校验入图——铁律不因 agent 而绕过）或 `creative_drafts`；工具调用轨迹随响应返回可溯源。
+
 ### 9.5 知识怎么进去
 
 | 通道 | 入口 | 机制 |
@@ -440,6 +453,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | CRM / 组织系统主数据 | 定期导出文件走 `/ingest/doc`（演示期即 `data/seed/org_people.csv`） | 解析入图标 system_of_record——authority 顶层级有真实数据来源 |
 | 数仓 / 业务库 | `connectors/warehouse` | 只读 schema 建映射（供 router 理解字段语义），不搬数不直查；指标查询统一走事实层视图（FDW 直查留作扩展） |
 | Agent 断言（AIGC 比对结果等） | `/ingest/assertion` | 带低 authority provenance 入图，冲突按 [12.2](#122-权威度authorityyaml) 进 review_queue |
+| 飞书文档里的新品牌 / 商品 / 案例 | web Agent 对话（`/ingest/case-draft` → `case-commit`） | 定时同步只入 chunks；草稿经人确认后建实体入图（official_doc / 60），Person 未对齐不入图 |
 | 对话中暴露的缺口 | Agent 自动写 `review_queue` | 人审通过后入库 |
 
 每条记录落地都带 provenance 四元组（见 [12.1](#121-provenance-四元组任何入库必带)），缺失即拒绝入库。
@@ -461,7 +475,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 | 页面 | 谁用 | 端点 |
 |---|---|---|
-| 问答 + 证据 | 所有人 | `/ask` |
+| Agent 助手（问答 + 生成合一） | 所有人（证据与草稿随角色过滤） | `/agent/chat`（问答内部走 `/ask` 三路管线；生成自选只读工具后出草稿，案例草稿仍需确认入图） |
 | 图谱展开 | AE、优化师 | `/graph/entity`（Case/Product/Creative 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数；Creative 投放未对齐时不出卡——§7.4 对齐漏斗的诚实边界） |
 | 规范检查 | 创意 / AIGC | `/guideline/check` |
 | 人审队列 | 知识运营 | `review_queue` + `/ingest` |

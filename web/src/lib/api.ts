@@ -62,19 +62,103 @@ export const ROLES: { role: string; user: string; label: string }[] = [
   { role: 'finance', user: 'Person:zhou', label: '财务·周荃' },
 ]
 
+/** 错误响应 detail：500 未捕获异常时 body 是纯文本（非 JSON），先 text 再安全 parse */
+async function errorDetail(r: Response): Promise<string> {
+  const t = await r.text()
+  try {
+    return (JSON.parse(t) as { detail?: string }).detail ?? t.slice(0, 200)
+  } catch {
+    return t.slice(0, 200)
+  }
+}
+
 export async function ask(question: string, role: string, user: string): Promise<AskResponse> {
   const r = await fetch('/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Adkg-Role': role },
     body: JSON.stringify({ question, role, user }),
   })
-  if (!r.ok) throw new Error(`${r.status} ${(await r.json()).detail ?? ''}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
 }
 
 export async function graphEntity(id: string, role: string, user: string): Promise<GraphResponse> {
   const p = new URLSearchParams({ id, role, user })
   const r = await fetch(`/graph/entity?${p}`, { headers: { 'X-Adkg-Role': role } })
-  if (!r.ok) throw new Error(`${r.status}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+// ---------- 案例草稿（agent 产出物 → /ingest/case-commit 确认入图，README §9.4） ----------
+
+export interface DraftNode {
+  id: string
+  name: string
+  props: Record<string, unknown>
+  existing: boolean
+  same_doc?: boolean
+}
+
+export interface CaseDraft {
+  doc_id: string
+  case: DraftNode | null
+  brand: DraftNode | null
+  products: DraftNode[]
+  persons: { id: string; name: string; aligned: boolean }[]
+  relations: { source: string; predicate: string; target: string }[]
+  warnings: string[]
+}
+
+export interface CommitResult {
+  status: string
+  case_id: string
+  entities: number
+  relations: number
+  written: { id: string; name?: string }[]
+  warnings: string[]
+}
+
+export async function caseCommit(draft: CaseDraft, persona: Persona): Promise<CommitResult> {
+  const r = await fetch('/ingest/case-commit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Adkg-Role': persona.role },
+    body: JSON.stringify({ draft, role: persona.role, user: persona.user }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+// ---------- 素材草稿（agent 产出物形态，README §9.4） ----------
+
+export interface CreativeDraftItem {
+  title: string
+  format: string
+  platform: string
+  hook_3s: string
+  script: string | string[]          // LLM 可能返回逐行数组
+  copy: string | string[]
+  based_on?: string[]
+}
+
+// ---------- Agent 对话（/agent/chat，README §9.7） ----------
+
+export interface AgentTraceStep { tool: string; args: Record<string, unknown>; result: string }
+
+export interface AgentChatResult {
+  reply: string
+  case_draft: CaseDraft | null
+  creative_drafts: CreativeDraftItem[] | null
+  trace: AgentTraceStep[]
+}
+
+export async function agentChat(
+  messages: { role: string; content: string }[], persona: Persona,
+): Promise<AgentChatResult> {
+  const r = await fetch('/agent/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Adkg-Role': persona.role },
+    body: JSON.stringify({ messages, role: persona.role, user: persona.user }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
 }

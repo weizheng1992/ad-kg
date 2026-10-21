@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ROLES } from '@/lib/api'
 import { canSwitchRoles, type Session } from '@/lib/accounts'
 
-export type Tab = 'ask' | 'graph'
+export type Tab = 'graph' | 'agent'
 
 export function Header({ tab, onTab, session, persona, onPersona, onLogout }: {
   tab: Tab
@@ -24,7 +24,7 @@ export function Header({ tab, onTab, session, persona, onPersona, onLogout }: {
       </div>
 
       <nav className="ml-3 flex gap-1.5">
-        <Button variant={tab === 'ask' ? 'default' : 'outline'} size="sm" onClick={() => onTab('ask')}>问答</Button>
+        <Button variant={tab === 'agent' ? 'default' : 'outline'} size="sm" onClick={() => onTab('agent')}>Agent 助手</Button>
         <Button variant={tab === 'graph' ? 'default' : 'outline'} size="sm" onClick={() => onTab('graph')}>图谱</Button>
       </nav>
 
