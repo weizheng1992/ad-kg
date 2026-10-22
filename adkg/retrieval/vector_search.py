@@ -15,22 +15,25 @@ def _vec_literal(v: list[float]) -> str:
 def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> dict:
     if embed_fn is None:
         return {"evidence": [], "degraded": True, "reason": "无嵌入能力（缺本地模型）"}
-    try:
-        vec = _vec_literal(embed_fn([question])[0])
-    except Exception:
-        return _keyword_fallback()
-
-    where, where_params = ["embedding IS NOT NULL"], []
+    # 权限子句先建（主路与关键词兜底共用——降级检索不降权限，§12.4 fail-closed）；
+    # 主路维持"未分类=公共内容可检索"（类子句自带 OR entity_class IS NULL），
+    # entity_class IS NOT NULL 只加在兜底（兜底按类排序需要非空类）——不得进主路，
+    # 否则未分类公共块整体从向量检索消失（2026-10-22 二轮验证回归抓出）
+    perm, perm_params = [], []
     classes = plan.metadata_filter.get("entity_class__in", [])
     if classes:
-        where.append("(entity_class = ANY(%s) OR entity_class IS NULL)")   # 未分类=公共内容
-        where_params.append(classes)
+        perm.append("(entity_class = ANY(%s) OR entity_class IS NULL)")   # 未分类=公共内容
+        perm_params.append(classes)
     visible = list(plan.visible_entity_ids)
     if visible:
-        where.append("(case_id = ANY(%s) OR brand_id = ANY(%s) OR case_id IS NULL)")
-        where_params += [visible, visible]
+        perm.append("(case_id = ANY(%s) OR brand_id = ANY(%s) OR case_id IS NULL)")
+        perm_params += [visible, visible]
+    where = ["entity_class IS NOT NULL"] + perm            # 兜底用：非空类 + 权限子句
+    where_params = list(perm_params)
 
-    # 嵌入未命中/失败时的关键词兜底（§7.2 降级矩阵：缺席不如降级检索）
+    # 嵌入未命中/失败时的关键词兜底（§7.2 降级矩阵：缺席不如降级检索）；
+    # 必须先于 embed 调用定义——2026-10-22 验证：定义在 try 之后时 embed 一抛异常，
+    # 兜底引用未定义局部名，UnboundLocalError 直接把 /ask 打成 500
     def _keyword_fallback():
         import re as _re
         stop = "的了吗呢吧啊是有在和与及对从被把"
@@ -47,8 +50,9 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
         with psycopg.connect(dsn, options="-c statement_timeout=3000") as conn:
             with conn.cursor() as cur:
                 cur.execute(f"SELECT doc_id, chunk_index, text, 0.5 FROM chunks"
-                            f" WHERE entity_class IS NOT NULL AND ({like})"
-                            f" ORDER BY (entity_class='Guideline') DESC LIMIT 5", kws)
+                            f" WHERE {' AND '.join(where)} AND ({like})"
+                            f" ORDER BY (entity_class='Guideline') DESC LIMIT 5",
+                            [*where_params, *kws])
                 rows = cur.fetchall()
         return {"evidence": [{
             "type": "doc", "ref": f"chunk:{r[0]}#{r[1]}", "quote": r[2][:200],
@@ -56,13 +60,18 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
             "provenance": {"source_type": "official_doc", "authority": 60},
         } for r in rows], "degraded": False}
 
+    try:
+        vec = _vec_literal(embed_fn([question])[0])
+    except Exception:
+        return _keyword_fallback()
+
     sql = (f"""
         SELECT doc_id, chunk_index, text, score FROM (
           SELECT doc_id, chunk_index, text,
                  1 - (embedding <=> %s::vector) AS score,
                  row_number() OVER (PARTITION BY coalesce(entity_class, '~')
                                     ORDER BY embedding <=> %s::vector) AS rn
-          FROM chunks WHERE {' AND '.join(where)}
+          FROM chunks WHERE embedding IS NOT NULL{''.join(' AND ' + c for c in perm)}
         ) t WHERE rn <= 3 ORDER BY score DESC LIMIT {int(limit)}""")
     with psycopg.connect(dsn, options="-c statement_timeout=3000") as conn:
         with conn.cursor() as cur:

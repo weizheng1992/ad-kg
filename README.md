@@ -2,7 +2,7 @@
 
 > 把"文档知识"与"平台效果数据"按同一套领域本体建模，用知识图谱 + 向量 + Text2SQL 三路召回回答跨系统问题，并以本体为边界对 Agent 的检索与操作做管控，全链路可溯源。
 
-**▶ 在线演示**：<http://152.136.165.95>（数据全合成；演示账号在登录页自取，凭据不入文档）
+**▶ 在线演示**：<http://152.136.165.95>（数据全合成）
 
 - 业务域：App 引流效果广告（抖音 / 小红书投放），主线实体是**案例**（proposal → live → closed）
 - 定位：知识与管控层。它不是 Agent 引擎，而是 Agent 引擎（如 smartServe）"查什么、能动什么"的依据
@@ -598,7 +598,7 @@ optimizer:                          # 内部角色：类白名单 + 属性黑名
 client:                             # 外部角色：一律白名单
   classes: [Case, Campaign, Creative, Metric]
   allow_properties: [Case.stage, Campaign.status]
-  metrics_allow: [cost, ctr, cvr, conversion]
+  metrics_allow: [cost, ctr, cvr, conversions]
   actions: [read]
   row_filter: Person(external_for)->Brand<-for_brand-Case<-belongs_to-Campaign
 ```

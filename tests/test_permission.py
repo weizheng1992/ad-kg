@@ -47,7 +47,8 @@ class TestPermissionPlanner:
         assert "cpa" not in p.allowed_columns and "roi" not in p.allowed_columns
 
         pc = self._planner().plan("client")
-        assert set(pc.allowed_columns) == {"cost", "ctr", "cvr", "conversion"}
+        # 2026-10-21 夜检 B7：单数 conversion 对不上统一列名 conversions，客户看不到转化数
+        assert set(pc.allowed_columns) == {"cost", "ctr", "cvr", "conversions"}
 
     def test_外部角色带脱敏规则_内部不带(self):
         assert self._planner().plan("client").mask_rules == ["person_name"]

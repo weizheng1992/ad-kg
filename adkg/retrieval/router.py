@@ -11,12 +11,33 @@ from dataclasses import dataclass
 
 from adkg.models import RouteStep, RouterPlan
 
-_OPS = ("删除", "删掉", "暂停", "停掉", "下掉", "改回", "改成", "迁移")
+_OPS = ("删除", "删掉", "暂停", "停掉", "下掉", "改回", "改成", "迁移",
+        "停投", "关停", "关掉", "下线")
+# 操作词多为动宾两用（"关停的案例列表"是状态查询不是操作）——有检索标记即降检索路；
+# 名词性标记（列表/清单/看看/查一下…）与被动/疑问标记同权重；不含"帮我/给我"
+# （"帮我删掉"仍是祈使操作）
+_RETRIEVAL_MARK = ("哪些", "谁", "多少", "吗", "被", "已", "怎么样", "状态",
+                   "列表", "清单", "看看", "查一下", "查查", "拉一下", "导出", "明细")
 _FACT = ("多少", "消耗", "cpa", "ctr", "cvr", "roi", "最差", "最好", "排名",
-         "成本", "转化", "趋势", "均值")
+         "成本", "转化", "趋势", "均值", "最高", "最低", "最多", "最少",
+         "最大", "最小", "花钱", "烧钱", "销量", "订单", "成交", "gmv",
+         "点击(?!率)", "曝光", "展现", "跑量", "爆量", "起量")   # 点击负向预见：点击率≠点击量
 _GRAPH = ("谁", "哪些案例", "哪些品牌", "名下", "负责", "对接", "关系链", "多少个",
           "目标人群", "年龄段", "人群画像", "定向人群")   # 实体属性型问题走属性证据（§7.3）
 _CONCEPT = ("规范", "要求", "时长", "规定", "vi", "广告法", "尺寸", "口径")
+# 口径/定义类短语：问的是"这个词什么意思"而非数值——命中 _FACT 前先归 concept；
+# 但带强聚合/方向词（"按新口径 CPA 最差"）仍是查数题，不得劫持；
+# 定义尾（"排名是什么意思"）在场时主语词不算查数信号
+_DEF = ("什么意思", "定义", "口径", "怎么算", "如何计算", "计算口径")
+_DEF_EXCLUDE = ("最差", "最好", "最佳", "最高", "最低", "最多", "最少", "最大", "最小",
+                "排名", "多少", "top", "趋势", "合计", "总共", "汇总")
+_DEF_TAIL = ("什么意思", "怎么算", "怎么界定", "如何计算", "如何界定",
+             "定义是什么", "口径是什么", "的定义", "的口径")
+# 概念救实的硬聚合信号：规范词与指标词同现时，有这些才让位给 fact。
+# 定语型指标词（跑量素材/爆量视频/花钱最多的素材）不作硬信号——选实体不是查数；
+# 多少/最X 亦不拦（"logo 最小尺寸是多少"是概念题）
+_NUMSIG_HARD = ("排名", "最差", "最好", "消耗", "成本", "花费",
+                "cpa", "ctr", "cvr", "roi", "趋势", "均值")
 _ATTR = ("有没有关系", "为什么", "归因", "原因", "和.*规范")
 
 
@@ -61,10 +82,16 @@ def _plan_for(intent: str) -> RouterPlan:
 
 def rule_route(question: str) -> RouteDecision:
     q = question.lower()
-    if _hits(q, _OPS):
+    if _hits(q, _OPS) and not any(m in q for m in _RETRIEVAL_MARK):
         return RouteDecision("operation", None, 0.95)
     if _hits(q, _ATTR) and (_hits(q, _FACT) or _hits(q, _CONCEPT)):
         return RouteDecision("attribution", _plan_for("attribution"), 0.85)
+    if _hits(q, _DEF) and (_hits(q, _FACT) or _hits(q, _CONCEPT)) \
+            and (not _hits(q, _DEF_EXCLUDE) or _hits(q, _DEF_TAIL)):
+        return RouteDecision("concept", _plan_for("concept"), 0.85)
+    if _hits(q, _CONCEPT) and _hits(q, _FACT) and not _hits(q, _NUMSIG_HARD):
+        # 概念救实："logo 最小尺寸规范""跑量素材的时长要求"——规范词在场且无硬聚合信号
+        return RouteDecision("concept", _plan_for("concept"), 0.85)
     if _hits(q, _FACT):
         return RouteDecision("fact", _plan_for("fact"), 0.9)
     if _hits(q, _GRAPH):

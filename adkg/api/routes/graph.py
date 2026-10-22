@@ -101,7 +101,8 @@ def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
                     " round(sum(conversions)::numeric / NULLIF(sum(clicks), 0), 4) AS cvr,"
                     " round(sum(cost)::numeric / NULLIF(sum(conversions), 0), 2) AS cpa,"
                     " string_agg(DISTINCT platform::text, ',') AS platforms,"
-                    " count(*) AS days, min(date)::text AS first_day, max(date)::text AS last_day"
+                    " count(DISTINCT date) AS days,"
+                    " min(date)::text AS first_day, max(date)::text AS last_day"
                     " FROM unified_metrics WHERE NOT unmatched AND "
                     f"{dim_col} = %(id)s" + predicate,
                     {"id": entity_id})
@@ -110,7 +111,10 @@ def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
         return None                                          # 统计失败不阻塞图谱（§7.2 降级）
     if not row or row["days"] == 0:
         return None
-    return dict(row)
+    # 指标列出口过白名单（§12.4）：统计卡不得绕过 metrics 权限——client 不见 cpa、
+    # creative 不见 cost/cpa（deny 派生联动已在 PermissionPlanner 展开，这里只做成员过滤）
+    return {k: v for k, v in row.items()
+            if k not in ("cost", "ctr", "cvr", "cpa") or k in plan.allowed_columns}
 
 
 def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
@@ -132,15 +136,20 @@ def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
         with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn:
             with conn.cursor() as cur:
+                # 投放侧预聚合到 product×day：unified 粒度是 creative×platform×day，
+                # 直接 join 会把 orders/gmv 按投放行数放大（2026-10-22 与 text2sql 同修）；
+                # 行谓词同注入（与 _invest_stats 同一道闸）——购买率分母只计权限内案例
+                pred = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
                 cur.execute(
                     "SELECT sum(o.orders) AS orders,"
                     " round(sum(o.gmv)::numeric, 2) AS gmv,"
-                    " round(sum(o.orders) FILTER (WHERE u.clicks IS NOT NULL)::numeric"
-                    "   / NULLIF(sum(u.clicks), 0), 4) AS purchase_rate"
+                    " round(sum(o.orders) FILTER (WHERE uc.clicks IS NOT NULL)::numeric"
+                    "   / NULLIF(sum(uc.clicks), 0), 4) AS purchase_rate"
                     " FROM product_orders_daily o"
-                    " LEFT JOIN unified_metrics u"
-                    " ON u.product_id = o.product_id AND u.date = o.date"
-                    " AND NOT u.unmatched"
+                    " LEFT JOIN (SELECT date, sum(clicks) AS clicks"
+                    "   FROM unified_metrics WHERE product_id = %(id)s"
+                    "   AND NOT unmatched" + pred +
+                    "   GROUP BY date) uc ON uc.date = o.date"
                     " WHERE o.product_id = %(id)s", {"id": product_id})
                 row = cur.fetchone()
     except psycopg.Error:

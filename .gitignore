@@ -24,3 +24,6 @@ web/dist/
 
 # 浏览器测试产物
 .playwright-mcp/
+
+# 飞书授权二维码残留（一次性产物）
+auth_qr.png

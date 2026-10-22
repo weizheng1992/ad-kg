@@ -225,6 +225,160 @@ class TestTopMetric模板:
         sql, _ = build_sql("第3个案例", self._plan())            # 不进 top_metric，但不许崩
         assert "platform" in sql
 
+    def test_最高最低与花钱最多方向(self):
+        """夜检 D2/A11：最高/最多/最低/最少是绝对方向词，不随成本型反转；花钱/烧钱→cost；
+        "最近一个月"口语窗按近 30 天解析。"""
+        from adkg.retrieval.text2sql import build_sql
+        _, p = build_sql("消耗最高的十个素材", self._plan())
+        assert p["metric"] == "cost" and p["direction"] == "DESC" and p["n"] == 10
+        _, p = build_sql("CPA 最低的素材", self._plan())
+        assert p["metric"] == "cpa" and p["direction"] == "ASC"   # 最低：与成本型判断无关
+        _, p = build_sql("最近一个月花钱最多的创意", self._plan())
+        assert p["metric"] == "cost" and p["direction"] == "DESC" and p["window"]
+        assert p["n"] == 5    # "最近一个月"的"一个"是时长不是数量词，n 维持默认
+
+    def test_交易语义优先于排名词(self):
+        """夜检 D7："卖得最好/购买率最高/订单最多"是交易语义，不得落缺省 cpa 的
+        top_metric（问交易答投放）。"""
+        from adkg.retrieval.text2sql import build_sql
+        for q in ("最近卖得最好的是哪几个牌子", "购买率最高的商品", "上个月订单最多的产品"):
+            sql, p = build_sql(q, self._plan())
+            assert "product_orders_daily" in sql and "purchase_rate" in sql, q
+
+    def test_交易模板预聚合与行谓词注入(self):
+        """unified 粒度 creative×platform×day：join 前必须预聚合到 product×day
+        （防 orders/gmv 按投放行数放大）；行权限谓词注入预聚合内，且用产品级半连接
+        fail-closed——权限内产品 orders/gmv 仍全量、权限外产品一行不出；
+        无谓词保留无覆盖 SKU（诚实，不编数）。"""
+        from adkg.retrieval.text2sql import build_sql
+        sql, _ = build_sql("最近的销量情况", self._plan())
+        assert "GROUP BY 1, 2" in sql and "IN (SELECT product_id FROM uc)" not in sql
+        scoped = self._plan().model_copy(
+            update={"sql_predicate": "case_id IN ('Case:C-2025-003')"})
+        sql2, _ = build_sql("最近的销量情况", scoped)
+        assert "case_id IN ('Case:C-2025-003')" in sql2 \
+            and "o.product_id IN (SELECT product_id FROM uc)" in sql2
+
+    def test_商品品牌粒度排名不回归(self):
+        """2026-10-22 对抗验证回归：排名分支曾吞掉商品粒度——group 按问句实体词判。"""
+        from adkg.retrieval.text2sql import build_sql
+        _, p = build_sql("消耗最高的商品", self._plan())
+        assert p["group"] == "product_id" and p["direction"] == "DESC"
+        _, p = build_sql("各商品 CPA 最低", self._plan())
+        assert p["group"] == "product_id" and p["n"] == 20 and p["direction"] == "ASC"
+        _, p = build_sql("哪个品牌的抖音消耗最高", self._plan())
+        assert p["group"] == "brand_id" and p["platform"] == "douyin"
+        _, p = build_sql("消耗最高的十个素材", self._plan())
+        assert p["group"] == "creative_id" and p["n"] == 10
+
+    def test_量词与复合词映射(self):
+        """词长降序匹配：转化率先于转化、千次曝光成本先于成本；量词/投产比入口。"""
+        from adkg.retrieval.text2sql import build_sql
+        for q, m in (("转化量最高的素材", "conversions"), ("转化数最多的素材", "conversions"),
+                     ("转化率最高的素材", "cvr"), ("点击最多的素材", "clicks"),
+                     ("曝光最多的素材", "impressions"), ("千次曝光成本最低", "cpm"),
+                     ("转化成本最高的素材", "cpa"), ("跑量最多的素材", "cost"),
+                     ("投产比最高的素材", "roi"), ("烧钱最凶的素材", "cost")):
+            _, p = build_sql(q, self._plan())
+            assert p["metric"] == m, f"{q!r} → {p['metric']}，应为 {m}"
+        _, p = build_sql("烧钱最凶的素材", self._plan())
+        assert p["direction"] == "DESC"                        # 最凶 = 绝对方向词
+
+    def test_roi不可算降级不炸(self):
+        """roi 视图无列也无公式（需收入回传）：排名问句降级平台汇总 + 口径 note，
+        永不生成 sum(roi)（2026-10-22 验证：曾直接把 /ask 打成 500）。"""
+        from adkg.retrieval.text2sql import build_sql
+        sql, p = build_sql("roi 最高的素材", self._plan())
+        assert "sum(roi)" not in sql and "unified_metrics" in sql
+        assert p.get("note") and "不可算" in p["note"]
+
+    def test_平台汇总与天数口径(self):
+        """汇总投影一律汇总比（禁裸 sum(cvr) 出 120% 转化率）；days=投放天数（DISTINCT date）。"""
+        from adkg.retrieval.text2sql import build_sql
+        cli = self._plan().model_copy(update={"allowed_columns":
+                                              ["cost", "ctr", "cvr", "conversions"]})
+        sql, _ = build_sql("近7天转化汇总", cli)
+        assert "NULLIF(sum(clicks), 0)" in sql and "sum(cvr)" not in sql
+        sql2, _ = build_sql("CPA 最差的素材", self._plan())
+        assert "count(DISTINCT date) AS days" in sql2
+        assert "HAVING count(DISTINCT date) >= 3" in sql2
+
+    def test_交易模板排序键与方向(self):
+        """交易榜排序按所问指标与方向，不再恒 ORDER BY orders DESC。"""
+        from adkg.retrieval.text2sql import build_sql
+        sql, _ = build_sql("购买率最高的商品", self._plan())
+        assert "ORDER BY purchase_rate DESC NULLS LAST" in sql
+        sql, _ = build_sql("卖得最差的商品", self._plan())
+        assert "ORDER BY orders ASC NULLS LAST" in sql
+        sql, _ = build_sql("gmv 最高的商品", self._plan())
+        assert "ORDER BY gmv DESC NULLS LAST" in sql
+
+    def test_时间窗口泛化(self):
+        """口语窗：昨天/今天/前天/本周(周一起)/上周/最?近|过去 N 天日周月（中文数字可）。"""
+        from datetime import date
+
+        from adkg.retrieval.text2sql import _window_of
+        t = date(2026, 10, 22)                                # 周四
+        assert _window_of("昨天的消耗", t) == ("2026-10-21", "2026-10-21")
+        assert _window_of("近一周的消耗", t) == ("2026-10-16", "2026-10-22")
+        assert _window_of("上周的消耗", t) == ("2026-10-12", "2026-10-18")
+        assert _window_of("最近3个月的消耗", t) == ("2026-07-25", "2026-10-22")
+        assert _window_of("过去30天的消耗", t) == ("2026-09-23", "2026-10-22")
+        assert _window_of("近一个月", t) == ("2026-09-23", "2026-10-22")
+        assert _window_of("没有时间词", t) is None
+
+    def test_数量词时间前缀规则(self):
+        """时长跳过仅限"时间指示词+数量词+月/年/周"——"三个月饼"仍计 3。"""
+        from adkg.retrieval.text2sql import _count_of
+        assert _count_of("三个月饼礼盒") == 3
+        assert _count_of("最近一个月花钱最多的创意") == 5
+        assert _count_of("前2个月的订单") == 5
+        assert _count_of("近一周的三个素材") == 3
+        assert _count_of("top3 素材") == 3                     # top-N 直取
+
+    def test_案例粒度家族外指标进投影(self):
+        """case 粒度投影固定家族四列，ORDER BY 引用投影外指标列会 42803 空证据
+        （2026-10-22 二轮验证回归）：家族外指标必须追加进投影。"""
+        from adkg.retrieval.text2sql import build_sql
+        for q, m in (("各案例转化量排名", "conversions"),
+                     ("哪个案例曝光最大", "impressions"), ("各案例千次曝光成本对比", "cpm")):
+            sql, p = build_sql(q, self._plan())
+            assert p.get("group") == "case_id", q
+            assert f"AS {m}" in sql, f"{q!r} 排序指标未进投影: {sql}"
+        # 中心词是素材 → creative 粒度（单指标投影，无 42803 问题）
+        sql, p = build_sql("案例点击最多的素材是哪个", self._plan())
+        assert p["group"] == "creative_id" and "AS clicks" in sql
+
+    def test_裸排名与中心词粒度(self):
+        """裸排名（无方向词）多的在前；粒度取问句最右实体词（中心词）。"""
+        from adkg.retrieval.text2sql import build_sql
+        _, p = build_sql("素材转化量排名", self._plan())
+        assert p["direction"] == "DESC"                     # 曾排成 ASC 最少在前
+        _, p = build_sql("案例展现最多的计划", self._plan())
+        assert p["group"] == "campaign_id"                  # 中心词是计划非案例
+        _, p = build_sql("消耗最高的是哪些案例", self._plan())
+        assert p["group"] == "case_id"
+
+    def test_毛利与绝对年月窗(self):
+        """毛利率→gross_margin 走不可算降级+note；绝对年月窗可解析（空窗回退有据）。"""
+        from adkg.retrieval.text2sql import _window_of, build_sql
+        from datetime import date
+        sql, p = build_sql("毛利率最高的品牌", self._plan())
+        assert "gross_margin" not in sql and p.get("note") and "不可算" in p["note"]
+        assert _window_of("2027年1月卖得最好的商品", date(2026, 10, 22)) == \
+            ("2027-01-01", "2027-01-31")
+        assert _window_of("2026年整体消耗", date(2026, 10, 22)) == \
+            ("2026-01-01", "2026-12-31")
+
+    def test_素材中心词与统计触发词(self):
+        """三轮验证：素材/创意也进中心词候选；统计分支触发词认量词族（各案例转化量）。"""
+        from adkg.retrieval.text2sql import build_sql
+        _, p = build_sql("品牌下消耗最高的素材", self._plan())
+        assert p["group"] == "creative_id"                 # 中心词是素材，不被品牌劫持
+        sql, p = build_sql("各案例的转化量", self._plan())
+        assert p.get("group") == "case_id" and p["metric"] == "conversions"
+        assert "AS conversions" in sql
+
 
 class Test五道闸校验:
     """LLM 生成 SQL 的静态闸门（§7.3：不信任生成的 SQL）。"""
@@ -253,6 +407,12 @@ class Test五道闸校验:
         err, _ = validate_sql(
             "SELECT gross_margin FROM unified_metrics LIMIT 5", self._plan())
         assert err and "gross_margin" in err
+        # 别名走私（2026-10-22 二轮验证）：deny cost 的角色，sum(cost) AS cost 仍须拒
+        deny_cost = self._plan().model_copy(update={"allowed_columns":
+                                                    ["ctr", "cvr", "conversions"]})
+        err2, _ = validate_sql(
+            "SELECT sum(cost) AS cost FROM unified_metrics LIMIT 5", deny_cost)
+        assert err2 and "cost" in err2
 
     def test_谓词强制包裹(self):
         from adkg.retrieval.text2sql import enforce_predicate
@@ -261,9 +421,10 @@ class Test五道闸校验:
                               sql_predicate="brand_id IN ('B04')")
         wrapped = enforce_predicate("SELECT platform, sum(cost) FROM unified_metrics LIMIT 5", plan)
         assert wrapped.startswith("SELECT * FROM (") and "brand_id IN ('B04')" in wrapped
-        # 已含 brand_id 的不再包
-        assert enforce_predicate("SELECT brand_id FROM unified_metrics", plan) == \
-            "SELECT brand_id FROM unified_metrics"
+        # 无条件包裹（2026-10-22 二轮验证）：提及 brand_id ≠ 已施加行过滤——
+        # 见字样即跳过曾让 client 跨品牌全量泄漏
+        wrapped2 = enforce_predicate("SELECT brand_id FROM unified_metrics LIMIT 5", plan)
+        assert wrapped2.startswith("SELECT * FROM (") and "brand_id IN ('B04')" in wrapped2
 
     def test_生成失败回落模板语义(self):
         from adkg.retrieval.text2sql import generate_sql
@@ -271,6 +432,34 @@ class Test五道闸校验:
                             "任何问题", self._plan()) is None
         # 返回危险 SQL 也被闸门拒
         assert generate_sql(lambda s, u: {"sql": "DROP TABLE chunks"}, "q", self._plan()) is None
+
+    def test_prompt推荐模式不再误杀_语义注入兼容别名(self):
+        """三轮验证：extract(month from date) 曾系统性误杀（from 撞表扫描、month 撞列扫描）；
+        值级越权闸弃用标量子查询/窗口函数；enforce_semantics 兼容表别名。"""
+        from adkg.models import PermissionPlan
+        from adkg.retrieval.text2sql import enforce_semantics, generate_sql, validate_sql
+        sql = ("SELECT creative_id, string_agg(DISTINCT platform::text, ',') AS platforms,"
+               " round(sum(cost)::numeric/NULLIF(sum(impressions),0),4) AS ctr,"
+               " extract(month from date) AS mon"
+               " FROM unified_metrics WHERE date >= current_date - interval '30 days'"
+               " GROUP BY 1 ORDER BY ctr DESC LIMIT 5")
+        # ctr 公式分母要 impressions——测试 plan 补上（无 impressions 的角色拒它是闸的正确行为）
+        plan_full = self._plan().model_copy(update={"allowed_columns":
+                                                    ["cost", "impressions", "clicks",
+                                                     "conversions", "ctr", "cvr", "cpa"]})
+        err, _ = validate_sql(sql, plan_full)
+        assert err is None, err
+        out = enforce_semantics("SELECT u.platform FROM unified_metrics AS u LIMIT 5")
+        assert "AS u WHERE NOT unmatched" in out
+        # 值级越权闸：有行谓词的角色，标量子查询把跨权限聚合值带出去 → 弃用生成
+        scoped = PermissionPlan(allowed_columns=["cost"],
+                                sql_predicate="brand_id IN ('B04')")
+        gen = ("SELECT platform, round(sum(cost)::numeric,2) AS cost,"
+               " (SELECT sum(cost) FROM unified_metrics) AS total"
+               " FROM unified_metrics GROUP BY 1 LIMIT 5")
+        assert generate_sql(lambda s, u: {"sql": gen}, "各平台消耗", scoped) is None
+        # 无谓词角色不受此闸影响
+        assert generate_sql(lambda s, u: {"sql": gen}, "各平台消耗", self._plan()) is not None
 
     def test_点名素材必须落在该素材(self):
         # 口径闸：全局均值冒充单素材答案 → 弃用生成回模板（G08/G31/G35 实测教训）

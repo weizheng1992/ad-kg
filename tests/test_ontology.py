@@ -131,5 +131,6 @@ class TestPermissions:
         assert opt["metrics_deny"] == ["gross_margin"]
         assert opt["row_filter"] == "Person(responsible_for)->Case<-belongs_to-Campaign-uses->Creative"
         client = self.ROLES["client"]
-        assert client["metrics_allow"] == ["cost", "ctr", "cvr", "conversion"]
+        # conversions 与统一列名一致（2026-10-21 夜检 B7：单数曾致客户看不到转化数）
+        assert client["metrics_allow"] == ["cost", "ctr", "cvr", "conversions"]
         assert client["row_filter"] == "Person(external_for)->Brand<-for_brand-Case<-belongs_to-Campaign"

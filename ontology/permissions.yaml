@@ -44,7 +44,7 @@ roles:
     external: true
     classes: [Case, Campaign, Creative, Metric]
     allow_properties: [Case.stage, Campaign.status]
-    metrics_allow: [cost, ctr, cvr, conversion]
+    metrics_allow: [cost, ctr, cvr, conversions]
     actions: [read]
     row_filter: Person(external_for)->Brand<-for_brand-Case<-belongs_to-Campaign
 
