@@ -7,6 +7,8 @@ assemble → audit（/ask 按次入审计，§12.4）。
 """
 from __future__ import annotations
 
+import time
+
 import psycopg
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -47,7 +49,7 @@ def _llm(request: Request):
         try:
             from adkg.llm import LLMClient
             client = LLMClient()
-            client.chat_json("ping", '返回 {"ok": true}')
+            client.chat_json("ping", '返回 {"ok": true}', timeout=12, max_retries=0)
             request.app.state.llm = client
         except Exception:
             return None                                  # 本问降级，不缓存失败
@@ -78,10 +80,12 @@ def ask(request: Request, body: dict,
         raise HTTPException(401, f"未知角色：{role}")
     plan = planner.plan(role, person=person)
     llm = _llm(request)
+    t0 = time.monotonic()                                 # 交互路时延预算（§7.2）
     decision = rule_route(question)
     if llm is not None and decision.confidence < 0.8:     # 强关键词信规则，LLM 只兜弱置信
         try:
-            decision = llm_route(question, llm.chat_json)
+            decision = llm_route(question,
+                                 lambda s, u: llm.chat_json(s, u, timeout=15, max_retries=0))
         except Exception:
             pass                                          # 回规则（§7.2）
 
@@ -100,7 +104,8 @@ def ask(request: Request, body: dict,
             dep = step.params.get("entity_ids_from")
             entity_ids = results.get(dep, {}).get("entity_ids") if dep else None
             r = text2sql.run(question, plan, env["ADKG_PG_RO_DSN"], entity_ids,
-                             generator=llm.chat_json if llm else None)
+                             generator=(lambda s, u: llm.chat_json(s, u, timeout=30, max_retries=0))
+                             if llm else None)
         else:
             r = vector_search.search(question, plan, env["ADKG_PG_DSN"],
                                      embed_fn=llm.embed if llm else None)
@@ -146,8 +151,9 @@ def ask(request: Request, body: dict,
     _readable_refs(out["evidence"], name_map)
 
     answer, answer_source = _summarize(question, out, decision), "template"
-    if llm is not None and out["evidence"]:
-        try:                                                # agent 总结：只依据证据（§11.3 溯源）
+    if llm is not None and out["evidence"] and time.monotonic() - t0 < 60:
+        try:                                                # agent 总结：只依据证据（§11.3 溯源）；
+                                                            # 超预算（前序已 ≥60s）不再发起（§7.2）
             answer, answer_source = _agent_answer(llm, question, out["evidence"], name_map), "agent"
         except Exception:
             pass                                            # 回模板（§7.2）
@@ -216,6 +222,10 @@ def _readable_refs(evidence: list[dict], name_map: dict[str, str]) -> None:
         ev["readable_ref"] = text
 
 
+_SLIM_DROP = {"ref", "provenance", "filtered", "entity_ids", "sql"}
+# 总结 prompt 不带：溯源锚 ref / 四元组 provenance 只进响应（前端/评测用），进 prompt 纯耗 token
+
+
 def _agent_answer(llm, question: str, evidence: list[dict],
                   name_map: dict[str, str] | None = None) -> str:
     import json
@@ -224,10 +234,13 @@ def _agent_answer(llm, question: str, evidence: list[dict],
         _ANSWER_PROMPT + ' 只输出 JSON：{"answer": "…"}。',
         json.dumps({"问题": question,
                     "名称映射": name_map or {},
-                    "证据": [{"#": f"#{i}", **{k: v for k, v in ev.items() if k != "rows"},
+                    "证据": [{"#": f"#{i}",
+                              **{k: v for k, v in ev.items()
+                                 if k not in _SLIM_DROP and k != "rows"},
                               "rows": ev.get("rows", [])[:5]}
                              for i, ev in enumerate(evidence[:10], 1)]},
-                   ensure_ascii=False, default=str))
+                   ensure_ascii=False, default=str),
+        timeout=35, max_retries=0)                         # 限时单发：超时回模板（§7.2）
     return str(payload.get("answer", "")).strip() or _summarize(question, {"evidence": evidence,
                                                                           "routes_used": [],
                                                                           "degraded": []}, None)

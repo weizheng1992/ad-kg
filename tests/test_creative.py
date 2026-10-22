@@ -18,7 +18,7 @@ class FakeLLM:
         self.last_system = self.last_user = ""
         self.slow_used = False
 
-    def chat_json(self, system: str, user: str) -> dict:
+    def chat_json(self, system: str, user: str, **kw) -> dict:   # kw=ask 交互路时延预算
         self.last_system, self.last_user = system, user
         return {"creatives": [{"title": "户外老爹鞋 15s", "format": "信息流视频",
                                "platform": "douyin", "hook_3s": "前3秒品牌露出",

@@ -34,7 +34,7 @@ def _script_llm(*payloads):
             _L.calls += 1
             return payloads[min(_L.calls - 1, len(payloads) - 1)]
 
-        def chat_json(self, system, user):                  # /ask 内部（路由/总结）调用
+        def chat_json(self, system, user, **kw):            # /ask 内部（路由/总结）调用；kw=时延预算
             return {"answer": "已按证据回答", "decision": {"intent": "fact"}}
 
         def embed(self, texts):

@@ -47,9 +47,17 @@ class LLMClient:
         self._embed_dim = int(os.environ.get("ADKG_EMBED_DIM", "0") or 0)
         self._local_embedder = None                     # 惰性加载本地模型
 
-    def chat_json(self, system: str, user: str) -> dict:
-        """一次对话拿 JSON（结构化输出由调用方按 Pydantic 校验兜底）。"""
-        resp = self._client.chat.completions.create(
+    def chat_json(self, system: str, user: str, *,
+                  timeout: int | None = None, max_retries: int | None = None) -> dict:
+        """一次对话拿 JSON（结构化输出由调用方按 Pydantic 校验兜底）。
+        交互路（/ask 等）传 timeout/max_retries 收紧预算：单次不重试、限时回降级
+        （§7.2——默认 30s×3 重试在限流时叠加可超网关 150s）。"""
+        client = self._client
+        if timeout is not None or max_retries is not None:
+            client = self._client.with_options(
+                timeout=timeout if timeout is not None else self._client.timeout,
+                max_retries=max_retries if max_retries is not None else self._client.max_retries)
+        resp = client.chat.completions.create(
             model=self._model,
             response_format={"type": "json_object"},
             temperature=0,                                  # 路由/judge 要确定性
