@@ -368,6 +368,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 - **外部客户**：独立签发的只读 token（与内部隔离），凭证只标识主体、不含 brand_id；租户绑定走 `Person→external_for→Brand`（N:M，一家客户多品牌即多条），变更走 review_queue 人审并记审计；token 设有效期，吊销 = 从 bindings 移除映射并记审计
 - **Agent 受托**：凭证同时携带 agent_id 与终端用户身份；生效权限取 Agent role 与用户 role 的**交集**（最小权限），行过滤取更严者；审计记双身份
 - **本地开发**：`ADKG_DEV_AUTH=off` 时允许 body 传 role（仅限本地）
+- **收口（2026-10-23）**：token→role + 绑定 person / dev 兜底的认证解析统一走 `guards/http.py::resolve_identity`（各端点不再自抄认证块——散抄曾致漏门）；审计写入统一走 `guards/audit.py::audit`（四端点各抄一份 INSERT 是漏账温床，verdict 枚举由库约束兜底）；Agent 工具面注册表化（`_TOOLS` 名→描述+handler 同时驱动 system prompt、未知工具提示与分发——加工具只改一处）
 
 ### 9.2 六类角色的日常用法
 

@@ -17,14 +17,9 @@ def graph_entity(request: Request, id: str, hops: int = 1,
                  role: str | None = None, user: str | None = None,
                  authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
-    resolved = AuthService(env).resolve(authorization)
     from adkg.api.routes.ask import _graph, _planner
-    planner = _planner(request)
-    if resolved:
-        role = resolved[0]
-        user = planner.bound_person(role) or user       # token 路 person 取绑定值（§12.4）
-    elif not (env.get("ADKG_DEV_AUTH") == "off" and role):
-        raise HTTPException(401, "缺有效 service token")
+    from adkg.guards.http import resolve_identity
+    role, user, planner = resolve_identity(request, authorization, role=role, user=user)
 
     if role not in planner.roles:                        # dev 路可传任意值，fail-closed（§十二）
         raise HTTPException(401, f"未知角色：{role}")

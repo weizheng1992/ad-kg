@@ -72,18 +72,9 @@ def _embed_fn(request: Request):
 def ask(request: Request, body: dict,
         authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
-    dev_auth_off = env.get("ADKG_DEV_AUTH") == "off"
 
-    resolved = AuthService(env).resolve(authorization)
-    planner = _planner(request)
-    if resolved:
-        role = resolved[0]
-        # token 路 person 一律取 bindings 绑定值（§12.4），body 自报仅补缺（多绑定角色）
-        person = planner.bound_person(role) or body.get("user")
-    elif dev_auth_off and body.get("role"):
-        role, person = body["role"], body.get("user")       # 仅本地开发（§9.1）
-    else:
-        raise HTTPException(401, "缺有效 service token（生产经网关注入；本地 ADKG_DEV_AUTH=off 可 body 传 role）")
+    from adkg.guards.http import resolve_identity
+    role, person, planner = resolve_identity(request, authorization, body=body)
 
     question = str(body.get("question", "")).strip()
     if not question:
@@ -285,7 +276,5 @@ def _agent_answer(llm, question: str, evidence: list[dict],
 
 def _audit(env: dict, role: str, person: str | None, question: str,
            verdict: str, reason: str) -> None:
-    with psycopg.connect(env["ADKG_PG_DSN"]) as conn, conn.cursor() as cur:
-        cur.execute("INSERT INTO audit_log (user_id, role, action, target, verdict, reason)"
-                    " VALUES (%s,%s,'ask',%s,%s,%s)",
-                    (person, role, question[:200], verdict, reason))
+    from adkg.guards.audit import audit                  # 审计写入收口（§9.1）
+    audit(env, role, person, "ask", question, verdict, reason)

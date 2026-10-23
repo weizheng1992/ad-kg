@@ -34,17 +34,9 @@ def creative_brands(request: Request, role: str | None = None, user: str | None 
                     authorization: str | None = Header(default=None)) -> dict:
     """品牌清单（素材生成的选择器数据源）——案例生成角色门 + 可见 Brand 裁剪（§12.4，
     2026-10-23 检查：曾对所有角色返回全量品牌+类目）。"""
-    env = request.app.state.env
-    from adkg.guards.auth import AuthService
-    from adkg.api.routes.ask import _planner
-    planner = _planner(request)
-    resolved = AuthService(env).resolve(authorization)
-    if resolved:
-        role = resolved[0]
-        user = planner.bound_person(role) or user       # token 绑定优先（§12.4）
-    elif env.get("ADKG_DEV_AUTH") != "off":
-        raise HTTPException(401, "缺有效 service token")
-    role = role or "management"                         # dev 无角色默认内部管理视角
+    from adkg.guards.http import resolve_identity
+    role, user, planner = resolve_identity(request, authorization, role=role, user=user,
+                                           dev_default="management")  # dev 无角色默认管理视角
     if role not in planner.roles:
         raise HTTPException(401, f"未知角色：{role}")
     from adkg.api.routes.ingest import CASEGEN_ROLES
@@ -194,7 +186,6 @@ def _graph_of(request: Request):
 
 def _audit(env: dict, role: str, person: str | None,
            brand_id: str, product: str, n: int) -> None:
-    with psycopg.connect(env["ADKG_PG_DSN"]) as conn, conn.cursor() as cur:
-        cur.execute("INSERT INTO audit_log (user_id, role, action, target, verdict, reason)"
-                    " VALUES (%s,%s,'creative_draft',%s,'info',%s)",
-                    (person, role, brand_id, f"product={product or '-'} n={n}"))
+    from adkg.guards.audit import audit                  # 审计写入收口（§9.1）
+    audit(env, role, person, "creative_draft", f"{brand_id} {product or '-'}",
+          "info", f"n={n}")

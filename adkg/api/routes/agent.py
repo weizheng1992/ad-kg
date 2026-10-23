@@ -21,6 +21,90 @@ router = APIRouter()
 
 MAX_TURNS = 5
 
+
+class _ToolCtx:                                          # 工具执行上下文（循环内不变量打包）
+    def __init__(self, env, graph, plan, llm, request, role, person, authorization):
+        self.env, self.graph, self.plan, self.llm = env, graph, plan, llm
+        self.request, self.role, self.person, self.authorization = \
+            request, role, person, authorization
+
+
+def _t_ask_knowledge(args: dict, ctx: _ToolCtx) -> str:
+    from adkg.api.routes.ask import ask as ask_endpoint
+    q = str(args.get("question") or "").strip()
+    if not q:
+        return "question 必填"
+    try:
+        out = ask_endpoint(ctx.request, {"question": q, "role": ctx.role,
+                                         "user": ctx.person}, ctx.authorization)
+    except Exception as e:                                # 管线异常不断循环（§7.2）
+        return f"ask 失败：{type(e).__name__}"
+    return _compact({"answer": out.get("answer"),
+                     "routes": [r.get("route") for r in out.get("routes_used", [])],
+                     "evidence_n": len(out.get("evidence") or []),
+                     "degraded": out.get("degraded", [])})
+
+
+def _t_list_brands(args: dict, ctx: _ToolCtx) -> str:
+    if getattr(ctx.plan, "deny_all", False):
+        return "行权限未生效（缺有效身份）"
+    with ctx.graph.session() as s:
+        rows = s.run("MATCH (b:Entity {class:'Brand'})"
+                     " RETURN b.id AS id, b.name AS name, b.category AS category"
+                     " ORDER BY b.id").data()
+    from adkg.api.routes.creative import _scoped_brands
+    return _compact(_scoped_brands(rows, ctx.plan, ctx.graph))   # 行权限裁剪（§12.4）
+
+
+def _t_search_product_knowledge(args: dict, ctx: _ToolCtx) -> str:
+    from adkg.retrieval import vector_search
+    out = vector_search.search(str(args.get("query") or ""), ctx.plan,
+                               ctx.env["ADKG_PG_DSN"], embed_fn=ctx.llm.embed)
+    chunks = [{"ref": e.get("ref"), "quote": str(e.get("quote") or "")[:160],
+               "score": e.get("score")} for e in out.get("evidence", [])[:6]]
+    return _compact({"degraded": out.get("degraded", False), "chunks": chunks})
+
+
+def _t_search_best_creatives(args: dict, ctx: _ToolCtx) -> str:
+    from adkg.api.routes.creative import best_creatives_for, related_brand_ids
+    bid = str(args.get("brand_id") or "")
+    if not bid.startswith("Brand:"):
+        return "brand_id 必须是 Brand:{slug} 形态（先调 list_brands 拿真实 id）"
+    try:
+        related = related_brand_ids(ctx.graph, bid)
+    except LookupError as e:
+        return str(e)
+    refs = best_creatives_for(ctx.graph, ctx.plan, ctx.env["ADKG_PG_RO_DSN"], related,
+                              k=int(args.get("n") or 5))
+    return _compact([{k: r.get(k) for k in ("creative_id", "cpa", "ctr", "cost",
+                                            "brand_id", "case_id")} for r in refs])
+
+
+def _t_get_guidelines(args: dict, ctx: _ToolCtx) -> str:
+    return _compact(ctx.graph.guidelines_with_thresholds())
+
+
+def _t_list_synced_docs(args: dict, ctx: _ToolCtx) -> str:
+    from adkg.api.routes.ingest import synced_docs
+    if ctx.plan.mask_rules:                       # 外部角色：文档标题含他牌月报，不见
+        return "当前角色不可见文档清单"
+    return _compact(synced_docs(ctx.env["ADKG_PG_DSN"], str(args.get("q") or ""))[:10])
+
+
+# 工具注册表（§9.1 收口）：名 → (签名+描述, handler)——system prompt、未知工具提示、
+# 分发三处同源，加工具只改这里
+_TOOLS: dict[str, tuple[str, object]] = {
+    "ask_knowledge": ('{"question"} → 知识问答（指标/排名/归因/关系类问题，走三路检索管线）',
+                      _t_ask_knowledge),
+    "list_brands": ('{} → 品牌与类目', _t_list_brands),
+    "search_product_knowledge": ('{"query"} → 已入库文档的商品知识（卖点/售后/尺码）',
+                                 _t_search_product_knowledge),
+    "search_best_creatives": ('{"brand_id", "n"} → 同类目最好案例素材（CPA 口径）',
+                              _t_search_best_creatives),
+    "get_guidelines": ('{} → 创意规范与机判阈值', _t_get_guidelines),
+    "list_synced_docs": ('{"q"} → 已同步飞书文档（生成案例的素材源）', _t_list_synced_docs),
+}
+
 _AGENT_SYSTEM = (
     "你是 AdKG 知识中台的助手：既能回答知识问题（问答），也能把已入库知识变成案例/素材草稿（生成）。"
     "每轮只输出 JSON，二选一——"
@@ -28,13 +112,7 @@ _AGENT_SYSTEM = (
     '信息足够：{"final": {"answer": "给用户的说明", '
     '"case_seed": {"brand_name", "product_names": [], "case_name"?, "stage"?, "doc_id"?, "person_ids": []} 或 null, '
     '"creative_drafts": [{"title","format","platform","hook_3s","script","copy"}] 或 null}}。'
-    "工具（全部只读）："
-    'ask_knowledge {"question"} → 知识问答（指标/排名/归因/关系类问题，走三路检索管线）；'
-    'list_brands {} → 品牌与类目；'
-    'search_product_knowledge {"query"} → 已入库文档的商品知识（卖点/售后/尺码）；'
-    'search_best_creatives {"brand_id", "n"} → 同类目最好案例素材（CPA 口径）；'
-    'get_guidelines {} → 创意规范与机判阈值；'
-    'list_synced_docs {"q"} → 已同步飞书文档（生成案例的素材源）。'
+    "工具（全部只读）：" + "；".join(f"{n} {d}" for n, (d, _) in _TOOLS.items()) + "。"
     "规矩：事实/排名/归因类问题直接调 ask_knowledge，一次调用即完整转述答案（保留数字与结论），"
     "不要重复调用；不知道就先调工具查，禁止编造实体、卖点与数据；"
     "person_ids 只能用工具结果里见到的真实 id（未对齐不入图）；"
@@ -48,15 +126,8 @@ def agent_chat(request: Request, body: dict,
                authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
     from adkg.api.routes.ask import _llm, _planner
-    planner = _planner(request)
-    resolved = AuthService(env).resolve(authorization)
-    if resolved:
-        role = resolved[0]
-        person = planner.bound_person(role) or body.get("user")   # token 绑定优先（§12.4）
-    elif env.get("ADKG_DEV_AUTH") == "off" and body.get("role"):
-        role, person = body["role"], body.get("user")
-    else:
-        raise HTTPException(401, "缺有效 service token（本地 ADKG_DEV_AUTH=off 可 body 传 role）")
+    from adkg.guards.http import resolve_identity
+    role, person, planner = resolve_identity(request, authorization, body=body)
 
     history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     last = next((m for m in reversed(history) if m.get("role") == "user"), None)
@@ -70,6 +141,8 @@ def agent_chat(request: Request, body: dict,
         raise HTTPException(401, f"未知角色：{role}")
     plan = planner.plan(role, person=person)
     graph = _graph_of(request)
+
+    tool_ctx = _ToolCtx(env, graph, plan, llm, request, role, person, authorization)
 
     trace, reply, case_draft, creative_drafts = [], "", None, None
     generate = getattr(llm, "chat_json_slow", None) or llm.chat_json
@@ -103,8 +176,7 @@ def agent_chat(request: Request, body: dict,
         action = str(payload.get("action") or "")
         args = payload.get("args") if isinstance(payload.get("args"), dict) else {}
         trace.append({"tool": action, "args": args,
-                      "result": _run_tool(action, args, env, graph, plan, llm,
-                                          request, role, person, authorization)[:1200]})
+                      "result": _run_tool(action, args, tool_ctx)[:1200]})
     else:
         reply = reply or f"工具轮次用尽（{MAX_TURNS} 轮）仍未收敛，请缩小问题再试。"
     if not reply and not case_draft and not creative_drafts:
@@ -117,62 +189,12 @@ def agent_chat(request: Request, body: dict,
             "can_commit_case": role in CASEGEN_ROLES}   # 前端不本地硬抄角色表（§9.7）
 
 
-def _run_tool(action: str, args: dict, env: dict, graph, plan, llm,
-              request: Request, role: str, person: str | None,
-              authorization: str | None) -> str:
-    """只读工具执行；结果序列化为紧凑 JSON 供模型下一轮阅读。"""
-    if action == "ask_knowledge":                        # 问答：内部走 /ask 三路管线
-        from adkg.api.routes.ask import ask as ask_endpoint
-        q = str(args.get("question") or "").strip()
-        if not q:
-            return "question 必填"
-        try:
-            out = ask_endpoint(request, {"question": q, "role": role, "user": person},
-                               authorization)
-        except Exception as e:                           # 管线异常不断循环（§7.2）
-            return f"ask 失败：{type(e).__name__}"
-        return _compact({"answer": out.get("answer"),
-                         "routes": [r.get("route") for r in out.get("routes_used", [])],
-                         "evidence_n": len(out.get("evidence") or []),
-                         "degraded": out.get("degraded", [])})
-    if action == "list_brands":
-        if getattr(plan, "deny_all", False):
-            return "行权限未生效（缺有效身份）"
-        with graph.session() as s:
-            rows = s.run("MATCH (b:Entity {class:'Brand'})"
-                         " RETURN b.id AS id, b.name AS name, b.category AS category"
-                         " ORDER BY b.id").data()
-        from adkg.api.routes.creative import _scoped_brands
-        return _compact(_scoped_brands(rows, plan, graph))   # 行权限裁剪与 /creative/brands 同口径
-    if action == "search_product_knowledge":
-        from adkg.retrieval import vector_search
-        out = vector_search.search(str(args.get("query") or ""), plan,
-                                   env["ADKG_PG_DSN"], embed_fn=llm.embed)
-        chunks = [{"ref": e.get("ref"), "quote": str(e.get("quote") or "")[:160],
-                   "score": e.get("score")} for e in out.get("evidence", [])[:6]]
-        return _compact({"degraded": out.get("degraded", False), "chunks": chunks})
-    if action == "search_best_creatives":
-        from adkg.api.routes.creative import best_creatives_for, related_brand_ids
-        bid = str(args.get("brand_id") or "")
-        if not bid.startswith("Brand:"):
-            return "brand_id 必须是 Brand:{slug} 形态（先调 list_brands 拿真实 id）"
-        try:
-            related = related_brand_ids(graph, bid)
-        except LookupError as e:
-            return str(e)
-        refs = best_creatives_for(graph, plan, env["ADKG_PG_RO_DSN"], related,
-                                  k=int(args.get("n") or 5))
-        return _compact([{k: r.get(k) for k in ("creative_id", "cpa", "ctr", "cost",
-                                                "brand_id", "case_id")} for r in refs])
-    if action == "get_guidelines":
-        return _compact(graph.guidelines_with_thresholds())
-    if action == "list_synced_docs":
-        from adkg.api.routes.ingest import synced_docs
-        if plan.mask_rules:                              # 外部角色：文档标题含他牌月报，不见
-            return "当前角色不可见文档清单"
-        return _compact(synced_docs(env["ADKG_PG_DSN"], str(args.get("q") or ""))[:10])
-    return f"未知工具：{action}（可用：list_brands / search_product_knowledge / " \
-           "search_best_creatives / get_guidelines / list_synced_docs）"
+def _run_tool(action: str, args: dict, ctx: _ToolCtx) -> str:
+    """只读工具执行（注册表分发，§9.1 收口）；结果序列化为紧凑 JSON 供模型阅读。"""
+    entry = _TOOLS.get(action)
+    if entry is None:
+        return f"未知工具：{action}（可用：{' / '.join(_TOOLS)}）"
+    return str(entry[1](args if isinstance(args, dict) else {}, ctx))
 
 
 def _turn_prompt(history: list[dict], trace: list[dict]) -> str:
@@ -192,7 +214,5 @@ def _graph_of(request: Request):
 
 
 def _audit(env: dict, role: str, person: str | None, question: str, turns: int) -> None:
-    with psycopg.connect(env["ADKG_PG_DSN"]) as conn, conn.cursor() as cur:
-        cur.execute("INSERT INTO audit_log (user_id, role, action, target, verdict, reason)"
-                    " VALUES (%s,%s,'agent_chat',%s,'info',%s)",
-                    (person, role, question[:200], f"turns={turns}"))
+    from adkg.guards.audit import audit                  # 审计写入收口（§9.1）
+    audit(env, role, person, "agent_chat", question, "info", f"turns={turns}")

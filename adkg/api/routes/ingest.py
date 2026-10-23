@@ -32,14 +32,8 @@ CASEGEN_ROLES = {"admin", "management", "optimizer", "ae"}     # 案例生成 = 
 def _casegen_role(request: Request, body: dict,
                   authorization: str | None) -> str:
     """认证 + 案例生成角色门（token 反查优先，dev 模式 body 兜底，fail-closed）。"""
-    env = request.app.state.env
-    resolved = AuthService(env).resolve(authorization)
-    if resolved:
-        role, _person = resolved
-    elif env.get("ADKG_DEV_AUTH") == "off" and body.get("role"):
-        role = body["role"]
-    else:
-        raise HTTPException(401, "缺有效 service token（本地 ADKG_DEV_AUTH=off 可 body 传 role）")
+    from adkg.guards.http import resolve_identity
+    role, _person, _planner = resolve_identity(request, authorization, body=body)
     if role not in CASEGEN_ROLES:
         raise HTTPException(403, f"角色 {role} 无案例生成权限（允许：{sorted(CASEGEN_ROLES)}）")
     return role
@@ -51,14 +45,10 @@ def list_synced_docs(request: Request, q: str | None = None, role: str | None = 
     """列已同步飞书文档：chunks 聚合 + ingest_job 最新版本；标题取 chunk#0 首行。
     内部角色门（§12.4，2026-10-23：标题含他牌投放月报/案例复盘，外部角色 403）。"""
     env = request.app.state.env
-    resolved = AuthService(env).resolve(authorization)
-    if resolved:
-        role = resolved[0]
-    elif env.get("ADKG_DEV_AUTH") != "off":
-        raise HTTPException(401, "缺有效 service token")
-    role = role or "management"                        # dev 无角色默认内部管理视角
-    from adkg.api.routes.ask import _planner
-    if _planner(request).perms["roles"].get(role, {}).get("external"):
+    from adkg.guards.http import resolve_identity
+    role, _person, planner = resolve_identity(request, authorization, role=role,
+                                              dev_default="management")   # dev 无角色默认管理视角
+    if planner.perms["roles"].get(role, {}).get("external"):
         raise HTTPException(403, "外部角色不可见文档清单")
     return {"docs": synced_docs(env["ADKG_PG_DSN"], q)}
 
@@ -157,20 +147,12 @@ def case_commit(request: Request, body: dict,
 def ingest_assertion(request: Request, body: dict,
                      authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
-    resolved = AuthService(env).resolve(authorization)
-    if resolved:
-        role = resolved[0]
-    elif env.get("ADKG_DEV_AUTH") == "off" and body.get("role"):
-        role = body["role"]
-    else:
-        raise HTTPException(401, "缺有效 service token")
+    from adkg.guards.http import resolve_identity
+    role, person, planner = resolve_identity(request, authorization, body=body)
     # 动作门 + 审计（§12.4，2026-10-23 检查：曾无门无账，client 可直写图关系）
-    from adkg.api.routes.ask import _planner
-    planner = _planner(request)
     actions = planner.perms["roles"].get(role, {}).get("actions", [])
     if "write_assertion" not in actions:
         raise HTTPException(403, f"角色 {role} 无断言写入权限（actions 不含 write_assertion）")
-    person = body.get("user") or planner.bound_person(role)
 
     subject, predicate = body.get("subject"), body.get("predicate")
     obj, confidence = body.get("object"), float(body.get("confidence", 0))
@@ -216,10 +198,8 @@ def ingest_assertion(request: Request, body: dict,
         return {"status": "review", "reason": f"已有 authority={prev['auth']} 同边，不覆盖"}
 
     graph.upsert_relations([rel])
-    with psycopg.connect(pg) as conn, conn.cursor() as cur:   # 写图随写落账（§12.4）
-        cur.execute("INSERT INTO audit_log (user_id, role, action, target, verdict, reason)"
-                    " VALUES (%s,%s,'write_assertion',%s,'info',%s)",
-                    (person, role, f"{subject} -{predicate}-> {obj}"[:200],
-                     f"written, confidence={confidence}"))
+    from adkg.guards.audit import audit                      # 写图随写落账（§12.4）
+    audit(env, role, person, "write_assertion", f"{subject} -{predicate}-> {obj}",
+          "info", f"written, confidence={confidence}")
     return {"status": "written", "authority": prov.authority,
             "confidence": confidence}
