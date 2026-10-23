@@ -14,6 +14,13 @@ from datetime import date
 
 import psycopg
 
+from adkg.retrieval.metrics import (ALL_METRICS, COMPUTABLE_METRICS, DIM_COLUMNS,
+                                    LOWER_IS_BETTER, METRIC_WORDS, PLATFORM_WORDS,
+                                    RATIO_NUM_DEN, agg_expr, uncomputable_note)
+
+# 口径单一来源（§六）：本模块只做问句解析与 SQL 组装，口径数据全部来自 metrics.py
+_agg_expr, _COMPUTABLE, _uncomputable_note = agg_expr, COMPUTABLE_METRICS, uncomputable_note
+
 # ---------------------------------------------------------------- LLM 生成 + 五道闸
 # 学 smartServe 的自由生成，落 AdKG 的五道闸（§7.3：不信任生成的 SQL——校验/改写后才执行）
 _GEN_PROMPT = (
@@ -116,48 +123,8 @@ def enforce_semantics(sql: str) -> str:
         return sql[:m.start(2)] + " WHERE NOT unmatched AND " + sql[m.end(2):]
     return sql[:m.end(1)] + " WHERE NOT unmatched" + sql[m.end(1):]
 
-DIM_COLUMNS = ["platform", "date", "creative_id", "campaign_id", "case_id", "brand_id",
-               "product_id"]
-ALL_METRICS = ["cost", "impressions", "clicks", "conversions", "ctr", "cvr", "cpa", "cpm", "roi"]
-
-# 聚合口径铁律（README §六）：比率型指标跨行聚合 = 汇总比 sum(分子)/sum(分母)，
-# 禁止对行比率再求 avg——小分母行会带偏总量结论；粒度上卷（case/campaign/brand）同样适用
-_RATIO_NUM_DEN = {"ctr": ("clicks", "impressions"), "cvr": ("conversions", "clicks"),
-                  "cpa": ("cost", "conversions"), "cpm": ("cost * 1000", "impressions")}
-
-
-def _agg_expr(metric: str) -> str:
-    """指标聚合表达式：比率型=汇总比，总量型=sum。"""
-    if metric in _RATIO_NUM_DEN:
-        num, den = _RATIO_NUM_DEN[metric]
-        return f"round(sum({num})::numeric / NULLIF(sum({den}), 0), 4)"
-    return f"round(sum({metric})::numeric, 2)"
-
-# 口径感知（§六 Metric）：指标词 → 统一列；成本型越低越好、比率型越高越好。
-# _metric_of 按词长降序匹配——复合词（转化成本/千次曝光成本/转化率）必先于短词命中，
-# 词表插入序不再敏感（2026-10-22 验证：插入序曾让"成本"截胡"千次曝光成本"）
-METRIC_WORDS = {"点击率": "ctr", "ctr": "ctr", "转化率": "cvr", "cvr": "cvr",
-                "消耗": "cost", "成本": "cost", "花费": "cost",
-                "花钱": "cost", "烧钱": "cost",                       # 口径同 cost（夜检 A11）
-                "跑量": "cost", "爆量": "cost", "投放量": "cost",
-                "转化量": "conversions", "转化数": "conversions", "转化": "conversions",
-                "conversions": "conversions",
-                "点击": "clicks", "clicks": "clicks",
-                "曝光": "impressions", "展现": "impressions", "impressions": "impressions",
-                "转化成本": "cpa", "cpa": "cpa",
-                "roi": "roi", "投产比": "roi", "投产": "roi",
-                "毛利率": "gross_margin", "毛利": "gross_margin",
-                "千次曝光": "cpm", "千次曝光成本": "cpm", "千次展现成本": "cpm", "cpm": "cpm"}
-LOWER_IS_BETTER = {"cpa", "cost"}
-PLATFORM_WORDS = {"抖音": "douyin", "巨量": "douyin", "小红书": "xhs", "聚光": "xhs"}
-# 可算指标 = 视图原生列（sql/002）∪ _RATIO_NUM_DEN 公式列（cpm 现算）；
-# roi 需回传收入数据（schema valid_scope）、gross_margin 仅 Case 属性——均不可算
-_COMPUTABLE = {"cost", "impressions", "clicks", "conversions", "ctr", "cvr", "cpa", "cpm"}
-
-
-def _uncomputable_note(metric: str) -> str:
-    return (f"{metric} 当前不可算（视图无该列：roi 需回传收入、gross_margin 仅 Case 属性），"
-            "已回退平台汇总——投放侧可问 CPA/消耗/转化")
+# 口径数据（DIM_COLUMNS/ALL_METRICS/METRIC_WORDS/聚合表达式/可算性）见模块顶部
+# imports——单一来源 adkg/retrieval/metrics.py（§六，2026-10-23 收敛）
 
 
 def _metric_of(question: str) -> str:

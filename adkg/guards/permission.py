@@ -19,13 +19,14 @@ from pathlib import Path
 import yaml
 
 from adkg.models import PermissionPlan, load_schema
+from adkg.retrieval.metrics import PERMISSION_METRIC_COLUMNS
 
 # 派生联动（§12.4）：deny 一列时同步 deny 含它的派生列（防乘法反推）
 DERIVED: dict[str, set[str]] = {"cost": {"cpa", "roi"}, "impressions": {"cpm", "ctr"},
                                 "clicks": {"ctr", "cvr"}}
 
-_ALL_METRIC_COLUMNS = ["cost", "impressions", "clicks", "conversions",
-                       "ctr", "cvr", "cpa", "cpm", "roi", "gross_margin"]
+# 指标列宇宙来自口径单一来源 metrics.py（§六/§12.4，2026-10-23 收敛）
+_ALL_METRIC_COLUMNS = PERMISSION_METRIC_COLUMNS
 
 
 def load_permissions(path: Path) -> dict:

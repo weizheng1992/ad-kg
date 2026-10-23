@@ -104,14 +104,13 @@ def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
 
     predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
     try:
+        from adkg.retrieval.metrics import agg_expr
+        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in ("cost", "ctr", "cvr", "cpa"))
         with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT round(sum(cost)::numeric, 2) AS cost,"
-                    " round(sum(clicks)::numeric / NULLIF(sum(impressions), 0), 4) AS ctr,"
-                    " round(sum(conversions)::numeric / NULLIF(sum(clicks), 0), 4) AS cvr,"
-                    " round(sum(cost)::numeric / NULLIF(sum(conversions), 0), 2) AS cpa,"
+                    f"SELECT {proj},"
                     " string_agg(DISTINCT platform::text, ',') AS platforms,"
                     " count(DISTINCT date) AS days,"
                     " min(date)::text AS first_day, max(date)::text AS last_day"
