@@ -94,11 +94,18 @@ def eval_one(client, item: dict, judge_fn=None) -> dict:
     must = item.get("expected_answer", {}).get("must_entities", [])
     blob = json.dumps(evidence, ensure_ascii=False, default=str)
     points = item.get("expected_answer", {}).get("points", [])
-    # 数值硬断言（2026-10-23 收紧）：期望数字必须出现在证据/答案里，不再依赖 judge 心情；
-    # judge 只认 verdict——verdict=False 即不通过（points_hit 曾把明确否决放行成虚绿）
+    # 数值硬断言（2026-10-23 收紧）：期望数字必须在证据/答案里数值可达——容差匹配
+    # （±max(0.06, 1%)），四舍五入/整数化形态不误杀；judge 只认 verdict（points_hit
+    # 曾把明确否决放行成虚绿）
     must_num = item.get("expected_answer", {}).get("must_numbers", [])
-    num_ok = all(any(str(n) in txt for txt in (blob, str(body.get("answer") or "")))
-                 for n in must_num)
+    import re as _re
+
+    def _num_ok(txt: str) -> bool:
+        found = [float(x) for x in _re.findall(r"\d+(?:\.\d+)?", txt)]
+        return all(any(abs(f - float(n)) <= max(0.06, abs(float(n)) * 0.01) for f in found)
+                   for n in must_num)
+
+    num_ok = (not must_num) or _num_ok(blob) or _num_ok(str(body.get("answer") or ""))
     if judge_fn is not None and evidence:
         verdict = judge_fn(item["question"], points, evidence)   # LLM 按要点（§11.3）
         result["judge"] = verdict
