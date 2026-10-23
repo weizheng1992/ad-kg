@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 SEED = Path(__file__).resolve().parents[1] / "data" / "seed"
+RAW = Path(__file__).resolve().parents[1] / "data" / "raw"    # 文档直写 raw（2026-10-23 去重）
 rng = random.Random(42)
 
 BRANDS = [("B01", "轻食日记", "餐饮"), ("B02", "律动星球", "运动健身"), ("B03", "拾光书屋", "文化阅读"),
@@ -147,8 +148,9 @@ def gen_master() -> list[list[str]]:
 
 
 def gen_docs(cases) -> None:
-    """cases/*.md 案例文档（抽取路的输入）+ guidelines/*.md（frontmatter 带机判阈值）。"""
-    (SEED / "cases").mkdir(parents=True, exist_ok=True)
+    """案例 md + 规范 md 直写 data/raw（2026-10-23 起 seed 不再存文档副本——
+    生成器模板即真源，raw 是唯一落盘处；clone 后先跑本脚本再 load_seed）。"""
+    RAW.mkdir(parents=True, exist_ok=True)
     for case_id, stage, brand, product, person in cases:
         text = (f"# {brand[1]}·{product[1]}投放案例\n\n"
                 f"对接人 {person[1]}（{person[2]}）负责本案，当前阶段 {stage}。\n\n"
@@ -157,14 +159,13 @@ def gen_docs(cases) -> None:
                 f"## 投放\n两支计划分别跑信息流与搜索，素材以竖版短视频为主，"
                 f"其中一条为 AIGC 生成并沿用爆款衍生。\n\n"
                 f"## 结果\n{'转化成本优于行业均值，已结案复盘。' if stage == 'closed' else '投放进行中，CPA 稳定在目标区间。'}\n")
-        (SEED / "cases" / f"{case_id.split(':')[1]}.md").write_text(text, encoding="utf-8")
-    (SEED / "guidelines").mkdir(parents=True, exist_ok=True)
+        (RAW / f"{case_id.split(':')[1]}.md").write_text(text, encoding="utf-8")
     for gid, gtype, max_dur, body in GUIDELINES:
         fm = f"---\nid: Guideline:{gid}\nguideline_type: {gtype}\n"
         if max_dur:
             fm += f"max_duration_s: {max_dur}\n"
         fm += "---\n\n"
-        (SEED / "guidelines" / f"{gid}.md").write_text(
+        (RAW / f"{gid}.md").write_text(
             fm + f"# {gid} {gtype}\n\n{body}\n", encoding="utf-8")
 
 

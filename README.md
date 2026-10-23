@@ -187,7 +187,7 @@ ad-kg/
 │   └── runs/                      #   评测结果（gitignore）
 │
 ├── data/
-│   ├── seed/                      #   合成种子数据，可提交
+│   ├── seed/                      #   合成种子 CSV（可提交；文档由 gen_seed 直写 raw）
 │   │   ├── brands_products.csv
 │   │   ├── org_people.csv         #   手工维护的"CRM 导出"：人员与品牌对接关系（system_of_record）
 │   │   ├── cases_campaigns.csv    #   案例-计划-素材主数据：Case / Campaign / Creative 及其关系
@@ -203,7 +203,7 @@ ad-kg/
 ├── scripts/                       # 一次性脚本
 │   ├── gen_seed.py                #   生成合成种子数据（静态文件，可重生成）
 │   ├── init_db.py                 #   执行 sql/，建 Neo4j 约束与索引、Postgres 双账号
-│   └── load_seed.py               #   导入 data/seed/（含同素材双平台样例）
+│   └── load_seed.py               #   导入 data/seed CSV + data/raw 文档（gen_seed 先行）
 │
 └── tests/                         #   单测（mappings 解析 / PermissionPlan / action_check / provenance 必填）
                                    #   + 集成冒烟（compose 起库 → load_seed → /ask 三例）；越权零泄漏、缺 provenance 拒绝写成不变量测试
@@ -244,7 +244,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 
 **运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`；同机走 docker 网络 `shared-infra` 直连，两机走内网 IP:5433）——省一份 PG 实例，库间靠账号与 database 边界隔离；拓扑与自动发布见 `docs/deployment.md`。
 
-**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成**静态文件提交进 repo**（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）。事实日期为**滚动窗口**：gen_seed 取生成日近 12 个月、止于上月末，对齐素材在最近月各保 ≥3 天（top-N 口径 `HAVING count>=3` 常青命中）——相对时间问句（上月/近 N 天）不因时间流逝空窗；日期只改分布不改数值，全量口径聚合稳定，同日重跑逐字节一致；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）——两种来源：`FEISHU_DOCS` 显式 token 列表，或 `FEISHU_FOLDER` **共享文件夹模式**（应用加为文件夹协作者一次，全公司可往里放文档，同步自动列目录逐篇摄取、类型过滤只吃 docx，零逐篇授权）。
+**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成静态文件（品牌 8、案例 20 覆盖全部 stage、素材 ~80 含 1 对双平台同素材、事实行 ~2k/表；规范混入真实广告法条文）。CSV 提交进 repo（`data/seed/`）；**文档（案例 md + 规范 md）由 gen_seed 直写 `data/raw/`**——生成器模板即文档真源，产物不占 git（2026-10-23 去重：seed 目录曾与 raw 逐字节双份），clone 后先 `gen_seed` 再 `load_seed`。事实日期为**滚动窗口**：gen_seed 取生成日近 12 个月、止于上月末，对齐素材在最近月各保 ≥3 天（top-N 口径 `HAVING count>=3` 常青命中）——相对时间问句（上月/近 N 天）不因时间流逝空窗；日期只改分布不改数值，全量口径聚合稳定，同日重跑逐字节一致；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）——两种来源：`FEISHU_DOCS` 显式 token 列表，或 `FEISHU_FOLDER` **共享文件夹模式**（应用加为文件夹协作者一次，全公司可往里放文档，同步自动列目录逐篇摄取、类型过滤只吃 docx，零逐篇授权）。
 
 ## 六、本体概览
 
@@ -495,6 +495,7 @@ docker compose up -d                         # Postgres:5433  Neo4j:7474/7687
 uv sync
 cp .env.example .env                         # 填 LLM key、service token；本地开发可 ADKG_DEV_AUTH=off
 uv run python scripts/init_db.py             # 建表（含 audit_log、ingest_job）、Neo4j 约束
+uv run python scripts/gen_seed.py            # 生成种子：CSV 进 data/seed，文档直写 data/raw（幂等，clone 后首跑）
 uv run python scripts/load_seed.py           # 导入种子数据（含同素材双平台与 violates 断言样例）
 uv run uvicorn adkg.api.main:app --reload    # http://127.0.0.1:8000/docs
 ```

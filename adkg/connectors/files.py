@@ -14,12 +14,14 @@ from adkg.models import SourceType
 
 
 class FilesConnector:
-    def __init__(self, root: Path, source_type: str = "official_doc") -> None:
+    def __init__(self, root: Path, source_type: str = "official_doc",
+                 pattern: str = "*.md") -> None:
         self.root = Path(root)
         self.source_type = SourceType(source_type)
+        self.pattern = pattern                         # 同目录分批摄取（raw 平铺：C-*/G-*）
 
     def fetch(self) -> Iterator[RawRecord]:
-        for path in sorted(self.root.rglob("*.md")):
+        for path in sorted(self.root.rglob(self.pattern)):
             yield RawRecord(
                 source_ref=str(path.relative_to(self.root)),
                 text=path.read_text(encoding="utf-8"),

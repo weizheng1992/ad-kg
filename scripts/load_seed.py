@@ -35,6 +35,7 @@ from adkg.store.raw import RawStore                       # noqa: E402
 from adkg.store.vector import VectorStore                 # noqa: E402
 
 SEED = ROOT / "data" / "seed"
+RAW = ROOT / "data" / "raw"                      # 文档真源（gen_seed 直写）
 FETCHED_AT = "2026-10-19T00:00:00+08:00"                 # 种子固定时间，保证可重跑
 
 METRICS = [  # §六：Metric 口径定义（语义层手工定义）
@@ -161,7 +162,7 @@ def main() -> None:
 
     # ── 规范（frontmatter 带机判阈值）────────────────────────────────
     p_gd = prov("seed:guidelines")
-    for path in sorted((SEED / "guidelines").glob("*.md")):
+    for path in sorted(RAW.glob("G-*.md")):            # 文档真源在 raw（gen_seed 直写）
         text = path.read_text(encoding="utf-8")
         m = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
         fm = yaml.safe_load(m.group(1)) if m else {}
@@ -221,12 +222,12 @@ def main() -> None:
 
     # ── 文档路：cases + guidelines 走流水线（raw + chunk 入 PG，嵌入本地当场生成）──
     from adkg.llm import LLMClient
-    for sub, stype in (("cases", "wiki"), ("guidelines", "official_doc")):
-        stats = run_docs(FilesConnector(SEED / sub, source_type=stype),
+    for pat, stype in (("C-*.md", "wiki"), ("G-*.md", "official_doc")):
+        stats = run_docs(FilesConnector(RAW, source_type=stype, pattern=pat),
                          RawStore(ROOT / "data" / "raw"),
                          VectorStore(pg), graph, trace,
                          extractor=None, embed_fn=LLMClient().embed)
-        print(f"文档路 {sub}/：{stats.docs} 篇 → {stats.chunks} 块（抽取跳过——§7.2 降级；嵌入本地 bge）")
+        print(f"文档路 {pat}：{stats.docs} 篇 → {stats.chunks} 块（抽取跳过——§7.2 降级；嵌入本地 bge）")
     # chunk 权限元数据回填（§八 向量层：class / case_id 供检索按角色过滤）
     with psycopg.connect(pg) as conn, conn.cursor() as cur:
         cur.execute("UPDATE chunks SET entity_class='Guideline'"

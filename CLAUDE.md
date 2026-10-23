@@ -15,6 +15,7 @@ docker compose up -d                         # PG18 :5433 · Neo4j 2025.09 :7474
 uv sync
 cp .env.example .env                         # 凭据已在 .env（永不入库）
 uv run python scripts/init_db.py             # 建表 + 双账号(adkg_rw/adkg_ro) + Neo4j 约束；幂等
+uv run python scripts/gen_seed.py            # 生成种子：CSV 进 data/seed，文档直写 data/raw（幂等，clone 后首跑）
 uv run python scripts/load_seed.py           # 主数据+文档+事实入图入库；幂等（嵌入本地当场生成）
 uv run uvicorn adkg.api.main:app --port 8000 # API；改代码后要重启（默认没挂 --reload）
 cd web && bun run dev                        # 前端 :5173（vite 代理 → :8000；用 bun，pnpm 与 Node 22.23 不兼容）
