@@ -30,7 +30,7 @@ def _script_llm(*payloads):
     class _L:
         calls = 0
 
-        def chat_json_slow(self, system, user, *, timeout=180):
+        def chat_json_slow(self, system, user, *, timeout=180, **kw):
             _L.calls += 1
             return payloads[min(_L.calls - 1, len(payloads) - 1)]
 

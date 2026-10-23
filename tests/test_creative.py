@@ -25,7 +25,7 @@ class FakeLLM:
                                "script": "镜1：…", "copy": "标题+正文",
                                "based_on": ["#1"]}]}
 
-    def chat_json_slow(self, system: str, user: str, *, timeout: int = 90) -> dict:
+    def chat_json_slow(self, system: str, user: str, *, timeout: int = 90, **kw) -> dict:
         self.slow_used = True                            # 大证据 prompt 应走长超时档
         return self.chat_json(system, user)
 

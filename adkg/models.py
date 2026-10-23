@@ -162,6 +162,7 @@ class PermissionPlan(BaseModel):
     deny_properties: frozenset[str] = Field(default_factory=frozenset)  # graph 路证据的属性黑名单（Class.prop）
     allow_properties: frozenset[str] = Field(default_factory=frozenset)  # 同出口的属性白名单（外部角色，空=不限）
     mask_rules: list[str] = Field(default_factory=list)  # assemble 出口脱敏（如 Person 姓名）
+    deny_all: bool = False  # 行权限 fail-closed（§12.4）：person 缺失/无效时三路全拒（graph/vector 零证据、text2sql 恒假谓词）
 
 
 class RouteStep(BaseModel):

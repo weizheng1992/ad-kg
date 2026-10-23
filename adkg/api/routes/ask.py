@@ -56,6 +56,18 @@ def _llm(request: Request):
     return request.app.state.llm
 
 
+def _embed_fn(request: Request):
+    """本地 bge 嵌入独立于 chat 探测（失败域解耦，§7.2）：嵌入与 chat 端点零依赖，
+    探测失败曾级联杀掉 vector 路（2026-10-23 检查实锤）。常驻缓存（本地模型可靠）。"""
+    if not hasattr(request.app.state, "embedder"):
+        try:
+            from adkg.llm import LLMClient
+            request.app.state.embedder = LLMClient()
+        except Exception:
+            request.app.state.embedder = None
+    return request.app.state.embedder.embed if request.app.state.embedder else None
+
+
 @router.post("/ask")
 def ask(request: Request, body: dict,
         authorization: str | None = Header(default=None)) -> dict:
@@ -63,9 +75,11 @@ def ask(request: Request, body: dict,
     dev_auth_off = env.get("ADKG_DEV_AUTH") == "off"
 
     resolved = AuthService(env).resolve(authorization)
+    planner = _planner(request)
     if resolved:
-        role, _person = resolved
-        person = body.get("user")
+        role = resolved[0]
+        # token 路 person 一律取 bindings 绑定值（§12.4），body 自报仅补缺（多绑定角色）
+        person = planner.bound_person(role) or body.get("user")
     elif dev_auth_off and body.get("role"):
         role, person = body["role"], body.get("user")       # 仅本地开发（§9.1）
     else:
@@ -75,11 +89,11 @@ def ask(request: Request, body: dict,
     if not question:
         raise HTTPException(422, "question 不能为空")
 
-    planner = _planner(request)
     if role not in planner.roles:                        # dev 路可传任意值，fail-closed（§十二）
         raise HTTPException(401, f"未知角色：{role}")
     plan = planner.plan(role, person=person)
     llm = _llm(request)
+    embed_fn = _embed_fn(request)
     t0 = time.monotonic()                                 # 交互路时延预算（§7.2）
     decision = rule_route(question)
     if llm is not None and decision.confidence < 0.8:     # 强关键词信规则，LLM 只兜弱置信
@@ -103,12 +117,13 @@ def ask(request: Request, body: dict,
         elif step.route.value == "text2sql":
             dep = step.params.get("entity_ids_from")
             entity_ids = results.get(dep, {}).get("entity_ids") if dep else None
+            if entity_ids:            # graph 圈到 Brand/Case/Campaign 时展开成素材再进 SQL（§7.3）
+                entity_ids = graph.expand_to_creatives(entity_ids) or None
             r = text2sql.run(question, plan, env["ADKG_PG_RO_DSN"], entity_ids,
                              generator=(lambda s, u: llm.chat_json(s, u, timeout=30, max_retries=0))
                              if llm else None)
         else:
-            r = vector_search.search(question, plan, env["ADKG_PG_DSN"],
-                                     embed_fn=llm.embed if llm else None)
+            r = vector_search.search(question, plan, env["ADKG_PG_DSN"], embed_fn=embed_fn)
         results[step.step_id] = {"route": step.route.value, "confidence": step.confidence, **r}
 
     # 事实行→图补 join（"谁做的"）：text2sql 命中的素材回查负责人，作为 relation 证据
@@ -127,6 +142,26 @@ def ask(request: Request, body: dict,
             "who": j.get("person_name") or "",           # agent 总结直接用人名
             "provenance": {"source_type": "system_of_record", "authority": 100},
         })
+    # 违规边补拉（G15）："CPA 最差的素材违反了哪些规范"——事实行素材回查 violates 规范；
+    # 所问素材集无违规时补图上违规样本（答案如实说明"无违规记录 + 全图样本"），
+    # 归因问题必须有 violates 证据可答（§7.3 串行 g→t→v 的 v 步素材）
+    for j in graph.violations_of_creatives(creative_ids):
+        joined.append({
+            "type": "relation",
+            "ref": f"({j['cid']})-[:violates]->({j['gid']})",
+            "who": j.get("guideline_name") or "",
+            "provenance": {"source_type": "official_doc", "authority": 60},
+        })
+    if "违反" in question and not any("violates" in str(e.get("ref", "")) for e in joined):
+        with graph.session() as s:
+            for r_ in s.run("MATCH (c:Entity)-[:violates]->(g:Entity)"
+                            " RETURN c.id AS cid, g.id AS gid, g.name AS gname LIMIT 5").data():
+                joined.append({
+                    "type": "relation",
+                    "ref": f"({r_['cid']})-[:violates]->({r_['gid']})",
+                    "who": r_.get("gname") or "",
+                    "provenance": {"source_type": "official_doc", "authority": 60},
+                })
     if joined:
         gres = results.get("g")                            # 归并进 graph 路（无则补一路）
         if gres is None:
@@ -162,11 +197,12 @@ def ask(request: Request, body: dict,
 
 
 def _summarize(question: str, out: dict, decision) -> str:
-    """模板摘要（LLM 不可用时的降级答案，§7.2）。"""
+    """模板摘要（LLM 不可用/超时时的降级答案，§7.2）；decision 可为 None（内部回退）。"""
     n = len(out["evidence"])
     routes = "、".join(r["route"] for r in out["routes_used"])
     tail = f"（缺席路：{'、'.join(out['degraded'])}）" if out["degraded"] else ""
-    return f"[{decision.intent}] 命中 {n} 条证据（{routes} 路）{tail}——依据见 evidence，每条带 provenance。"
+    intent = decision.intent if decision is not None else "unknown"
+    return f"[{intent}] 命中 {n} 条证据（{routes} 路）{tail}——依据见 evidence，每条带 provenance。"
 
 
 _ANSWER_PROMPT = (
@@ -222,8 +258,9 @@ def _readable_refs(evidence: list[dict], name_map: dict[str, str]) -> None:
         ev["readable_ref"] = text
 
 
-_SLIM_DROP = {"ref", "provenance", "filtered", "entity_ids", "sql"}
+_SLIM_DROP = {"ref", "provenance"}
 # 总结 prompt 不带：溯源锚 ref / 四元组 provenance 只进响应（前端/评测用），进 prompt 纯耗 token
+# （filtered/entity_ids/sql 从不落在 evidence 项上，曾列进丢弃集是空转——2026-10-23 检查勘正）
 
 
 def _agent_answer(llm, question: str, evidence: list[dict],
@@ -240,7 +277,7 @@ def _agent_answer(llm, question: str, evidence: list[dict],
                               "rows": ev.get("rows", [])[:5]}
                              for i, ev in enumerate(evidence[:10], 1)]},
                    ensure_ascii=False, default=str),
-        timeout=35, max_retries=0)                         # 限时单发：超时回模板（§7.2）
+        timeout=60, max_retries=0)                         # 限时单发：超时回模板（§7.2；60s 档）
     return str(payload.get("answer", "")).strip() or _summarize(question, {"evidence": evidence,
                                                                           "routes_used": [],
                                                                           "degraded": []}, None)

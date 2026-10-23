@@ -18,19 +18,21 @@ def graph_entity(request: Request, id: str, hops: int = 1,
                  authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
     resolved = AuthService(env).resolve(authorization)
+    from adkg.api.routes.ask import _graph, _planner
+    planner = _planner(request)
     if resolved:
         role = resolved[0]
+        user = planner.bound_person(role) or user       # token 路 person 取绑定值（§12.4）
     elif not (env.get("ADKG_DEV_AUTH") == "off" and role):
         raise HTTPException(401, "缺有效 service token")
 
-    from adkg.api.routes.ask import _graph, _planner
-    planner = _planner(request)
     if role not in planner.roles:                        # dev 路可传任意值，fail-closed（§十二）
         raise HTTPException(401, f"未知角色：{role}")
     graph = _graph(request)
     plan = planner.plan(role, person=user)
     visible = plan.visible_entity_ids
     allowed_classes = set(plan.metadata_filter.get("entity_class__in", []))
+    global_classes = {"Metric", "Guideline", "Channel"}
 
     with graph.session() as s:
         rec = s.run("MATCH (n:Entity {id: $id})"
@@ -38,6 +40,17 @@ def graph_entity(request: Request, id: str, hops: int = 1,
                     " n.stage AS stage, n.authority AS authority", id=id).single()
         if not rec:
             raise HTTPException(404, f"实体 {id} 不存在")
+        # 主实体同过闸（§12.4，2026-10-23 检查：曾直接返回实体卡，finance 可读任意
+        # Product、client 可读他牌 Brand）——类白名单（全局类豁免）+ 可见集，不过即 404；
+        # 可见集内的锚点本人豁免类闸（"李昂名下的案例"要看得到李昂自己）
+        in_vis = bool(visible) and rec["id"] in visible
+        if plan.deny_all:
+            raise HTTPException(404, "行权限未生效（缺有效身份），拒绝读取")
+        if allowed_classes and rec["class"] not in allowed_classes \
+                and rec["class"] not in global_classes and not in_vis:
+            raise HTTPException(404, f"类 {rec['class']} 不在当前角色白名单")
+        if visible and rec["id"] not in visible and rec["class"] not in global_classes:
+            raise HTTPException(404, "实体不在当前角色可见范围")
         rows = s.run(
             "MATCH (a:Entity {id: $id})-[r]-(b:Entity) RETURN a.id AS src,"
             " type(r) AS rel, b.id AS dst, b.class AS cls, b.name AS name,"
@@ -45,7 +58,6 @@ def graph_entity(request: Request, id: str, hops: int = 1,
             " r.authority AS auth LIMIT 100", id=id).data()
 
     edges, filtered = [], 0
-    global_classes = {"Metric", "Guideline", "Channel"}
     for r in rows:
         if allowed_classes and r["cls"] not in allowed_classes and r["cls"] not in global_classes:
             filtered += 1

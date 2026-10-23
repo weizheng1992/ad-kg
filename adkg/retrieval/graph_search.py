@@ -15,6 +15,8 @@ _SLUG_PATTERN = re.compile(
 
 
 def search(question: str, plan, graph, *, limit: int = 50, person: str | None = None) -> dict:
+    if getattr(plan, "deny_all", False):
+        return {"evidence": [], "entity_ids": [], "filtered": 0}   # fail-closed（§12.4）
     with graph.session() as s:
         # 实体定位：① 完整本体 ID ② 节点 name ③ 裸 slug 后缀匹配
         ids = set(_ID_PATTERN.findall(question))
@@ -113,6 +115,9 @@ def search(question: str, plan, graph, *, limit: int = 50, person: str | None = 
     deny, allow = plan.deny_properties, plan.allow_properties
     for pr in prop_rows:
         cls = pr["cls"] or pr["id"].split(":")[0]
+        allowed_classes = plan.metadata_filter.get("entity_class__in", [])
+        if allowed_classes and cls not in allowed_classes and cls not in global_classes:
+            continue                                     # 类白名单：属性证据不越类（§12.4）
         if visible and pr["id"] not in visible and cls not in global_classes:
             continue
         props = {k: v for k, v in (pr["props"] or {}).items()

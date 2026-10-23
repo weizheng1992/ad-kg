@@ -38,7 +38,9 @@ _DEF_TAIL = ("什么意思", "怎么算", "怎么界定", "如何计算", "如�
 # 多少/最X 亦不拦（"logo 最小尺寸是多少"是概念题）
 _NUMSIG_HARD = ("排名", "最差", "最好", "消耗", "成本", "花费",
                 "cpa", "ctr", "cvr", "roi", "趋势", "均值")
-_ATTR = ("有没有关系", "为什么", "归因", "原因", "和.*规范")
+_ATTR = ("有没有关系", "为什么", "归因", "原因", "和.*规范", "违反")
+# 违反 = 归因语义（查数 + 关联规范，§7.3 串行 g→t→v）：G15 "CPA 最差的素材违反了
+# 哪些规范"曾落 fact 单路，violates 边永远进不了证据
 
 
 @dataclass(frozen=True)
@@ -82,7 +84,9 @@ def _plan_for(intent: str) -> RouterPlan:
 
 def rule_route(question: str) -> RouteDecision:
     q = question.lower()
-    if _hits(q, _OPS) and not any(m in q for m in _RETRIEVAL_MARK):
+    if _hits(q, _OPS) and not any(m in q for m in _RETRIEVAL_MARK) \
+            and not _hits(q, _DEF_TAIL):
+        # 定义尾在场永不判操作（"暂停是什么意思"是概念题，§7.3）
         return RouteDecision("operation", None, 0.95)
     if _hits(q, _ATTR) and (_hits(q, _FACT) or _hits(q, _CONCEPT)):
         return RouteDecision("attribution", _plan_for("attribution"), 0.85)
@@ -93,7 +97,10 @@ def rule_route(question: str) -> RouteDecision:
         # 概念救实："logo 最小尺寸规范""跑量素材的时长要求"——规范词在场且无硬聚合信号
         return RouteDecision("concept", _plan_for("concept"), 0.85)
     if _hits(q, _FACT):
-        return RouteDecision("fact", _plan_for("fact"), 0.9)
+        # 锚词让贤（§7.3）：图锚词与指标词同现（"李昂名下消耗最高"）降置信交 LLM 裁决，
+        # 杜绝人名/品牌锚点被 fact 单路静默丢弃
+        conf = 0.75 if _hits(q, ("名下", "负责", "对接")) else 0.9
+        return RouteDecision("fact", _plan_for("fact"), conf)
     if _hits(q, _GRAPH):
         return RouteDecision("graph", _plan_for("graph"), 0.85)
     if _hits(q, _CONCEPT):

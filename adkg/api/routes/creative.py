@@ -30,18 +30,51 @@ _SYSTEM_PROMPT = (
 
 
 @router.get("/creative/brands")
-def creative_brands(request: Request,
+def creative_brands(request: Request, role: str | None = None, user: str | None = None,
                     authorization: str | None = Header(default=None)) -> dict:
-    """品牌清单（素材生成的选择器数据源）。"""
+    """品牌清单（素材生成的选择器数据源）——案例生成角色门 + 可见 Brand 裁剪（§12.4，
+    2026-10-23 检查：曾对所有角色返回全量品牌+类目）。"""
     env = request.app.state.env
-    if not _resolved_or_dev(request, authorization):
+    from adkg.guards.auth import AuthService
+    from adkg.api.routes.ask import _planner
+    planner = _planner(request)
+    resolved = AuthService(env).resolve(authorization)
+    if resolved:
+        role = resolved[0]
+        user = planner.bound_person(role) or user       # token 绑定优先（§12.4）
+    elif env.get("ADKG_DEV_AUTH") != "off":
         raise HTTPException(401, "缺有效 service token")
+    role = role or "management"                         # dev 无角色默认内部管理视角
+    if role not in planner.roles:
+        raise HTTPException(401, f"未知角色：{role}")
+    from adkg.api.routes.ingest import CASEGEN_ROLES
+    if role not in CASEGEN_ROLES:
+        raise HTTPException(403, f"角色 {role} 无素材生成权限（允许：{sorted(CASEGEN_ROLES)}）")
+    plan = planner.plan(role, person=user)
     graph = _graph_of(request)
     with graph.session() as s:
         brands = s.run("MATCH (b:Entity {class:'Brand'})"
                        " RETURN b.id AS id, b.name AS name, b.category AS category"
                        " ORDER BY b.id").data()
-    return {"brands": brands}
+    return {"brands": _scoped_brands(brands, plan, graph)}
+
+
+def _scoped_brands(brands: list[dict], plan, graph) -> list[dict]:
+    """品牌按行权限裁剪：可见 Brand ∪ 可见案例所属品牌（optimizer 的路径不经过 Brand
+    节点，但其案例属于品牌——生成素材需要品牌选择器，按案例归属放行）。"""
+    if plan.deny_all:
+        return []
+    visible = plan.visible_entity_ids
+    if not visible:
+        return brands
+    allowed = {i for i in visible if i.startswith("Brand:")}
+    case_ids = [i for i in visible if i.startswith("Case:")]
+    if case_ids:
+        with graph.session() as s:
+            allowed |= {r["b"] for r in s.run(
+                "MATCH (c:Entity)-[:for_brand]->(b:Entity) WHERE c.id IN $cs"
+                " RETURN DISTINCT b.id AS b", cs=case_ids).data()}
+    return [b for b in brands if b["id"] in allowed]
 
 
 def related_brand_ids(graph, brand_id: str) -> set[str]:

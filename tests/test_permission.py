@@ -106,3 +106,15 @@ class TestRowFilter图展开:
         plan = self._planner().plan("management")
         assert plan.visible_entity_ids == frozenset()      # 空 = 不约束
         assert plan.sql_predicate == ""
+
+    def test_row_filter角色缺person_fail_closed(self):
+        """2026-10-23 §12.4：row_filter 角色无 person / 图中无此人 → deny-all，不再静默跳过。"""
+        p = self._planner().plan("optimizer")               # 无 person
+        assert p.deny_all and p.sql_predicate == "1=0"
+        p2 = self._planner().plan("client", person="Person:nope")   # 图中无此人
+        assert p2.deny_all
+
+    def test_bound_person取唯一绑定(self):
+        pl = self._planner()
+        assert pl.bound_person("optimizer") == "Person:li"
+        assert pl.bound_person("client") == "Person:client_a"

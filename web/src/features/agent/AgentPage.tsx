@@ -9,8 +9,6 @@ import { agentChat, caseCommit } from '@/lib/api'
 import { NodeCard, DraftCard } from '@/features/shared/cards'
 import type { CaseDraft, CreativeDraftItem, Persona } from '@/lib/api'
 
-const CAN_COMMIT = ['admin', 'management', 'optimizer', 'ae']   // 与后端 CASEGEN_ROLES 一致
-
 interface Msg {
   role: 'user' | 'assistant'
   content: string
@@ -29,7 +27,8 @@ export function AgentPage({ persona, onOpenGraph }: {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
-  const canCommit = CAN_COMMIT.includes(persona.role)
+  // can_commit_case 由 /agent/chat 响应下发（§9.7）——前端不再本地硬抄角色表
+  const [canCommit, setCanCommit] = useState(false)
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, busy])
 
@@ -44,6 +43,7 @@ export function AgentPage({ persona, onOpenGraph }: {
       const r = await agentChat(
         history.filter((m) => !m.committed).map((m) => ({ role: m.role, content: m.content })),
         persona)
+      setCanCommit(r.can_commit_case !== false)
       setMsgs((prev) => [...prev, {
         role: 'assistant', content: r.reply, caseDraft: r.case_draft,
         creatives: r.creative_drafts, trace: r.trace,

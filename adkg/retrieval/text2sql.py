@@ -284,13 +284,30 @@ def _named_creative_hit(question: str, sql: str) -> bool:
     return slug in sql and "creative_id" in select_part
 
 
+def _grain_of(question: str) -> str:
+    """粒度取问句最右的实体词（中心词）——"案例展现最多的计划"问的是计划；
+    素材/创意也进候选，否则"品牌下消耗最高的素材"被品牌劫持。排名/统计分支共用。"""
+    grains = []
+    for words, dim in ((("案例",), "case_id"),
+                       (("商品", "单品", "套装", "礼盒", "套餐", "年卡"), "product_id"),
+                       (("品牌",), "brand_id"),
+                       (("计划",), "campaign_id"),
+                       (("素材", "创意", "物料"), "creative_id")):
+        hit_words = tuple(w for w in words if w in question)
+        if hit_words:
+            grains.append((max(question.rfind(w) for w in hit_words), dim))
+    return max(grains)[1] if grains else "creative_id"
+
+
 def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
     """问题 → (模板名, 参数)。模板是固定 SQL 骨架，只有参数可变。"""
     q = question.lower()
     n = _count_of(q)
     # 问题里点名具体素材（"X 的平均 CPA"）→ 单素材模板
     slug = _named_creative_of(question)
-    if slug and ("cpa" in q or "平均" in question or "多少" in question):
+    if slug:
+        # 点名素材即走单素材模板（投影本就按角色白名单出全家桶）——触发面曾只认
+        # cpa/平均/多少，问"creative_992 的点击率"被静默丢进全局榜（2026-10-23 检查）
         return "entity_metrics", {"ids": [f"Creative:{slug}"]}
     # 交易口径（§六 分列）：购买率/订单/GMV/卖得类 走 product_orders join，与投放 cvr 不混；
     # 必须先于排名词——"购买率最高""卖得最好"是交易语义，落 top_metric 会问交易答投放（夜检 D7）
@@ -303,18 +320,7 @@ def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
     if any(w in question for w in ("最差", "最好", "最佳", "最高", "最低", "最多", "最少",
                                    "最大", "最小", "最凶", "最猛", "排名")) or "top" in q:
         metric = _metric_of(question)
-        # 粒度取问句最右的实体词（中心词）——"案例展现最多的计划"问的是计划；
-        # 素材/创意也要进候选，否则"品牌下消耗最高的素材"被品牌劫持
-        grains = []
-        for words, dim in ((("案例",), "case_id"),
-                           (("商品", "单品", "套装", "礼盒", "套餐", "年卡"), "product_id"),
-                           (("品牌",), "brand_id"),
-                           (("计划",), "campaign_id"),
-                           (("素材", "创意", "物料"), "creative_id")):
-            hit_words = tuple(w for w in words if w in question)
-            if hit_words:
-                grains.append((max(question.rfind(w) for w in hit_words), dim))
-        group = max(grains)[1] if grains else "creative_id"
+        group = _grain_of(question)
         return "top_metric", {"n": 20 if ("各" in question or "所有" in question) else n,
                               "metric": metric,
                               "direction": _direction(metric, question),
@@ -341,7 +347,7 @@ def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
                               "direction": _direction(metric, question),
                               "platform": _platform_of(question),
                               "window": _window_of(question),
-                              "group": "brand_id" if "品牌" in question else "product_id"}
+                              "group": _grain_of(question)}
     if entity_ids:                                        # 归因串行：graph 圈的实体作条件
         return "entity_metrics", {"ids": entity_ids}
     return "platform_summary", {}
@@ -360,7 +366,13 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
         if metric not in _COMPUTABLE:                       # roi/毛利率等：视图无列也无公式
             metric, note = None, _uncomputable_note(metric)
         elif metric not in metrics and metric in ("cpa", "cost"):
-            metric = "cpa" if "cpa" in metrics else ("cost" if "cost" in metrics else None)
+            swapped = "cpa" if "cpa" in metrics else ("cost" if "cost" in metrics else None)
+            # 白名单换轨不再是静默的（2026-10-23 检查：问 CPA 答消耗榜曾无任何说明）
+            note = f"{metric} 对当前角色不可见（指标列白名单），已按可见指标 {swapped} 降级" \
+                if swapped else None
+            metric = swapped
+        elif metric not in metrics:
+            note = f"{metric} 对当前角色不可见（指标列白名单），已回退平台汇总"
         if metric and metric in metrics:
             conds2 = list(conds)
             if params.get("platform"):
@@ -513,23 +525,33 @@ def run(question: str, plan, dsn_ro: str, entity_ids: list[str] | None = None,
             try:
                 rows = q(re.sub(r" AND (?:o\.)?date BETWEEN '[^']+' AND '[^']+'", "", sql))
                 if rows:
-                    # span 按当前 SQL 主表取——交易模板的回退行来自 product_orders_daily
+                    # span 按当前 SQL 主表取——交易模板的回退行来自 product_orders_daily；
+                    # 投放侧 span 带行权限谓词（2026-10-23 检查：曾对外部角色暴露全局区间）
                     span_tbl = ("product_orders_daily" if "product_orders_daily" in sql
                                 else "unified_metrics")
+                    span_pred = (f" WHERE {plan.sql_predicate}"
+                                 if plan.sql_predicate and span_tbl == "unified_metrics" else "")
                     span = q(f"SELECT min(date)::text AS a, max(date)::text AS b"
-                             f" FROM {span_tbl}")
+                             f" FROM {span_tbl}{span_pred}")
+                    scope = " 权限范围内" if span_pred else ""
                     note = (f"所问时间窗口内无可比数据，以下为全量统计"
-                            f"（{span_tbl} 实际覆盖 {span[0]['a']} ~ {span[0]['b']}）"
+                            f"（{span_tbl}{scope} 实际覆盖 {span[0]['a']} ~ {span[0]['b']}）"
                             ) if span else "所问时间窗口内无可比数据，以下为全量统计"
                 elif not note:
                     note = "所问时间窗口与行权限范围内均无可比数据"
             except psycopg.Error:
                 conn.rollback()
                 rows = []
+    if note is None and any(w in question for w in ("被暂停", "已暂停", "被关停", "已关停",
+                                                    "已下线", "被下线", "停投的", "已停投")):
+        # 状态限定词（§7.3 约定③）：进不了 SQL 过滤器，如实标注防误导
+        note = "状态限定词（如已暂停/已下线）未参与 SQL 过滤，结果包含各状态实体"
     return {"evidence": [{
         "type": "fact",
-        "ref": f"unified_metrics · {(sql.split('FROM')[1].split()[0] if 'FROM' in sql.upper()
-                                    and len(sql.split('FROM')) > 1 else 'unified_metrics')}",
+        # ref 溯源锚按真实主表（交易模板曾误标 unified_metrics，2026-10-23 检查）
+        "ref": ("product_orders_daily" if "product_orders_daily" in sql else
+                (sql.split("FROM")[1].split()[0] if "FROM" in sql.upper()
+                 and len(sql.split("FROM")) > 1 else "unified_metrics")),
         "rows": rows, "note": note, "sql_source": source,
         "provenance": {"source_type": "platform_api", "authority": 80},
     }], "row_count": len(rows)}

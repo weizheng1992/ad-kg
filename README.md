@@ -306,7 +306,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 |---|---|
 | router 置信度低 | 三路全跑，assemble 去重兜底 |
 | router / LLM 超时 | 规则路由（意图关键词模板）兜底 |
-| LLM 慢 / 限流（交互路） | 请求路 LLM 调用（探测 / 路由 / text2sql 生成 / agent 总结）**单次不重试、各自限时**，总结超时回模板、超预算（已耗时 ≥60s）不再发起；端到端压在网关 150s 内（2026-10-22 实测：coding 端点同调用 10~90s 方差，30s×3 重试叠加曾致 504，访客 14s 即弃连） |
+| LLM 慢 / 限流（交互路） | 请求路 LLM 调用（探测 / 路由 / text2sql 生成 / agent 总结）**单次不重试、各自限时**，总结超时回模板、超预算（已耗时 ≥60s）不再发起；端到端压在网关 150s 内（2026-10-22 实测：coding 端点同调用 10~90s 方差，30s×3 重试叠加曾致 504，访客 14s 即弃连）。限时档：探测 12s / 路由 15s / text2sql 生成 30s / **总结 60s**（2026-10-23 调整：35s 档在该端点分布下约五成超时）；`/agent/chat` ReAct 每轮 generate 限时 60s、整循环墙钟 120s（超限带已有 trace 收敛）；`/ingest` 抽取调用显式单发限时 |
 | 单路超时 / 异常 | 降级拼装，答案标注缺席路（响应 `degraded` 字段） |
 | text2sql 失败 | 重试一次，仍败则明示"事实数据缺席"——不编数、不降级发查询模板 |
 | T+1 ETL 失败 | 原始层已存 API 原始响应，次日自动补跑，缺口行留状态标记 |
@@ -325,6 +325,8 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 | 操作类 | 删除某素材 | `/actions/check` 校验 → 放行 / 拒绝 | — |
 
 操作类不进 `/ask`：由调用方直接调 `/actions/check`，`/ask` 识别为操作意图时返回端点指引而非答案。
+
+路由护栏约定（规则版，LLM 路由优先于规则）：① **锚词让贤**——图锚词（名下/负责/对接/谁）与指标词同现时（"李昂名下消耗最高的素材"），fact 置信降至 0.75 交 LLM 裁决，杜绝锚点被事实路静默丢弃；② **定义尾短路**——问句带释义尾（什么意思/怎么算/定义是什么）时归 concept，即使句中含操作词或指标词；③ **状态限定词如实标注**——"被暂停/已下线"类状态限定进不了 SQL 过滤器，事实证据挂 note 说明"状态限定未参与过滤"；④ 释义/规范词与聚合词冲突时以硬聚合信号（消耗/CPA/排名/最差等）为准查数，定语型指标词（跑量素材/爆量视频）不作硬信号。`/agent/chat` 响应下发 `can_commit_case`（服务端按案例生成角色判定），前端不本地硬抄角色表。
 
 **融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路 RRF 合并 → 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。路由计划 **RouterPlan**（steps 带依赖与置信度、fallback 标志）是 models.py 一等类型，`ask.py` 只解释执行——路由评测直接对 plan 断言，不起整条 LLM 链路。
 
@@ -583,7 +585,7 @@ confidence  : 抽取置信度 0–1（事实表恒为 1）；≥0.7 入图、0.4
 
 ### 12.4 权限矩阵（`permissions.yaml`）
 
-一行一个 role，人和 Agent 共用。身份来源：`bindings` 段只存 token 标识 → role / Person 的映射结构，token 本体进 `.env` / 密管（git 资产不放明文密钥）。默认策略：**内部角色类白名单 + 属性黑名单；外部角色（客户方）一律白名单 `allow_properties`，schema 新增属性默认不可见（fail-closed）**；CI 校验新增属性无 allow / deny 覆盖则报警（Phase 6）。指标列权限：内部 `metrics_deny` / 外部 `metrics_allow`，作用域 = `unified_metrics` 列 + Text2SQL 可选字段（per-role 视图）。**派生联动**：deny 一列时同步 deny 含它的派生列（deny cost 连带 cpa / roi，防乘法反推）；gross_margin 为内部核算列，Case 属性与指标列两处同步 deny。
+一行一个 role，人和 Agent 共用。身份来源：`bindings` 段只存 token 标识 → role / Person 的映射结构，token 本体进 `.env` / 密管（git 资产不放明文密钥）；**token 路由 person 一律取 bindings 绑定值**（body/query 自报 person 仅 dev 模式兜底，token 路不采信）。默认策略：**内部角色类白名单 + 属性黑名单；外部角色（客户方）一律白名单 `allow_properties`，schema 新增属性默认不可见（fail-closed）**；CI 校验新增属性无 allow / deny 覆盖则报警（Phase 6）。指标列权限：内部 `metrics_deny` / 外部 `metrics_allow`，作用域 = `unified_metrics` 列 + Text2SQL 可选字段（per-role 视图）。**派生联动**：deny 一列时同步 deny 含它的派生列（deny cost 连带 cpa / roi，防乘法反推）；gross_margin 为内部核算列，Case 属性与指标列两处同步 deny。**行权限 fail-closed（2026-10-23）**：配置了 `row_filter` 的角色在 person 缺失、图中无此人或展开结果为空时产出 **deny-all plan**（`PermissionPlan.deny_all=True`——graph / vector 路零证据、text2sql 恒假谓词），而非跳过行过滤；`/graph/entity` 主实体与 `/ask` graph 路属性证据同过类白名单与可见集闸（全局类豁免）；`/creative/brands` 与 Agent 品牌工具按可见 Brand 裁剪；`/ingest/*` 写端点要求 `actions` 含对应写动作（`write_assertion` 等），审计随写落账。
 
 ```yaml
 bindings:

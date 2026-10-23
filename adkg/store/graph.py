@@ -114,3 +114,38 @@ class GraphStore:
                        head(collect(DISTINCT p.id)) AS person,
                        head(collect(DISTINCT p.name)) AS person_name
                 """, ids=creative_ids).data()
+
+    def violations_of_creatives(self, creative_ids: list[str]) -> list[dict]:
+        """事实行→图补 join（G15）：素材 → 违反的规范。规范是全局类，行权限天然豁免。"""
+        if not creative_ids:
+            return []
+        with self.session() as s:
+            return s.run(
+                """
+                UNWIND $ids AS cid
+                MATCH (c:Entity {id: cid})-[:violates]->(g:Entity)
+                RETURN cid, g.id AS gid, g.name AS guideline_name
+                """, ids=creative_ids).data()
+
+    def expand_to_creatives(self, ids: list[str]) -> list[str]:
+        """实体集 → 素材集（§7.3 归因串行）：Brand/Product 反查 Case、Case 反查 Campaign
+        再到 Creative；Creative 原样保留——entity_metrics 只认 creative_id 维度。"""
+        if not ids:
+            return []
+        with self.session() as s:
+            rows = s.run(
+                """
+                MATCH (e:Entity) WHERE e.id IN $ids
+                OPTIONAL MATCH (e)<-[:for_brand|for_product]-(cs:Entity {class:'Case'})
+                              <-[:belongs_to]-(cp:Entity)-[:uses]->(c1:Entity)
+                OPTIONAL MATCH (e)<-[:belongs_to]-(cp2:Entity)-[:uses]->(c2:Entity)
+                OPTIONAL MATCH (e)-[:uses]->(c3:Entity)
+                WITH e, collect(DISTINCT c1.id) + collect(DISTINCT c2.id)
+                     + collect(DISTINCT c3.id) AS cs
+                RETURN e.id AS src, e.class AS cls,
+                       CASE WHEN e.class = 'Creative' THEN cs + [e.id] ELSE cs END AS creatives
+                """, ids=ids).data()
+        out: set[str] = set()
+        for r in rows:
+            out.update(r["creatives"] or [])
+        return sorted(out)

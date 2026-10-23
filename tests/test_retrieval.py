@@ -104,9 +104,10 @@ class TestGraphSearch:
         out = search("喵汪到家App 适合哪个年龄？", planner.plan("management"), g)
         ents = {e["ref"]: e["props"] for e in out["evidence"] if e["type"] == "entity"}
         assert ents.get("Product:P06", {}).get("target_age") == "22-40"
-        ae_out = search("Case:C-2025-006 预算多少", planner.plan("ae"), g)
+        ae_out = search("Case:C-2025-008 预算多少",
+                        planner.plan("ae", person="Person:li"), g)
         case_props = next((e["props"] for e in ae_out["evidence"]
-                           if e["type"] == "entity" and e["ref"] == "Case:C-2025-006"), {})
+                           if e["type"] == "entity" and e["ref"] == "Case:C-2025-008"), {})
         assert "bd_budget" not in case_props and "stage" in case_props   # 黑名单只拦指定属性
         g.close()
 

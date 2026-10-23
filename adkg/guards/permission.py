@@ -101,19 +101,35 @@ class PermissionPlanner:
         """全部合法角色——API 层对 dev 路传入的 role 做 fail-closed 预检（§十二）。"""
         return frozenset(self.perms["roles"])
 
+    def bound_person(self, role: str) -> str | None:
+        """role 在 bindings 的唯一绑定 person（§12.4：token 路 person 一律取绑定值）。
+        多绑定/无绑定返回 None——由调用方回退 body 自报（dev 兜底）。"""
+        persons = [b.get("person") for b in self.perms.get("bindings", {}).values()
+                   if isinstance(b, dict) and b.get("role") == role and b.get("person")]
+        return persons[0] if len(persons) == 1 else None
+
     def plan(self, role: str, person: str | None = None) -> PermissionPlan:
         cfg = self.perms["roles"][role]
         classes = [c for c in cfg["classes"]]
         visible: frozenset[str] = frozenset()
         predicate = ""
-        if cfg.get("row_filter") and self._graph is not None and person:
-            visible, predicate = self._expand_row_filter(cfg["row_filter"], person)
+        deny_all = False
+        if cfg.get("row_filter"):
+            # 行权限 fail-closed（§12.4，2026-10-23）：row_filter 角色在 person 缺失、
+            # 图不可用或锚点展开为空时产出 deny-all plan，而非跳过行过滤静默放行
+            if person and self._graph is not None:
+                visible, predicate = self._expand_row_filter(cfg["row_filter"], person)
+                if not predicate:                        # person 在图中无展开（他人/伪造）
+                    deny_all = True
+            else:
+                deny_all = True
         return PermissionPlan(
             metadata_filter={"entity_class__in": classes},
             visible_entity_ids=visible,
-            sql_predicate=predicate,
+            sql_predicate="1=0" if deny_all else predicate,
             allowed_columns=self._allowed_columns(cfg),
             deny_properties=frozenset(cfg.get("deny_properties", [])),
             allow_properties=frozenset(cfg.get("allow_properties", [])),
             mask_rules=["person_name"] if cfg.get("external") else [],
+            deny_all=deny_all,
         )

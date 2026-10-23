@@ -38,7 +38,7 @@ roles:
     classes: [Creative, Guideline, Metric, Channel, Campaign]
     deny_properties: [Campaign.daily_budget]
     metrics_deny: [cost, gross_margin, cpa, roi]   # 派生联动：deny cost 连带 cpa / roi（§12.4）
-    actions: [read, create_creative]
+    actions: [read, create_creative, write_assertion]   # write_assertion：违规断言上报（AIGC 检查）
 
   client:                        # 外部角色：一律白名单，与 README §12.4 逐字一致
     external: true
@@ -61,4 +61,5 @@ roles:
   admin:                         # 运维与审计读取；不参与业务检索
     classes: [Brand, Product, Case, Campaign, Creative, Channel, LandingPage,
               Audience, Metric, Guideline, Person, DocVersion]
-    actions: [read, create_creative, pause_campaign, delete_creative, create_case, update_stage]
+    actions: [read, create_creative, pause_campaign, delete_creative, create_case,
+              update_stage, write_assertion]   # write_assertion：/ingest/assertion 动作门（§12.4）

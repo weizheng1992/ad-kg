@@ -94,14 +94,20 @@ def eval_one(client, item: dict, judge_fn=None) -> dict:
     must = item.get("expected_answer", {}).get("must_entities", [])
     blob = json.dumps(evidence, ensure_ascii=False, default=str)
     points = item.get("expected_answer", {}).get("points", [])
+    # 数值硬断言（2026-10-23 收紧）：期望数字必须出现在证据/答案里，不再依赖 judge 心情；
+    # judge 只认 verdict——verdict=False 即不通过（points_hit 曾把明确否决放行成虚绿）
+    must_num = item.get("expected_answer", {}).get("must_numbers", [])
+    num_ok = all(any(str(n) in txt for txt in (blob, str(body.get("answer") or "")))
+                 for n in must_num)
     if judge_fn is not None and evidence:
         verdict = judge_fn(item["question"], points, evidence)   # LLM 按要点（§11.3）
         result["judge"] = verdict
         result["checks"]["evidence"] = bool(
-            verdict and (verdict["verdict"] or verdict["points_hit"])) and (
-            not must or any(m in blob for m in must))
+            verdict and verdict["verdict"]) and (
+            not must or any(m in blob for m in must)) and num_ok
     else:
-        result["checks"]["evidence"] = bool(evidence) and (not must or any(m in blob for m in must))
+        result["checks"]["evidence"] = bool(evidence) and (
+            not must or any(m in blob for m in must)) and num_ok
     if role == "client":
         result["checks"]["permission"] = "Case:C-2025-006" not in blob  # 越权目标零出现
     result["degraded"] = body.get("degraded", [])

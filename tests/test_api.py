@@ -84,8 +84,50 @@ class TestGraphEntity:
     def test_客户不见他品牌邻居(self, client):
         r = client.get("/graph/entity", params={
             "id": "Brand:B06", "role": "client", "user": "Person:client_a"})
-        assert r.json()["neighbors"] == []            # B04 之外的子图零邻居
+        assert r.status_code == 404                   # B04 之外直接 404（§12.4 主实体闸，
+                                                        # 2026-10-23 前是 200+空邻居）
 
     def test_不存在实体返回404(self, client):
         assert client.get("/graph/entity", params={
             "id": "Brand:NOPE", "role": "management"}).status_code == 404
+
+
+@pytest.mark.skipif(not os.environ.get("ADKG_PG_DSN"), reason="未配置 .env")
+class TestPermissionGates:
+    """2026-10-23 §12.4 fail-closed 六缺口修复的 API 面回归。"""
+
+    def test_graph_entity_越类与越权404(self, client):
+        r = client.get("/graph/entity", params={"id": "Product:P01", "role": "finance",
+                                                "user": "Person:zhou"})
+        assert r.status_code == 404                        # finance classes=[Case,Brand] 越类
+        r2 = client.get("/graph/entity", params={"id": "Brand:B06", "role": "client",
+                                                 "user": "Person:client_a"})
+        assert r2.status_code == 404                       # 他牌 Brand 越可见集
+        r3 = client.get("/graph/entity", params={"id": "Brand:B04", "role": "client",
+                                                 "user": "Person:client_a"})
+        assert r3.status_code == 200
+
+    def test_ingest_assertion_动作门(self, client):
+        r = client.post("/ingest/assertion", json={
+            "role": "client", "user": "Person:client_a", "subject": "Brand:B04",
+            "predicate": "for_brand", "object": "Case:C-2025-003", "confidence": 0.9})
+        assert r.status_code == 403                        # actions=[read] 无 write_assertion
+
+    def test_ingest_docs_外部403(self, client):
+        r = client.get("/ingest/docs", params={"role": "client", "user": "Person:client_a"})
+        assert r.status_code == 403
+        r2 = client.get("/ingest/docs", params={"role": "management"})
+        assert r2.status_code == 200
+
+    def test_creative_brands_外部403_内部裁剪(self, client):
+        r = client.get("/creative/brands", params={"role": "client", "user": "Person:client_a"})
+        assert r.status_code == 403
+        r2 = client.get("/creative/brands", params={"role": "optimizer", "user": "Person:li"})
+        assert r2.status_code == 200 and r2.json()["brands"]   # 只见可见 Brand（非空）
+
+    def test_ask_row_filter缺person零证据(self, client):
+        r = client.post("/ask", json={"question": "各案例的消耗", "role": "optimizer"})
+        assert r.status_code == 200
+        ev = r.json()["evidence"]                          # deny-all（§12.4 fail-closed）
+        assert all(not e.get("rows") for e in ev)          # 事实行恒空
+        assert not any(e["type"] in ("entity", "doc") for e in ev)   # 图/文档路零证据

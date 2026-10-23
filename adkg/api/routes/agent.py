@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 
 import psycopg
@@ -46,9 +47,12 @@ _AGENT_SYSTEM = (
 def agent_chat(request: Request, body: dict,
                authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
+    from adkg.api.routes.ask import _llm, _planner
+    planner = _planner(request)
     resolved = AuthService(env).resolve(authorization)
     if resolved:
-        role, person = resolved[0], body.get("user") or resolved[1]
+        role = resolved[0]
+        person = planner.bound_person(role) or body.get("user")   # token 绑定优先（§12.4）
     elif env.get("ADKG_DEV_AUTH") == "off" and body.get("role"):
         role, person = body["role"], body.get("user")
     else:
@@ -59,11 +63,9 @@ def agent_chat(request: Request, body: dict,
     if not last or not str(last.get("content") or "").strip():
         raise HTTPException(422, "messages 至少要有一条非空 user 消息")
 
-    from adkg.api.routes.ask import _llm, _planner
     llm = _llm(request)
     if llm is None:
         raise HTTPException(503, "LLM 不可用（稍后重试，§7.2）")
-    planner = _planner(request)
     if role not in planner.roles:                        # fail-closed（§十二）
         raise HTTPException(401, f"未知角色：{role}")
     plan = planner.plan(role, person=person)
@@ -71,8 +73,13 @@ def agent_chat(request: Request, body: dict,
 
     trace, reply, case_draft, creative_drafts = [], "", None, None
     generate = getattr(llm, "chat_json_slow", None) or llm.chat_json
+    t_start = time.monotonic()                           # 整循环墙钟（§7.2：120s 上限）
     for _ in range(MAX_TURNS):
-        payload = generate(_AGENT_SYSTEM, _turn_prompt(history, trace))
+        if time.monotonic() - t_start > 120:             # 超限带已有 trace 收敛，不再发起调用
+            reply = reply or f"已达处理时限，基于已获取的 {len(trace)} 次工具结果回答。"
+            break
+        payload = generate(_AGENT_SYSTEM, _turn_prompt(history, trace), timeout=60,
+                           max_retries=0)                # 每轮 generate 限时 60s（§7.2）
         if not isinstance(payload, dict):
             break
         if "final" in payload:
@@ -104,8 +111,10 @@ def agent_chat(request: Request, body: dict,
         raise HTTPException(503, f"agent 未能产出结果（{len(trace)} 次工具调用），请重试")
 
     _audit(env, role, person, str(last.get("content") or ""), len(trace))
+    from adkg.api.routes.ingest import CASEGEN_ROLES
     return {"reply": reply, "case_draft": case_draft,
-            "creative_drafts": creative_drafts, "trace": trace}
+            "creative_drafts": creative_drafts, "trace": trace,
+            "can_commit_case": role in CASEGEN_ROLES}   # 前端不本地硬抄角色表（§9.7）
 
 
 def _run_tool(action: str, args: dict, env: dict, graph, plan, llm,
@@ -127,11 +136,14 @@ def _run_tool(action: str, args: dict, env: dict, graph, plan, llm,
                          "evidence_n": len(out.get("evidence") or []),
                          "degraded": out.get("degraded", [])})
     if action == "list_brands":
+        if getattr(plan, "deny_all", False):
+            return "行权限未生效（缺有效身份）"
         with graph.session() as s:
             rows = s.run("MATCH (b:Entity {class:'Brand'})"
                          " RETURN b.id AS id, b.name AS name, b.category AS category"
                          " ORDER BY b.id").data()
-        return _compact(rows)
+        from adkg.api.routes.creative import _scoped_brands
+        return _compact(_scoped_brands(rows, plan, graph))   # 行权限裁剪与 /creative/brands 同口径
     if action == "search_product_knowledge":
         from adkg.retrieval import vector_search
         out = vector_search.search(str(args.get("query") or ""), plan,
@@ -156,6 +168,8 @@ def _run_tool(action: str, args: dict, env: dict, graph, plan, llm,
         return _compact(graph.guidelines_with_thresholds())
     if action == "list_synced_docs":
         from adkg.api.routes.ingest import synced_docs
+        if plan.mask_rules:                              # 外部角色：文档标题含他牌月报，不见
+            return "当前角色不可见文档清单"
         return _compact(synced_docs(env["ADKG_PG_DSN"], str(args.get("q") or ""))[:10])
     return f"未知工具：{action}（可用：list_brands / search_product_knowledge / " \
            "search_best_creatives / get_guidelines / list_synced_docs）"

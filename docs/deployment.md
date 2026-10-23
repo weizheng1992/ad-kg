@@ -78,7 +78,8 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
   ② `X-Adkg-Role` 头换对应角色 token（token 只存 nginx 配置不进前端包；头缺失/陌生 → Bearer 空 →
   API 401 fail-closed）③ limit_req 限速（/ask 1r/s burst 3，防烧 LLM 配额；其余 API 路 10r/s）。
   8000 本体仍不对公网，nginx 是唯一入口；演示数据全合成。web/dist 更新走 rsync（CI 自动化留待
-  演示加厚时）
+  演示加厚时）。**nginx 配置真源：`deploy/nginx/adkg-demo.conf`（占位符 + sed 替换安装，
+  2026-10-23 落位；含探测路径 404，SPA fallback 不再对扫描器回 200）**
 - 凭据分层：`.env` 永不入库（两仓都是）；LLM key 只存服务器与本地，GitHub 只有 SSH 部署钥匙
 
 ## 五、边界约定（沿用 README §五 / §9.8 的精神）

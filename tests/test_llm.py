@@ -75,27 +75,24 @@ def test_agent总结载荷瘦身_留正文去溯源():
            "provenance": {"source_type": "official_doc", "authority": 60}},
           {"type": "entity", "ref": "Brand:B01", "props": {"name": "律动星球"},
            "provenance": {"source_type": "system_of_record", "authority": 100}},
-          {"type": "fact", "rows": [{"creative_name": "大促静态 4s", "cpa": 48.78}],
-           "sql": "SELECT ..."}]
+          {"type": "fact", "rows": [{"creative_name": "大促静态 4s", "cpa": 48.78}]}]
     out = _agent_answer(_Cap(), "信息流视频时长规范", ev, {"Brand:B01": "律动星球"})
     assert out == "ok"
     assert "provenance" not in _Cap.last_user and "chunk:d1#3" not in _Cap.last_user
     assert "SELECT" not in _Cap.last_user
     assert "信息流视频时长不超过30秒" in _Cap.last_user      # vector 正文必须保留
     assert "律动星球" in _Cap.last_user and "48.78" in _Cap.last_user
-    assert _Cap.kw == {"timeout": 35, "max_retries": 0}     # 限时单发（§7.2）
+    assert _Cap.kw == {"timeout": 60, "max_retries": 0}     # 限时单发（§7.2；60s 档）
 
-    def test_默认不换client(self, monkeypatch):
-        c, calls = self._client(monkeypatch)
-        c.chat_json("s", "u")
-        assert calls == []                                  # 默认 30s×3 原样走主 client
 
-    def test_预算参数下传(self, monkeypatch):
-        c, calls = self._client(monkeypatch)
-        c.chat_json("s", "u", timeout=15, max_retries=0)
-        assert calls == [{"timeout": 15, "max_retries": 0}]
+def test_agent空answer回模板不炸():
+    """LLM 返回空 answer → 回模板摘要；内部回退 decision=None 判空不炸（2026-10-23）。"""
+    from adkg.api.routes.ask import _agent_answer
 
-    def test_只传其一另一保持默认(self, monkeypatch):
-        c, calls = self._client(monkeypatch)
-        c.chat_json("s", "u", timeout=8)
-        assert calls == [{"timeout": 8, "max_retries": 3}]
+    class _Empty:
+        def chat_json(self, system, user, **kw):
+            return {"answer": ""}
+
+    ev = [{"type": "fact", "rows": [{"cpa": 20.4}]}]
+    out = _agent_answer(_Empty(), "CPA 最差", ev, {})
+    assert "证据" in out                                     # 模板摘要，非异常

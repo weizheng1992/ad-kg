@@ -13,8 +13,8 @@ def _vec_literal(v: list[float]) -> str:
 
 
 def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> dict:
-    if embed_fn is None:
-        return {"evidence": [], "degraded": True, "reason": "无嵌入能力（缺本地模型）"}
+    if getattr(plan, "deny_all", False):
+        return {"evidence": [], "degraded": False}      # fail-closed：无有效身份零证据（§12.4）
     # 权限子句先建（主路与关键词兜底共用——降级检索不降权限，§12.4 fail-closed）；
     # 主路维持"未分类=公共内容可检索"（类子句自带 OR entity_class IS NULL），
     # entity_class IS NOT NULL 只加在兜底（兜底按类排序需要非空类）——不得进主路，
@@ -59,6 +59,11 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
             "score": 0.5, "fallback": "keyword",
             "provenance": {"source_type": "official_doc", "authority": 60},
         } for r in rows], "degraded": False}
+
+    if embed_fn is None:
+        # 嵌入能力缺失也走关键词兜底（§7.2 缺席不如降级检索）——2026-10-23 检查实锤：
+        # 此分支曾直接 degraded，探测失败的级联让概念题当场丢主路
+        return _keyword_fallback()
 
     try:
         vec = _vec_literal(embed_fn([question])[0])
