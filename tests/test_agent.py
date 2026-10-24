@@ -221,9 +221,9 @@ def test_浏览工具真实点击抓取入图():
         assert out["ingested"] is False and out.get("conflict_queued") is True
         assert rec["src"] == "system_of_record" and "铲屎官" in rec["name"]
         with psycopg.connect(_os.environ["ADKG_PG_DSN"]) as c, c.cursor() as cur:
-            cur.execute("SELECT count(*) AS n FROM review_queue WHERE kind = 'conflict'"
+            cur.execute("SELECT count(*) FROM review_queue WHERE kind = 'conflict'"
                         " AND status = 'open' AND payload->>'entity' = 'Creator:cr11'")
-            assert cur.fetchone()["n"] == 1           # 幂等重抓不重复挂账
+            assert cur.fetchone()[0] == 1          # 幂等重抓不重复挂账
     else:
         # 幂等 MERGE 分支（此前实弹已把节点覆盖成 platform_api/80）
         assert out["ingested"] is True

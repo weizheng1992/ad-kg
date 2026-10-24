@@ -107,6 +107,7 @@ export function CreatorDetailPage() {
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="py-2 font-medium">案例</th><th className="py-2 font-medium">阶段</th>
+                  <th className="py-2 font-medium">消耗</th><th className="py-2 font-medium">CPA</th>
                   <th className="py-2 font-medium">未成单原因</th>
                 </tr>
               </thead>
@@ -119,6 +120,12 @@ export function CreatorDetailPage() {
                       </Link>
                     </td>
                     <td className="py-2"><Badge variant="outline">{STAGE_LABEL[x.stage] ?? x.stage}</Badge></td>
+                    <td className="py-2 font-mono">
+                      {x.cost != null ? `¥${Number(x.cost).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}` : '—'}
+                    </td>
+                    <td className="py-2 font-mono">
+                      {x.cpa != null ? `¥${Number(x.cpa).toFixed(2)}` : '—'}
+                    </td>
                     <td className="py-2 text-muted-foreground">{x.lost_reason || '—'}</td>
                   </tr>
                 ))}

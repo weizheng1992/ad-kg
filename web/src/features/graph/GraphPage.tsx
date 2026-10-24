@@ -11,6 +11,7 @@ const CLASS_COLOR: Record<string, string> = {
   Brand: '#0ea5e9', Product: '#6366f1', Case: '#10b981', Campaign: '#f59e0b',
   Creative: '#ef4444', Guideline: '#8b5cf6', Person: '#ec4899', Metric: '#14b8a6',
   Channel: '#84cc16', DocVersion: '#94a3b8', LandingPage: '#a8a29e', Audience: '#f97316',
+  Creator: '#eab308',
 }
 
 interface GNode { id: string; name: string; category: string; value?: string }

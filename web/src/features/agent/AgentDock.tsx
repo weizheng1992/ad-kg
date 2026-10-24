@@ -156,7 +156,10 @@ export function AgentDock() {
           <Bot className="size-4 text-primary" />
           <span className="text-sm font-bold">Agent 助手</span>
           <span className="text-[11px] text-muted-foreground">问答 · 生成 · 平台抓取</span>
-          <Button variant="ghost" size="sm" className="ml-auto h-7 px-2"
+          <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-[11px]"
+                  disabled={!msgs.length && !busy}
+                  onClick={() => { setMsgs([]); setError('') }}>清空</Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2"
                   aria-label="收起" onClick={() => setOpen(false)}>
             <Minus className="size-4" />
           </Button>

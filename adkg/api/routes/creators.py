@@ -202,10 +202,15 @@ async def import_creators(request: Request, file: UploadFile,
             "errors": errors[:20], "total": created + merged + conflicts + len(errors)}
 
 
+# 排序白名单（防注入）——coalesce 兜 NULL 在前（Neo4j DESC 空值会排到头部）
+_SORTS = {"followers": "coalesce(n.followers, -1)", "gmv": "coalesce(n.gmv_30d, -1)",
+          "quote": "coalesce(n.quote_20s, -1)"}
+
+
 @router.get("/creators")
 def list_creators(request: Request, q: str = "", platform: str = "", niche: str = "",
                   source: str = "", min_followers: int = 0, max_quote: int = 0,
-                  page: int = 1, size: int = 20,
+                  sort: str = "followers", page: int = 1, size: int = 20,
                   role: str | None = None, user: str | None = None,
                   authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
@@ -213,6 +218,7 @@ def list_creators(request: Request, q: str = "", platform: str = "", niche: str 
     _require_creator(plan)
     size = max(1, min(size, 100))
     page = max(1, page)
+    order = _SORTS.get(sort, _SORTS["followers"])
     where = ("($q = '' OR n.name CONTAINS $q)"
              " AND ($platform = '' OR n.platform = $platform)"
              " AND ($niche = '' OR n.niches CONTAINS $niche)"
@@ -227,7 +233,7 @@ def list_creators(request: Request, q: str = "", platform: str = "", niche: str 
             f"MATCH (n:Entity {{class: 'Creator'}}) WHERE {where} "
             "OPTIONAL MATCH (c:Entity)-[:collabs_with]->(n) "
             "WITH n, count(DISTINCT c) AS cases "
-            "ORDER BY n.followers DESC SKIP $skip LIMIT $size "
+            f"ORDER BY {order} DESC SKIP $skip LIMIT $size "
             "RETURN n.id AS id, n.name AS name, n.platform AS platform, n.niches AS niches, "
             "n.followers AS followers, n.quote_20s AS quote_20s, n.quote_image AS quote_image, "
             "n.gmv_30d AS gmv_30d, n.city AS city, n.rating AS rating, cases, "
@@ -280,6 +286,14 @@ def creator_detail(request: Request, cid: str,
         visible_cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"]}
                          for c in visible_cases]
     stats = _collab_stats(request.app.state.env, plan, [c["id"] for c in visible_cases])
+    # 合作行指标（spec §14：M10 承诺漏做补上）——与 /cases 列表同源批量统计
+    from adkg.api.routes.cases import _case_stats_batch
+    case_metrics = _case_stats_batch(request.app.state.env, plan,
+                                     [c["id"] for c in visible_cases])
+    for c in visible_cases:
+        m = case_metrics.get(c["id"]) or {}
+        c["cost"] = m.get("cost")
+        c["cpa"] = m.get("cpa")
     return {
         "creator": {"id": rec["id"], "name": rec["name"], "platform": rec["platform"],
                     "niches": (rec["niches"] or "").split("|") if rec["niches"] else [],

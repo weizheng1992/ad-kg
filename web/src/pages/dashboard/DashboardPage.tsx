@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import * as echarts from 'echarts'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { statsOverview, type StatsOverview } from '@/lib/api'
 import { useSession } from '@/lib/session'
@@ -34,12 +35,13 @@ export function DashboardPage() {
   const { session } = useSession()
   const navigate = useNavigate()
   const [d, setD] = useState<StatsOverview | null>(null)
+  const [days, setDays] = useState(90)
   const [error, setError] = useState('')
 
   useEffect(() => {
     setD(null); setError('')
-    statsOverview().then(setD).catch((e) => setError(`${e}`))
-  }, [session?.role, session?.person])
+    statsOverview(days).then(setD).catch((e) => setError(`${e}`))
+  }, [session?.role, session?.person, days])
 
   const trendRef = useChart((c) => {
     if (!d) return
@@ -113,21 +115,34 @@ export function DashboardPage() {
 
   const costTotal = d.trend.reduce((s, t) => s + num(t.cost), 0)
   const convTotal = d.trend.reduce((s, t) => s + num(t.conversions), 0)
+  const cpaAll = convTotal > 0 ? costTotal / convTotal : null
   const caseTotal = d.stages.reduce((s, x) => s + x.count, 0)
 
   return (
     <div className="space-y-4 p-6">
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-wrap items-baseline gap-3">
         <h2 className="text-base font-bold">数据看板</h2>
         <span className="text-xs text-muted-foreground">
-          近 {d.days} 天 · 汇总比口径（README §六）——数据集合随你的角色锚点变化
+          汇总比口径（README §六）——数据集合随你的角色锚点变化
         </span>
+        <div className="ml-auto flex gap-1">
+          {[7, 30, 90].map((n) => (
+            <Button key={n} size="sm" variant={days === n ? 'default' : 'outline'}
+                    onClick={() => setDays(n)}>近 {n} 天</Button>
+          ))}
+        </div>
       </div>
+
+      {session?.role === 'client' && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          外部客户视角：以下数据仅限贵品牌绑定范围
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-4">
         {([['消耗', `¥${wan(costTotal)}`], ['转化', wan(convTotal)],
-           ['可见案例', `${caseTotal}`],
-           ['结算中', `${d.stages.find((s) => s.stage === 'live')?.count ?? 0} 投放中`]] as const)
+           ['汇总 CPA', cpaAll != null ? `¥${cpaAll.toFixed(2)}` : '—'],
+           ['可见案例', `${caseTotal}（投放中 ${d.stages.find((s) => s.stage === 'live')?.count ?? 0}）`]] as const)
           .map(([k, v]) => (
             <Card key={k}><CardContent className="py-4">
               <div className="font-mono text-xl font-bold">{v}</div>
@@ -160,17 +175,18 @@ export function DashboardPage() {
           </Card>
         )}
         <Card>
-          <CardHeader className="pb-1"><CardTitle className="text-sm">案例阶段分布</CardTitle></CardHeader>
+          <CardHeader className="pb-1"><CardTitle className="text-sm">案例阶段分布（点击进案例）</CardTitle></CardHeader>
           <CardContent className="space-y-2 pt-2">
             {d.stages.map((s) => (
-              <div key={s.stage} className="flex items-center gap-3 text-xs">
-                <span className="w-14 text-muted-foreground">{STAGE_LABEL[s.stage] ?? s.stage}</span>
+              <button key={s.stage} onClick={() => navigate(`/cases?stage=${s.stage}`)}
+                      className="flex w-full items-center gap-3 rounded px-0.5 py-0.5 text-left text-xs hover:bg-muted/50">
+                <span className="w-14 shrink-0 text-muted-foreground">{STAGE_LABEL[s.stage] ?? s.stage}</span>
                 <div className="h-4 flex-1 overflow-hidden rounded bg-muted">
                   <div className="h-full rounded bg-primary"
                        style={{ width: `${caseTotal ? (s.count / caseTotal) * 100 : 0}%` }} />
                 </div>
-                <span className="w-8 text-right font-mono">{s.count}</span>
-              </div>
+                <span className="w-8 shrink-0 text-right font-mono">{s.count}</span>
+              </button>
             ))}
           </CardContent>
         </Card>

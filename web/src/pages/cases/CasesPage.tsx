@@ -1,6 +1,7 @@
-// 案例列表（spec §13.2）：阶段/品牌筛选 + 批量指标（汇总比）——行点击进详情
+// 案例列表（spec §13.2）：阶段/品牌筛选 + 批量指标（汇总比）——行点击进详情；
+// 支持 ?stage= 进场筛选（看板阶段分布互链，spec §14）
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,8 +18,9 @@ const pct = (v?: string | null) =>
   v == null || v === '' ? '—' : `${(Number(v) * 100).toFixed(2)}%`
 
 export function CasesPage() {
+  const [params] = useSearchParams()
   const [q, setQ] = useState('')
-  const [stage, setStage] = useState('all')
+  const [stage, setStage] = useState<string>(params.get('stage') ?? 'all')
   const [brand, setBrand] = useState('')
   const [items, setItems] = useState<CaseListItem[]>([])
   const [total, setTotal] = useState(0)

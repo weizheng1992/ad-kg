@@ -69,6 +69,9 @@ export function CreatorsPage() {
   const [platform, setPlatform] = useState<string>('all')
   const [niche, setNiche] = useState('')
   const [source, setSource] = useState<string>('all')
+  const [minFollowers, setMinFollowers] = useState('')
+  const [maxQuote, setMaxQuote] = useState('')
+  const [sort, setSort] = useState<string>('followers')
   const [items, setItems] = useState<CreatorItem[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -82,10 +85,12 @@ export function CreatorsPage() {
   const load = useCallback(async (p: number) => {
     setBusy(true); setError('')
     try {
-      const query: CreatorListQuery = { page: p, size, q: q.trim() }
+      const query: CreatorListQuery = { page: p, size, q: q.trim(), sort: sort as 'followers' }
       if (platform !== 'all') query.platform = platform
       if (niche.trim()) query.niche = niche.trim()
       if (source !== 'all') query.source = source
+      if (minFollowers.trim()) query.min_followers = Number(minFollowers)
+      if (maxQuote.trim()) query.max_quote = Number(maxQuote)
       const r = await listCreators(query)
       setItems(r.items); setTotal(r.total); setPage(p)
     } catch (e) {
@@ -93,9 +98,31 @@ export function CreatorsPage() {
     } finally {
       setBusy(false)
     }
-  }, [q, platform, niche, source])
+  }, [q, platform, niche, source, minFollowers, maxQuote, sort])
 
   useEffect(() => { void load(1) }, [load])
+
+  /** 导出当前筛选（spec §14）：取 size=100 生成 CSV 下载 */
+  const exportCsv = async () => {
+    try {
+      const query: CreatorListQuery = { page: 1, size: 100, q: q.trim(), sort: sort as 'followers' }
+      if (platform !== 'all') query.platform = platform
+      if (niche.trim()) query.niche = niche.trim()
+      if (source !== 'all') query.source = source
+      const r = await listCreators(query)
+      const head = 'name,platform,niches,followers,quote_20s,quote_image,gmv_30d,city,rating,collab_cases,source'
+      const body = r.items.map((c) => [
+        c.name, c.platform, c.niches.join('|'), c.followers, c.quote_20s, c.quote_image,
+        c.gmv_30d, c.city, c.rating, c.cases, c.source ?? '',
+      ].join(',')).join('\n')
+      const url = URL.createObjectURL(new Blob([`\ufeff${head}\n${body}`], { type: 'text/csv' }))
+      const a = document.createElement('a')
+      a.href = url; a.download = `creators-${Date.now()}.csv`; a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(`导出失败：${e}`)
+    }
+  }
 
   const doImport = async (f: File) => {
     setImportMsg('导入中…')
@@ -142,11 +169,26 @@ export function CreatorsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Input className="w-28" placeholder="粉丝≥" value={minFollowers}
+               onChange={(e) => setMinFollowers(e.target.value.replace(/\D/g, ''))}
+               onKeyDown={(e) => e.key === 'Enter' && load(1)} />
+        <Input className="w-28" placeholder="报价≤" value={maxQuote}
+               onChange={(e) => setMaxQuote(e.target.value.replace(/\D/g, ''))}
+               onKeyDown={(e) => e.key === 'Enter' && load(1)} />
+        <Select value={sort} onValueChange={setSort}>
+          <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="followers">按粉丝</SelectItem>
+            <SelectItem value="gmv">按 GMV</SelectItem>
+            <SelectItem value="quote">按报价</SelectItem>
+          </SelectContent>
+        </Select>
         <Button size="sm" disabled={busy} onClick={() => load(1)}>筛选</Button>
         <div className="ml-auto flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".csv" className="hidden"
                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void doImport(f); e.target.value = '' }} />
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>导入 CSV</Button>
+          <Button variant="outline" size="sm" onClick={() => void exportCsv()}>导出</Button>
           <Button size="sm" onClick={() => setShowForm(!showForm)}>{showForm ? '收起录入' : '录入达人'}</Button>
           <span className="text-xs text-muted-foreground">共 {total} 位</span>
         </div>

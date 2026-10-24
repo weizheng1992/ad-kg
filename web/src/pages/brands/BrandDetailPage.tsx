@@ -47,6 +47,15 @@ export function BrandDetailPage() {
         )}
       </div>
 
+      {d.owners && d.owners.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          对接人：
+          {d.owners.map((o) => (
+            <Badge key={o.id} variant="outline" className="font-normal">{o.name}</Badge>
+          ))}
+        </div>
+      )}
+
       {d.products.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -80,6 +89,18 @@ export function BrandDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {/* 阶段分布条（spec §14）：同页案例的阶段构成一览 */}
+          <div className="mb-3 flex h-2 overflow-hidden rounded-full">
+            {Object.entries(d.cases.reduce((acc, c) => {
+              acc[c.stage] = (acc[c.stage] ?? 0) + 1; return acc
+            }, {} as Record<string, number>)).map(([st, n]) => (
+              <div key={st} title={`${STAGE_LABEL[st] ?? st} ${n}`}
+                   className={st === 'live' ? 'bg-emerald-500' : st === 'closed' ? 'bg-primary'
+                     : st === 'lost' ? 'bg-red-400' : st === 'terminated' ? 'bg-red-600'
+                     : 'bg-muted-foreground/40'}
+                   style={{ width: `${(n / d.cases.length) * 100}%` }} />
+            ))}
+          </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">

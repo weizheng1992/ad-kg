@@ -174,7 +174,8 @@ export interface CreatorItem {
 
 export interface CreatorDetail {
   creator: CreatorItem
-  collabs: { id: string; name: string; stage: string; lost_reason?: string | null }[]
+  collabs: { id: string; name: string; stage: string; lost_reason?: string | null
+             cost?: string | null; cpa?: string | null }[]
   collabs_filtered: number
   products: { id: string; name: string; price?: string | null; spec?: string | null
               target_age?: string | null }[]
@@ -187,7 +188,9 @@ export interface CreatorDetail {
 
 export interface CreatorListQuery {
   q?: string; platform?: string; niche?: string; source?: string
-  min_followers?: number; max_quote?: number; page?: number; size?: number
+  min_followers?: number; max_quote?: number
+  sort?: 'followers' | 'gmv' | 'quote'
+  page?: number; size?: number
 }
 
 export async function listCreators(params: CreatorListQuery): Promise<
@@ -310,6 +313,7 @@ export interface BrandDetail {
   cases: { id: string; name: string; stage: string; lost_reason?: string | null
            settlement_status?: string | null }[]
   stats: BrandListItem['stats']
+  owners?: { id: string; name: string }[]
 }
 
 export async function listBrands(q = ''): Promise<{ items: BrandListItem[]; total: number }> {
@@ -399,8 +403,23 @@ async function _get<T>(url: string): Promise<T> {
 
 export const getPermissionMatrix = () => _get<PermissionMatrix>('/admin/permission-matrix')
 export const getAdminAccounts = () => _get<{ items: AdminAccount[] }>('/admin/accounts')
-export const getAuditLog = (page = 1, size = 30) =>
-  _get<{ items: AuditRow[]; total: number; page: number; size: number }>(`/admin/audit?page=${page}&size=${size}`)
+export const getAuditLog = (page = 1, size = 30, filters: {
+  action?: string; verdict?: string; by_role?: string; q?: string } = {}) => {
+  const p = new URLSearchParams({ page: String(page), size: String(size) })
+  Object.entries(filters).forEach(([k, v]) => { if (v) p.set(k, v) })
+  return _get<{ items: AuditRow[]; total: number; page: number; size: number }>(`/admin/audit?${p}`)
+}
+export interface ReviewQueueItem {
+  id: string; kind: string; status: string; created_at: string
+  payload: { entity?: string; incoming_source?: string; incoming_authority?: number
+             existing_authority?: number; [k: string]: unknown }
+}
+export const getReviewQueue = (status = 'open', kind = '') => {
+  const p = new URLSearchParams({ status })
+  if (kind) p.set('kind', kind)
+  return _get<{ items: ReviewQueueItem[]; total: number
+                kinds: Record<string, number> }>(`/admin/review-queue?${p}`)
+}
 
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
 

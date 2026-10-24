@@ -18,6 +18,7 @@ const yuan = (n: number | string | null | undefined) =>
 
 export function SettlementsPage() {
   const [status, setStatus] = useState('all')
+  const [stage, setStage] = useState('all')
   const [brand, setBrand] = useState('')
   const [items, setItems] = useState<SettlementItem[]>([])
   const [summary, setSummary] = useState<{ budget_total: number; creator_cost_total: number
@@ -30,6 +31,7 @@ export function SettlementsPage() {
     try {
       const r = await listSettlements({
         status: status === 'all' ? undefined : status,
+        stage: stage === 'all' ? undefined : stage,
         brand: brand.trim() || undefined,
       })
       setItems(r.items); setSummary(r.summary)
@@ -38,7 +40,7 @@ export function SettlementsPage() {
     } finally {
       setBusy(false)
     }
-  }, [status, brand])
+  }, [status, stage, brand])
 
   useEffect(() => { void load() }, [load])
 
@@ -60,17 +62,33 @@ export function SettlementsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={stage} onValueChange={setStage}>
+          <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部阶段</SelectItem>
+            {Object.entries(STAGE_LABEL).map(([v, l]) => (
+              <SelectItem key={v} value={v}>{l}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input className="w-44" placeholder="品牌（名或 ID）" value={brand}
                onChange={(e) => setBrand(e.target.value)}
                onKeyDown={(e) => e.key === 'Enter' && load()} />
         <Button size="sm" disabled={busy} onClick={() => load()}>筛选</Button>
-        {summary && (
-          <div className="ml-auto flex gap-5 text-xs text-muted-foreground">
+      {summary && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             <span>案例预算合计 <b className="font-mono text-foreground">{yuan(summary.budget_total)}</b></span>
             <span>达人成本（估） <b className="font-mono text-foreground">{yuan(summary.creator_cost_total)}</b></span>
-            <span>已结算 <b className="text-foreground">{summary.paid}</b> / 未结算 <b className="text-foreground">{summary.unbilled}</b></span>
+            <span>已结 <b className="text-foreground">{summary.paid}</b> / 未结 <b className="text-foreground">{summary.unbilled}</b></span>
           </div>
-        )}
+          {/* 结算进度条（spec §14）：unbilled→paid 流程可视 */}
+          <div className="h-2 min-w-40 flex-1 overflow-hidden rounded-full bg-red-100">
+            <div className="h-full rounded-full bg-emerald-500"
+                 style={{ width: `${summary.paid + summary.unbilled ? (summary.paid / (summary.paid + summary.unbilled)) * 100 : 0}%` }} />
+          </div>
+        </div>
+      )}
       </div>
 
       {error && <div className="rounded-md bg-red-50 p-3 text-xs text-red-600">{error}</div>}
@@ -80,7 +98,7 @@ export function SettlementsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                {['案例', '品牌', '阶段', 'BD 预算', '毛利率', '结算状态', '合作达人', '达人成本（估）'].map((h) => (
+                {['案例', '品牌', '阶段', 'BD 预算', '毛利率', '毛利额（估）', '结算状态', '合作达人', '达人成本（估）'].map((h) => (
                   <th key={h} className="px-3 py-2 font-medium">{h}</th>
                 ))}
               </tr>
@@ -101,6 +119,10 @@ export function SettlementsPage() {
                   <td className="px-3 py-2.5 font-mono">
                     {s.gross_margin ? `${(Number(s.gross_margin) * 100).toFixed(0)}%` : '—'}
                   </td>
+                  <td className="px-3 py-2.5 font-mono">
+                    {s.gross_margin && s.bd_budget
+                      ? yuan(Number(s.bd_budget) * Number(s.gross_margin)) : '—'}
+                  </td>
                   <td className="px-3 py-2.5">
                     <Badge variant={s.settlement_status === 'paid' ? 'secondary' : 'destructive'}
                            className={s.settlement_status === 'paid' ? 'bg-emerald-100 text-emerald-700' : ''}>
@@ -112,7 +134,7 @@ export function SettlementsPage() {
                 </tr>
               ))}
               {!items.length && !busy && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">没有匹配的结算记录</td></tr>
+                <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">没有匹配的结算记录</td></tr>
               )}
             </tbody>
           </table>

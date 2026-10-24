@@ -1,12 +1,14 @@
-// 管理后台（spec §7，只读三件套）：权限矩阵 / 账号一览 / 审计流水——management/admin 专属
+// 管理后台（spec §7 + §14）：权限矩阵 / 账号一览 / 审计流水（筛选）/ 人审队列——只读
 import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ROLE_LABEL } from '@/lib/nav'
-import { getAdminAccounts, getAuditLog, getPermissionMatrix,
-         type AdminAccount, type AuditRow, type PermissionMatrix } from '@/lib/api'
+import { getAdminAccounts, getAuditLog, getPermissionMatrix, getReviewQueue,
+         type AdminAccount, type AuditRow, type PermissionMatrix,
+         type ReviewQueueItem } from '@/lib/api'
 
 const VERDICT_COLOR: Record<string, string> = {
   allow: 'bg-emerald-100 text-emerald-700', deny: 'bg-red-100 text-red-700',
@@ -91,18 +93,41 @@ function AccountsTab({ items }: { items: AdminAccount[] | null }) {
   )
 }
 
-function AuditTab({ rows, total, page, size, onPage }: {
-  rows: AuditRow[]; total: number; page: number; size: number; onPage: (p: number) => void }) {
+function AuditTab({ rows, total, page, size, onPage, filters, setFilters, reload }: {
+  rows: AuditRow[]; total: number; page: number; size: number
+  onPage: (p: number) => void
+  filters: { action: string; verdict: string; by_role: string; q: string }
+  setFilters: (f: { action: string; verdict: string; by_role: string; q: string }) => void
+  reload: () => void
+}) {
   const pages = Math.max(1, Math.ceil(total / size))
+  const set = (k: keyof typeof filters) => (v: string) => { setFilters({ ...filters, [k]: v }) }
   return (
     <Card>
       <CardHeader className="pb-1">
-        <CardTitle className="flex items-center gap-3 text-sm">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
           审计流水
           <span className="text-xs font-normal text-muted-foreground">
             共 {total} 条（只追加，§八）——第 {page} / {pages} 页
           </span>
-          <div className="ml-auto flex gap-1.5">
+          <div className="ml-auto flex flex-wrap gap-1.5">
+            <Input className="h-7 w-32 text-xs" placeholder="动作（login…）" value={filters.action}
+                   onChange={(e) => set('action')(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && reload()} />
+            <Input className="h-7 w-28 text-xs" placeholder="对象包含" value={filters.q}
+                   onChange={(e) => set('q')(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && reload()} />
+            <select className="h-7 rounded-md border bg-background px-2 text-xs"
+                    value={filters.verdict} onChange={(e) => set('verdict')(e.target.value)}>
+              <option value="">全部结果</option>
+              {['allow', 'deny', 'filtered', 'info'].map((v) => <option key={v}>{v}</option>)}
+            </select>
+            <select className="h-7 rounded-md border bg-background px-2 text-xs"
+                    value={filters.by_role} onChange={(e) => set('by_role')(e.target.value)}>
+              <option value="">全部角色</option>
+              {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <Button variant="outline" size="sm" onClick={reload}>筛选</Button>
             <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>上一页</Button>
             <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onPage(page + 1)}>下一页</Button>
           </div>
@@ -139,26 +164,101 @@ function AuditTab({ rows, total, page, size, onPage }: {
   )
 }
 
+/** 人审队列（spec §14）：各 kind 计数 chips + 筛选；处置动作后置（§9.7 人审操作台） */
+function ReviewTab({ data, kind, setKind }: {
+  data: { items: ReviewQueueItem[]; kinds: Record<string, number> } | null
+  kind: string; setKind: (k: string) => void
+}) {
+  const KIND_LABEL: Record<string, string> = {
+    conflict: '权威冲突', low_confidence: '低置信', unmatched: '对齐失败', reconcile: '对账差异',
+  }
+  if (!data) return <div className="p-4 text-sm text-muted-foreground">加载中…</div>
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <button onClick={() => setKind('')}
+                  className={`rounded-md px-2.5 py-1 ${!kind ? 'bg-primary text-primary-foreground' : 'border'}`}>
+            全部
+          </button>
+          {Object.entries(data.kinds).map(([k, n]) => (
+            <button key={k} onClick={() => setKind(kind === k ? '' : k)}
+                    className={`rounded-md px-2.5 py-1 ${kind === k ? 'bg-primary text-primary-foreground' : 'border'}`}>
+              {KIND_LABEL[k] ?? k} {n}
+            </button>
+          ))}
+          <span className="ml-2 text-muted-foreground">
+            只读——处置（approve/reject）走人审操作台，后置
+          </span>
+        </div>
+        {data.items.length ? (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-muted/40 text-left">
+                {['时间', '类型', '实体', '内容', '状态'].map((h) => (
+                  <th key={h} className="px-3 py-2 font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((r) => (
+                <tr key={r.id} className="border-b align-top last:border-0">
+                  <td className="px-3 py-2 whitespace-nowrap font-mono">{r.created_at.slice(0, 19)}</td>
+                  <td className="px-3 py-2"><Badge variant="outline">{KIND_LABEL[r.kind] ?? r.kind}</Badge></td>
+                  <td className="px-3 py-2 font-mono">{r.payload?.entity ?? '—'}</td>
+                  <td className="max-w-[28rem] px-3 py-2 text-muted-foreground">
+                    {r.payload?.incoming_source && (
+                      <div>进源 {String(r.payload.incoming_source)}（权威 {r.payload.incoming_authority ?? '—'}）
+                        vs 库内权威 {r.payload.existing_authority ?? '——高者保留，待人审合并'}</div>
+                    )}
+                    <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all font-mono">
+                      {JSON.stringify(r.payload, null, 0).slice(0, 260)}
+                    </pre>
+                  </td>
+                  <td className="px-3 py-2"><Badge variant="secondary">{r.status}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="py-6 text-center text-sm text-muted-foreground">该筛选下队列为空</div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function AdminPage() {
   const [m, setM] = useState<PermissionMatrix | null>(null)
   const [accounts, setAccounts] = useState<AdminAccount[] | null>(null)
   const [audit, setAudit] = useState<{ rows: AuditRow[]; total: number; page: number } | null>(null)
+  const [auditFilters, setAuditFilters] = useState({ action: '', verdict: '', by_role: '', q: '' })
+  const [review, setReview] = useState<{ items: ReviewQueueItem[]
+                                         kinds: Record<string, number> } | null>(null)
+  const [reviewKind, setReviewKind] = useState('')
   const [error, setError] = useState('')
 
-  const loadAudit = useCallback(async (p: number) => {
+  const loadAudit = useCallback(async (p: number, filters = auditFilters) => {
     try {
-      const r = await getAuditLog(p)
+      const f = Object.fromEntries(Object.entries(filters).filter(([, v]) => !!v))
+      const r = await getAuditLog(p, 30, f)
       setAudit({ rows: r.items, total: r.total, page: r.page })
     } catch (e) {
       setError(`${e}`)
     }
+  }, [auditFilters])
+
+  const loadReview = useCallback(async (k: string) => {
+    getReviewQueue('open', k).then(setReview).catch((e) => setError(`${e}`))
   }, [])
 
   useEffect(() => {
     getPermissionMatrix().then(setM).catch((e) => setError(`${e}`))
     getAdminAccounts().then((r) => setAccounts(r.items)).catch((e) => setError(`${e}`))
     void loadAudit(1)
-  }, [loadAudit])
+    void loadReview('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
   return (
@@ -166,7 +266,7 @@ export function AdminPage() {
       <div className="flex items-baseline gap-3">
         <h2 className="text-base font-bold">管理后台</h2>
         <span className="text-xs text-muted-foreground">
-          只读三件套——权限矩阵即 permissions.yaml 的可视化，审计只追加
+          权限矩阵 + 账号 + 审计（可筛）+ 人审队列（只读；处置动作后置）
         </span>
       </div>
       <Tabs defaultValue="matrix">
@@ -174,14 +274,21 @@ export function AdminPage() {
           <TabsTrigger value="matrix">权限矩阵</TabsTrigger>
           <TabsTrigger value="accounts">账号一览</TabsTrigger>
           <TabsTrigger value="audit">审计流水</TabsTrigger>
+          <TabsTrigger value="review">人审队列</TabsTrigger>
         </TabsList>
         <TabsContent value="matrix"><MatrixTab m={m} /></TabsContent>
         <TabsContent value="accounts"><AccountsTab items={accounts} /></TabsContent>
         <TabsContent value="audit">
           {audit && (
             <AuditTab rows={audit.rows} total={audit.total} page={audit.page}
-                      size={30} onPage={loadAudit} />
+                      size={30} onPage={(p) => loadAudit(p)}
+                      filters={auditFilters} setFilters={setAuditFilters}
+                      reload={() => loadAudit(1, auditFilters)} />
           )}
+        </TabsContent>
+        <TabsContent value="review">
+          <ReviewTab data={review} kind={reviewKind}
+                     setKind={(k) => { setReviewKind(k); void loadReview(k) }} />
         </TabsContent>
       </Tabs>
     </div>

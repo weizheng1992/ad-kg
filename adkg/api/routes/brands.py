@@ -115,7 +115,13 @@ def brand_detail(request: Request, bid: str,
         cases = [c for c in cases if not visible or c["id"] in visible]
         if external:
             cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"]} for c in cases]
+        # 对接人（spec §14）：内部角色可见（姓名经关系边，同案例 owners 口径）；外部掩码
+        owners = [] if external else [
+            dict(r) for r in s.run(
+                "MATCH (p:Entity)-[:belongs_to_brand]->(b:Entity {id: $id}) "
+                "RETURN p.id AS id, p.name AS name ORDER BY p.id", id=bid).data()]
     env = request.app.state.env
     st = _brand_stats(env, plan, [bid]).get(bid)
     return {"brand": {"id": rec["id"], "name": rec["name"], "category": rec["category"]},
-            "products": products, "cases": cases, "stats": st, "role": role}
+            "products": products, "cases": cases, "stats": st, "owners": owners,
+            "role": role}

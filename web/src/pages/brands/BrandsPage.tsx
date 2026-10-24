@@ -58,11 +58,13 @@ export function BrandsPage() {
               {b.cases_live > 0 && <Badge className="bg-emerald-100 text-emerald-700">投放中 {b.cases_live}</Badge>}
               {b.cases_lost > 0 && <Badge variant="destructive">未成单 {b.cases_lost}</Badge>}
             </div>
-            <div className="mt-3 flex items-baseline gap-5 text-xs text-muted-foreground">
+            <div className="mt-3 flex flex-wrap items-baseline gap-5 text-xs text-muted-foreground">
               <span>近30天 <b className="font-mono text-foreground">{yuan(b.cost_30d)}</b></span>
               <span>累计 <b className="font-mono text-foreground">{yuan(b.stats?.cost)}</b></span>
               <span>CTR <b className="font-mono text-foreground">
                 {b.stats?.ctr != null ? `${(Number(b.stats.ctr) * 100).toFixed(2)}%` : '—'}</b></span>
+              <span>CVR <b className="font-mono text-foreground">
+                {b.stats?.cvr != null ? `${(Number(b.stats.cvr) * 100).toFixed(2)}%` : '—'}</b></span>
             </div>
           </Link>
         ))}
