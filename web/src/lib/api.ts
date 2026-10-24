@@ -278,6 +278,39 @@ export async function statsOverview(days = 90): Promise<StatsOverview> {
   return r.json()
 }
 
+// ---------- 管理后台（spec §7：只读三件套，management/admin） ----------
+
+export interface PermissionMatrix {
+  roles: Record<string, {
+    classes: string[]; deny_properties: string[]; allow_properties: string[]
+    metrics_deny: string[]; metrics_allow: string[]; actions: string[]
+    external: boolean; row_filter: string
+  }>
+  global_classes: string[]
+}
+
+export interface AdminAccount {
+  id: string; username: string; display_name: string; role: string
+  person: string | null; disabled: boolean; created_at: string
+}
+
+export interface AuditRow {
+  id: string; ts: string; user_id: string | null; role: string
+  agent_id: string | null; action: string; target: string | null
+  verdict: string | null; reason: string | null
+}
+
+async function _get<T>(url: string): Promise<T> {
+  const r = await fetch(url)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export const getPermissionMatrix = () => _get<PermissionMatrix>('/admin/permission-matrix')
+export const getAdminAccounts = () => _get<{ items: AdminAccount[] }>('/admin/accounts')
+export const getAuditLog = (page = 1, size = 30) =>
+  _get<{ items: AuditRow[]; total: number; page: number; size: number }>(`/admin/audit?page=${page}&size=${size}`)
+
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
 
 export interface AgentTraceStep { tool: string; args: Record<string, unknown>; result: string }
