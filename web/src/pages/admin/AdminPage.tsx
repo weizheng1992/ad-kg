@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ROLE_LABEL } from '@/lib/nav'
 import { getAdminAccounts, getAuditLog, getPermissionMatrix, getReviewQueue,
+         resolveReviewQueue,
          type AdminAccount, type AuditRow, type PermissionMatrix,
          type ReviewQueueItem } from '@/lib/api'
 
@@ -164,15 +165,30 @@ function AuditTab({ rows, total, page, size, onPage, filters, setFilters, reload
   )
 }
 
-/** 人审队列（spec §14）：各 kind 计数 chips + 筛选；处置动作后置（§9.7 人审操作台） */
-function ReviewTab({ data, kind, setKind }: {
+/** 人审队列（spec §14/§15）：kind 计数筛选 + 处置（approve 落图进源 / reject 维持） */
+function ReviewTab({ data, kind, setKind, reload }: {
   data: { items: ReviewQueueItem[]; kinds: Record<string, number> } | null
-  kind: string; setKind: (k: string) => void
+  kind: string; setKind: (k: string) => void; reload: () => void
 }) {
+  const [busy, setBusy] = useState('')
+  const [msg, setMsg] = useState('')
   const KIND_LABEL: Record<string, string> = {
     conflict: '权威冲突', low_confidence: '低置信', unmatched: '对齐失败', reconcile: '对账差异',
   }
   if (!data) return <div className="p-4 text-sm text-muted-foreground">加载中…</div>
+  const resolve = async (id: string, decision: 'approved' | 'rejected') => {
+    const note = decision === 'approved' ? window.prompt('处置备注（可空）') ?? '' : ''
+    setBusy(id); setMsg('')
+    try {
+      const r = await resolveReviewQueue(id, decision, note)
+      setMsg(`✅ ${decision === 'approved' ? '通过' : '驳回'}${r.applied ? '（进源数据已落图）' : ''}`)
+      reload()
+    } catch (e) {
+      setMsg(`❌ ${e}`)
+    } finally {
+      setBusy('')
+    }
+  }
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -187,15 +203,14 @@ function ReviewTab({ data, kind, setKind }: {
               {KIND_LABEL[k] ?? k} {n}
             </button>
           ))}
-          <span className="ml-2 text-muted-foreground">
-            只读——处置（approve/reject）走人审操作台，后置
-          </span>
+          <span className="ml-2 text-muted-foreground">通过=采纳（冲突类落进源数据）· 驳回=维持现状</span>
+          {msg && <span>{msg}</span>}
         </div>
         {data.items.length ? (
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b bg-muted/40 text-left">
-                {['时间', '类型', '实体', '内容', '状态'].map((h) => (
+                {['时间', '类型', '实体', '内容', '状态', '处置'].map((h) => (
                   <th key={h} className="px-3 py-2 font-medium">{h}</th>
                 ))}
               </tr>
@@ -216,6 +231,16 @@ function ReviewTab({ data, kind, setKind }: {
                     </pre>
                   </td>
                   <td className="px-3 py-2"><Badge variant="secondary">{r.status}</Badge></td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                              disabled={busy === r.id}
+                              onClick={() => void resolve(r.id, 'approved')}>通过</Button>
+                      <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                              disabled={busy === r.id}
+                              onClick={() => void resolve(r.id, 'rejected')}>驳回</Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -288,7 +313,8 @@ export function AdminPage() {
         </TabsContent>
         <TabsContent value="review">
           <ReviewTab data={review} kind={reviewKind}
-                     setKind={(k) => { setReviewKind(k); void loadReview(k) }} />
+                     setKind={(k) => { setReviewKind(k); void loadReview(k) }}
+                     reload={() => void loadReview(reviewKind)} />
         </TabsContent>
       </Tabs>
     </div>

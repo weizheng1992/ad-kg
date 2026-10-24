@@ -185,7 +185,7 @@ export function CreatorsPage() {
         </Select>
         <Button size="sm" disabled={busy} onClick={() => load(1)}>筛选</Button>
         <div className="ml-auto flex items-center gap-2">
-          <input ref={fileRef} type="file" accept=".csv" className="hidden"
+          <input ref={fileRef} type="file" accept=".csv,.xlsx" className="hidden"
                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void doImport(f); e.target.value = '' }} />
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>导入 CSV</Button>
           <Button variant="outline" size="sm" onClick={() => void exportCsv()}>导出</Button>
@@ -197,7 +197,7 @@ export function CreatorsPage() {
       {showForm && <CreatorForm onDone={() => load(1)} />}
       {importMsg && <div className="rounded-md bg-muted/60 p-2.5 text-xs">{importMsg}
         <span className="ml-2 text-muted-foreground">
-          （CSV 模板列：name,platform,niches,followers,quote_20s,quote_image,gmv_30d,city,rating）
+          （支持 CSV / Excel；模板列：name,platform,niches,followers,quote_20s,quote_image,gmv_30d,city,rating）
         </span>
       </div>}
 

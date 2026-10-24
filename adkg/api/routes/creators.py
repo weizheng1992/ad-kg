@@ -17,6 +17,8 @@ import io
 import re
 from datetime import datetime, timezone
 
+import psycopg
+from psycopg.rows import dict_row
 from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
 
 from adkg.guards.http import get_graph, resolve_identity
@@ -103,6 +105,21 @@ def _parse_creator_row(row: dict) -> tuple[str, dict]:
     return creator_id, props
 
 
+def record_quote_history(env: dict, creator_id: str, quote_20s, source_type: str,
+                         source_id: str) -> None:
+    """报价快照（spec §15）：三条入库口共用——历史即事实，只追加。"""
+    import psycopg
+
+    if not quote_20s:
+        return
+    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+        cur.execute(
+            "INSERT INTO creator_quote_history (creator_id, date, quote_20s, source_type,"
+            " source_id) VALUES (%s, current_date, %s, %s, %s)"
+            " ON CONFLICT (creator_id, date, source_type) DO NOTHING",
+            (creator_id, int(quote_20s), source_type, source_id))
+
+
 def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                     source_type: str, source_id: str,
                     role: str, person: str | None) -> dict:
@@ -131,6 +148,7 @@ def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                 "  AND payload->>'incoming_source' = %(source)s)",
                 {"payload": _json.dumps(
                     {"entity": creator_id, "incoming_source": prov.source_id,
+                     "incoming_source_type": source_type,
                      "incoming_authority": prov.authority,
                      "existing_authority": existing,
                      "incoming_props": props}, ensure_ascii=False),
@@ -140,6 +158,8 @@ def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
         return {"outcome": "conflict", "creator_id": creator_id}
     graph.upsert_entities([Entity(entity_class="Creator", entity_id=creator_id,
                                   props=props, provenance=prov)])
+    record_quote_history(env, creator_id, props.get("quote_20s"),
+                         source_type, prov.source_id)          # 报价快照（§15）
     audit(env, role, person, "create_creator", creator_id, "allow",
           f"来源 {SOURCE_LABEL.get(source_type, source_type)}（{prov.source_id}）")
     return {"outcome": "created" if existing is None else "merged", "creator_id": creator_id}
@@ -168,24 +188,36 @@ def create_creator(request: Request, body: dict,
 async def import_creators(request: Request, file: UploadFile,
                           role: str | None = None, user: str | None = None,
                           authorization: str | None = Header(default=None)) -> dict:
-    """CSV 批量导入（spec §13.1）：official_doc/60；列同 creators.csv 模板
-    （name/platform/niches/followers/quote_20s/quote_image/gmv_30d/city/rating
-    [,creator_id]）；行级容错不中断整批。"""
+    """CSV / xlsx 批量导入（spec §13.1 + §15）：official_doc/60；xlsx 经 openpyxl
+    转行后走与 CSV 完全相同的校验/仲裁/审计路；行级容错不中断整批。"""
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     if role not in CREATE_CREATOR_ROLES:
         raise HTTPException(403, "达人导入仅 ae / management / admin 可用（spec §13.1）")
-    raw = (await file.read()).decode("utf-8-sig", errors="replace")
-    if not raw.strip():
-        raise HTTPException(422, "上传文件为空")
+    raw = await file.read()
+    if (file.filename or "").lower().endswith((".xlsx", ".xls")):
+        try:
+            import io as _io
+
+            from openpyxl import load_workbook
+            wb = load_workbook(_io.BytesIO(raw), read_only=True, data_only=True)
+            ws = wb.active
+            rows_it = ws.iter_rows(values_only=True)
+            header = [str(h).strip() if h is not None else "" for h in next(rows_it, [])]
+            records = [dict(zip(header, ("" if v is None else v for v in row)))
+                       for row in rows_it]
+        except Exception as e:                              # noqa: BLE001 解析失败整批拒绝
+            raise HTTPException(422, f"xlsx 解析失败：{type(e).__name__}: {e}") from None
+        if not header or "name" not in header:
+            raise HTTPException(422, "xlsx 缺 name 列（模板列见达人库导入提示）")
+    else:
+        records = csv.DictReader(io.StringIO(raw.decode("utf-8-sig", errors="replace")))
     batch = f"import:{file.filename}:{datetime.now():%Y%m%d%H%M%S}"
     graph = get_graph(request)
     env = request.app.state.env
     created = merged = conflicts = 0
     errors: list[dict] = []
-    reader = csv.DictReader(io.StringIO(raw))
-    if not reader.fieldnames or "name" not in reader.fieldnames:
-        raise HTTPException(422, "CSV 缺 name 列（模板列见达人库导入提示）")
-    for line_no, row in enumerate(reader, start=2):
+    line_start = 2
+    for line_no, row in enumerate(records, start=line_start):
         try:
             creator_id, props = _parse_creator_row(row)
             if not creator_id:
@@ -286,6 +318,17 @@ def creator_detail(request: Request, cid: str,
         visible_cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"]}
                          for c in visible_cases]
     stats = _collab_stats(request.app.state.env, plan, [c["id"] for c in visible_cases])
+    # 报价历史（spec §15）：种子轨迹 + 三条入库口的运行时快照
+    history: list[dict] = []
+    try:
+        with psycopg.connect(request.app.state.env["ADKG_PG_DSN"],
+                             row_factory=dict_row) as conn, conn.cursor() as cur:
+            cur.execute("SELECT date::text AS date, quote_20s, source_type"
+                        " FROM creator_quote_history WHERE creator_id = %(id)s"
+                        " ORDER BY date", {"id": cid})
+            history = [dict(r) for r in cur.fetchall()]
+    except psycopg.Error:
+        history = []
     # 合作行指标（spec §14：M10 承诺漏做补上）——与 /cases 列表同源批量统计
     from adkg.api.routes.cases import _case_stats_batch
     case_metrics = _case_stats_batch(request.app.state.env, plan,
@@ -312,4 +355,5 @@ def creator_detail(request: Request, cid: str,
                            "source_id": rec["prov_source_id"],
                            "fetched_at": rec["fetched_at"],
                            "authority": rec["authority"]},
+            "quote_history": history,
     }

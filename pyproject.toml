@@ -18,6 +18,7 @@ dependencies = [
     "pgvector>=0.3",
     "playwright>=1.49",
     "python-multipart>=0.0.20",
+    "openpyxl>=3.1",
 ]
 
 [dependency-groups]

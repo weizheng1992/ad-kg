@@ -124,7 +124,8 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
             if existing_auth is not None and existing_auth > prov.authority:
                 import psycopg
                 with psycopg.connect(ctx.env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
-                    # 去重：同实体+同来源的未决 conflict 只留一条（幂等重抓不刷屏）
+                    # 去重：同实体+同来源的未决 conflict 只留一条（幂等重抓不刷屏）；
+                    # incoming_source_type 供人审处置回放（spec §15）
                     cur.execute(
                         "INSERT INTO review_queue (kind, payload)"
                         " SELECT 'conflict', %(payload)s"
@@ -135,6 +136,7 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
                         {"payload": json.dumps(
                             {"entity": creator_id,
                              "incoming_source": prov.source_id,
+                             "incoming_source_type": "platform_api",
                              "incoming_authority": prov.authority,
                              "existing_authority": existing_auth,
                              "incoming_props": props}, ensure_ascii=False),
@@ -147,6 +149,9 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
                                   ensure_ascii=False, default=str)
             ctx.graph.upsert_entities([Entity(entity_class="Creator", entity_id=creator_id,
                                               props=props, provenance=prov)])
+            from adkg.api.routes.creators import record_quote_history
+            record_quote_history(ctx.env, creator_id, props.get("quote_20s"),
+                                 "platform_api", prov.source_id)   # 报价快照（§15）
             audit(ctx.env, ctx.role, ctx.person, "platform_fetch", creator_id,
                   "allow", "playwright 抓取星图·模拟并幂等入图（platform_api）")
             emit(5, f"已入图（幂等 MERGE，provenance=platform_api）：{creator_id}")

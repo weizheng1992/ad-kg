@@ -184,6 +184,8 @@ export interface CreatorDetail {
             cpa?: string | null; days?: number; platforms?: string | null } | null
   provenance?: { source?: string; source_type?: string; source_id?: string
                  fetched_at?: string | null; authority?: number | null }
+  /** 报价历史（spec §15）：种子轨迹 + 入库口快照，旧→新 */
+  quote_history?: { date: string; quote_20s: number; source_type: string }[]
 }
 
 export interface CreatorListQuery {
@@ -272,6 +274,8 @@ export interface CaseDetail {
   timeline: { ts: string; role: string; action: string; verdict: string | null
               reason: string | null }[]
   stage_flow: { main: string[]; branch: Record<string, string>; current: string }
+  /** 状态变更权限（spec §15）：按 permissions.yaml update_stage 动态下发 */
+  can_update_stage?: boolean
 }
 
 export async function listCases(params: { q?: string; stage?: string; brand?: string
@@ -287,6 +291,18 @@ export async function listCases(params: { q?: string; stage?: string; brand?: st
 
 export async function getCase(id: string): Promise<CaseDetail> {
   const r = await fetch(`/cases/${encodeURIComponent(id)}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+/** 状态变更（spec §15）：走 ActionChecker 状态机裁决，拒绝 409 */
+export async function updateCaseStage(id: string, toStage: string, reason: string): Promise<
+  { ok: boolean; case_id: string; stage: string }> {
+  const r = await fetch(`/cases/${encodeURIComponent(id)}/stage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to_stage: toStage, reason }),
+  })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
 }
@@ -419,6 +435,19 @@ export const getReviewQueue = (status = 'open', kind = '') => {
   if (kind) p.set('kind', kind)
   return _get<{ items: ReviewQueueItem[]; total: number
                 kinds: Record<string, number> }>(`/admin/review-queue?${p}`)
+}
+
+/** 人审处置（spec §15）：approve 对 conflict 落图进源数据，reject 维持现状 */
+export async function resolveReviewQueue(id: string, decision: 'approved' | 'rejected',
+                                         note = ''): Promise<
+  { ok: boolean; decision: string; applied: boolean }> {
+  const r = await fetch(`/admin/review-queue/${id}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision, note }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
 }
 
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------

@@ -181,6 +181,17 @@ def main() -> None:
     for r in _rows("creator_products.csv"):
         relations.append(Relation(source=r["creator_id"], predicate="promotes",
                                   target=r["product_id"], provenance=p_cr))
+    # ── 报价历史种子（spec §15）：只追加表，重灌幂等（同日同源去重）────────
+    with psycopg.connect(pg) as conn, conn.cursor() as cur:
+        hrows = _rows("quote_history.csv")
+        cur.executemany(
+            "INSERT INTO creator_quote_history (creator_id, date, quote_20s, source_type,"
+            " source_id) VALUES (%(creator_id)s, %(date)s, %(quote_20s)s,"
+            " 'system_of_record', 'seed:quote_history.csv')"
+            " ON CONFLICT (creator_id, date, source_type) DO NOTHING",
+            [{"creator_id": r["creator_id"], "date": r["date"],
+              "quote_20s": int(r["quote_20s"])} for r in hrows])
+
     # ── 扩容批次（2026-10-24）：新案例负责人——org_people 逐字节不动，单独立表 ──
     if (SEED / "case_persons.csv").exists():
         for r in _rows("case_persons.csv"):

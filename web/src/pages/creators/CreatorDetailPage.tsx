@@ -1,6 +1,7 @@
-// 达人详情（spec §3）：档案 + 合作案例（含 lost_reason，随行权限过滤）+ 带货商品（随 Product 类白名单）
-import { useEffect, useState } from 'react'
+// 达人详情（spec §3/§13/§15）：档案 + 来源卡 + 报价历史折线 + 合作案例（含指标与拒因）+ 带货商品
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
+import * as echarts from 'echarts'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCreator, type CreatorDetail } from '@/lib/api'
@@ -15,11 +16,34 @@ export function CreatorDetailPage() {
   const { id } = useParams()
   const [d, setD] = useState<CreatorDetail | null>(null)
   const [error, setError] = useState('')
+  const histRef = useRef<HTMLDivElement>(null)
+  const histChart = useRef<echarts.ECharts | null>(null)
 
   useEffect(() => {
     setD(null); setError('')
     if (id) getCreator(decodeURIComponent(id)).then(setD).catch((e) => setError(`${e}`))
   }, [id])
+
+  // 报价历史折线（spec §15）
+  useEffect(() => {
+    if (!d?.quote_history?.length || !histRef.current) return
+    histChart.current = histChart.current ?? echarts.init(histRef.current)
+    const h = d.quote_history
+    histChart.current.setOption({
+      grid: { left: 56, right: 16, top: 10, bottom: 22 },
+      xAxis: { type: 'category', data: h.map((x) => x.date.slice(5)),
+               axisLabel: { fontSize: 10, interval: 6 } },
+      yAxis: { type: 'value', axisLabel: { fontSize: 10,
+               formatter: (v: number) => `¥${(v / 1000).toFixed(0)}k` } },
+      tooltip: { trigger: 'axis',
+                 valueFormatter: (v: number) => `¥${Number(v).toLocaleString()}` },
+      series: [{ type: 'line', smooth: true, data: h.map((x) => x.quote_20s),
+                 areaStyle: { opacity: 0.12 }, lineStyle: { width: 2 } }],
+    }, true)
+    const onResize = () => histChart.current?.resize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [d])
 
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
   if (!d) return <div className="p-6 text-sm text-muted-foreground">加载中…</div>
@@ -89,6 +113,17 @@ export function CreatorDetailPage() {
           </CardContent>
         )}
       </Card>
+
+      {!!d.quote_history?.length && (
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-sm">
+              报价历史（近 {d.quote_history.length} 个记录点；录入/导入/平台抓取自动留痕）
+            </CardTitle>
+          </CardHeader>
+          <CardContent><div ref={histRef} className="h-44" /></CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-2">

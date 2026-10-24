@@ -508,6 +508,18 @@ def gen_creators(cases) -> None:
                ["case_id", "creator_id", "deal_quote"], collab_rows)
     _write_csv("creator_products.csv",
                ["creator_id", "product_id"], promote_rows)
+    # 报价历史种子（spec §15）：旧 20 位达人 × 30 天轨迹（±8% 波动，独立 rng6——
+    # 旧流零扰动）；三条入库口运行时也会追加快照，曲线随真实使用长尾生长
+    rng6 = random.Random(2027)
+    hist = []
+    today = date.today()
+    for r in rows[:20]:
+        base = int(r[5])
+        for d in range(30, 0, -1):
+            hist.append([r[0], (today - timedelta(days=d)).isoformat(),
+                         max(500, int(base * rng6.uniform(0.92, 1.08)))])
+    _write_csv("quote_history.csv",
+               ["creator_id", "date", "quote_20s"], hist)
 
 
 if __name__ == "__main__":

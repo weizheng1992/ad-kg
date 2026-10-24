@@ -1,10 +1,58 @@
-// 案例详情（spec §13.2 六段）：概要/内容/指标/状态流转/收益/合作达人
+// 案例详情（spec §13.2 六段 + §15 状态变更）：概要/内容/指标/状态流转/收益/合作达人
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { getCase, type CaseDetail } from '@/lib/api'
+import { getCase, updateCaseStage, type CaseDetail } from '@/lib/api'
 import { STAGE_LABEL } from '@/pages/cases/CasesPage'
+
+// 合法迁移目标（与 ActionChecker 状态机同源，schema.yaml#constraints）
+const NEXT_STAGES: Record<string, string[]> = {
+  proposal: ['live', 'lost'], live: ['closed', 'terminated'],
+}
+
+/** 状态变更控件（spec §15）：有 update_stage 权限的角色可见；terminated 必填原因 */
+function StageControl({ caseId, stage, onDone }: {
+  caseId: string; stage: string; onDone: () => void }) {
+  const targets = NEXT_STAGES[stage] ?? []
+  const [to, setTo] = useState('')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  if (!targets.length) return null                     // 终态不可逆（§六 约束）
+  const submit = async () => {
+    setBusy(true); setMsg('')
+    try {
+      await updateCaseStage(caseId, to, reason)
+      setMsg('✅ 已变更（审计已落账）')
+      setTimeout(onDone, 400)
+    } catch (e) {
+      setMsg(`❌ ${e}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+      <span className="text-xs font-medium text-muted-foreground">变更阶段：</span>
+      <select className="h-7 rounded-md border bg-background px-2 text-xs" value={to}
+              onChange={(e) => setTo(e.target.value)}>
+        <option value="">选择目标…</option>
+        {targets.map((t) => <option key={t} value={t}>{STAGE_LABEL[t]}</option>)}
+      </select>
+      {(to === 'terminated' || to === 'lost') && (
+        <Input className="h-7 w-64 text-xs" placeholder={to === 'terminated' ? '终止原因（必填）' : '未成单原因'}
+               value={reason} onChange={(e) => setReason(e.target.value)} />
+      )}
+      <Button size="sm" className="h-7" disabled={!to || busy || (to === 'terminated' && !reason.trim())}
+              onClick={submit}>{busy ? '提交中…' : '提交'}</Button>
+      <span className="text-xs text-muted-foreground">迁移经状态机裁决（/actions/check 同源约束）</span>
+      {msg && <span className="text-xs">{msg}</span>}
+    </div>
+  )
+}
 
 const yuan = (v?: string | number | null) =>
   v == null || v === '' ? '—' : `¥${Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
@@ -50,9 +98,13 @@ export function CaseDetailPage() {
   const [d, setD] = useState<CaseDetail | null>(null)
   const [error, setError] = useState('')
 
+  const reload = (cid: string) =>
+    getCase(cid).then(setD).catch((e) => setError(`${e}`))
+
   useEffect(() => {
     setD(null); setError('')
-    if (id) getCase(decodeURIComponent(id)).then(setD).catch((e) => setError(`${e}`))
+    if (id) reload(decodeURIComponent(id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
@@ -128,6 +180,10 @@ export function CaseDetailPage() {
         <CardHeader className="pb-1"><CardTitle className="text-sm">状态流转</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <StageFlow flow={d.stage_flow} reason={reason} />
+          {d.can_update_stage && (
+            <StageControl caseId={c.id} stage={d.stage_flow.current}
+                          onDone={() => reload(c.id)} />
+          )}
           <div className="border-t pt-2">
             <div className="mb-1 text-xs font-medium text-muted-foreground">流转记录（审计）</div>
             {d.timeline.length ? (

@@ -206,6 +206,8 @@ def case_detail(request: Request, cid: str,
                                      "settlement_status", "lost_reason",
                                      "terminate_reason")})
     stats = _case_stats_batch(env, plan, [cid]).get(cid)
+    # 状态变更权限（spec §15）：按 permissions.yaml actions 动态判定，不硬抄角色表
+    role_actions = planner.perms["roles"].get(role, {}).get("actions", [])
     return {"case": {"id": rec["id"], "name": rec["name"], **props},
             "brand": brand, "product": product, "owners": owners,
             "campaigns": campaigns,
@@ -219,4 +221,53 @@ def case_detail(request: Request, cid: str,
                          for c in creators],
             "stats": stats, "docs": docs, "timeline": timeline,
             "stage_flow": {"main": STAGE_FLOW, "branch": STAGE_BRANCH,
-                           "current": rec["stage"]}}
+                           "current": rec["stage"]},
+            "can_update_stage": "update_stage" in role_actions}
+
+
+# 状态机合法目标（schema.yaml#constraints 的展示形态，与 ActionChecker 同源语义）
+_NEXT_STAGES = {"proposal": ["live", "lost"], "live": ["closed", "terminated"]}
+
+
+@router.post("/cases/{cid}/stage")
+def update_case_stage(request: Request, cid: str, body: dict,
+                      role: str | None = None, user: str | None = None,
+                      authorization: str | None = Header(default=None)) -> dict:
+    """状态变更写操作（spec §15）：角色门按 permissions.yaml update_stage action；
+    迁移合法性走 ActionChecker 状态机（terminated 必填原因）——拒绝 409 + 审计 deny，
+    通过则写图（stage + 拒因）+ 审计 allow。"""
+    role, person, planner = resolve_identity(request, authorization, role=role, user=user)
+    plan = planner.plan(role, person=person)
+    role_actions = planner.perms["roles"].get(role, {}).get("actions", [])
+    if "update_stage" not in role_actions:
+        raise HTTPException(403, "当前角色无 update_stage 权限（§12.4 动作词表）")
+    to_stage = str(body.get("to_stage") or "")
+    reason = str(body.get("reason") or "").strip()
+    graph = get_graph(request)
+    with graph.session() as s:
+        rec = s.run("MATCH (c:Entity {id: $id}) RETURN c.stage AS stage, c.class AS class",
+                    id=cid).single()
+    if not rec or rec["class"] != "Case":
+        raise HTTPException(404, f"案例 {cid} 不存在")
+    if plan.visible_entity_ids and cid not in plan.visible_entity_ids:
+        raise HTTPException(404, "案例不在当前身份可见范围（锚点外）")
+    from adkg.guards.action_check import ActionChecker
+    from adkg.models import load_schema
+    verdict = ActionChecker(load_schema(), graph).check(
+        "update_stage", {"case_id": cid, "from_stage": rec["stage"],
+                         "to_stage": to_stage,
+                         **({"terminate_reason": reason} if to_stage == "terminated" else {}),
+                         **({"lost_reason": reason} if to_stage == "lost" else {})})
+    from adkg.guards.audit import audit
+    if verdict["decision"] != "allow":
+        audit(request.app.state.env, role, person, "update_stage", cid,
+              "deny", verdict.get("reason", ""))
+        raise HTTPException(409, verdict.get("reason", "状态机拒绝该迁移"))
+    with graph.session() as s:
+        s.run("MATCH (c:Entity {id: $id}) SET c.stage = $to"
+              + (", c.lost_reason = $r" if to_stage == "lost" else "")
+              + (", c.terminate_reason = $r" if to_stage == "terminated" else ""),
+              id=cid, to=to_stage, r=reason or None)
+    audit(request.app.state.env, role, person, "update_stage", cid, "allow",
+          f"{rec['stage']} -> {to_stage}" + (f"（{reason}）" if reason else ""))
+    return {"ok": True, "case_id": cid, "stage": to_stage}

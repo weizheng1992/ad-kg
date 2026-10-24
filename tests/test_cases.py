@@ -75,3 +75,65 @@ class TestCasesAPI:
                                          "stage": "lost"}).json()
         assert d["items"] and all(i["stage"] == "lost" for i in d["items"])
         assert any(i["lost_reason"] for i in d["items"])
+
+
+@pytest.mark.skipif(not _up(), reason="Postgres/Neo4j 不在线")
+class TestCaseStage:
+    """状态变更写操作（spec §15）：权限门 + 状态机裁决 + 拒因落图 + 审计。"""
+
+    def _setup(self):
+        from datetime import datetime
+        from adkg.models import Entity, Provenance, Relation
+        from adkg.store.graph import GraphStore
+        import os
+        g = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
+                       os.environ["ADKG_NEO4J_PASSWORD"])
+        prov = Provenance(source_type="system_of_record", source_id="pytest:stage",
+                          fetched_at=datetime.now().astimezone())
+        g.upsert_entities([Entity(entity_class="Case", entity_id="Case:PYTEST-ST",
+                                  props={"name": "状态机测试案例", "stage": "proposal"},
+                                  provenance=prov)])
+        g.upsert_relations([Relation(source="Case:PYTEST-ST", predicate="for_brand",
+                                     target="Brand:B01", provenance=prov)])
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        return TestClient(create_app({**os.environ, "ADKG_DEV_AUTH": "off"}))
+
+    def test_权限门与状态机(self):
+        self._setup()
+        client = self._client()
+        # management 无 update_stage 权限 → 403（permissions.yaml actions 动态判定）
+        assert client.post("/cases/Case:PYTEST-ST/stage",
+                           params={"role": "management", "user": "Person:chen"},
+                           json={"to_stage": "live"}).status_code == 403
+        # 非法迁移 proposal→closed → 409 + 审计 deny
+        assert client.post("/cases/Case:PYTEST-ST/stage",
+                           params={"role": "admin"},
+                           json={"to_stage": "closed"}).status_code == 409
+        # 合法迁移 proposal→live
+        r = client.post("/cases/Case:PYTEST-ST/stage", params={"role": "admin"},
+                        json={"to_stage": "live"})
+        assert r.status_code == 200 and r.json()["stage"] == "live"
+        # live→terminated 缺原因 → 409（ActionChecker 终态必填）
+        assert client.post("/cases/Case:PYTEST-ST/stage", params={"role": "admin"},
+                           json={"to_stage": "terminated"}).status_code == 409
+        r = client.post("/cases/Case:PYTEST-ST/stage", params={"role": "admin"},
+                        json={"to_stage": "terminated", "reason": "测试终止"})
+        assert r.status_code == 200
+        det = client.get("/cases/Case:PYTEST-ST", params={"role": "admin"}).json()
+        assert det["case"]["stage"] == "terminated"
+        assert det["case"]["terminate_reason"] == "测试终止"
+        assert any(t["action"] == "update_stage" and t["verdict"] == "allow"
+                   for t in det["timeline"])          # 流转记录即时可见
+
+    def teardown_method(self):
+        if not _up():
+            return
+        import os
+        from adkg.store.graph import GraphStore
+        g = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
+                       os.environ["ADKG_NEO4J_PASSWORD"])
+        with g.session() as s:
+            s.run("MATCH (n:Entity {id: 'Case:PYTEST-ST'}) DETACH DELETE n")
