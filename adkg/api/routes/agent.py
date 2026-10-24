@@ -200,11 +200,13 @@ def _agent_events(tool_ctx: _ToolCtx, history: list[dict],
         action = str(payload.get("action") or "")
         args = payload.get("args") if isinstance(payload.get("args"), dict) else {}
         yield {"type": "tool_start", "tool": action, "args": args}
-        result = _run_tool_streamed(action, args, tool_ctx, yield_events=True)
-        if isinstance(result, dict):                    # 工具子步事件（含截图）——边执行边上屏
-            for ev in result["events"]:
+        ran = _run_tool_streamed(action, args, tool_ctx)
+        if isinstance(ran, dict):                    # 工具子步事件（含截图）——边执行边上屏
+            for ev in ran["events"]:
                 yield ev
-            result = result["result"]
+            result = ran["result"]
+        else:
+            result = ran
         trace.append({"tool": action, "args": args, "result": result[:1200]})
         yield {"type": "tool_result", "tool": action, "result": result[:600]}
     else:
@@ -278,12 +280,9 @@ def _run_tool(action: str, args: dict, ctx: _ToolCtx) -> str:
     return str(entry[1](args if isinstance(args, dict) else {}, ctx))
 
 
-def _run_tool_streamed(action: str, args: dict, ctx: _ToolCtx,
-                       yield_events: bool) -> str | dict:
+def _run_tool_streamed(action: str, args: dict, ctx: _ToolCtx) -> str | dict:
     """工具执行 + 子步事件实时性：emit 的工具（如平台浏览）放线程跑，事件经队列
-    即时产出（截图边浏览边上屏，spec §6）；无 emit 输出的工具直接同步执行。"""
-    if not yield_events:
-        return _run_tool(action, args, ctx)
+    即时产出（截图边浏览边上屏，spec §6）；无 emit 输出的工具同步执行完即返回 str。"""
     import queue
     import threading
     events: "queue.Queue[dict]" = queue.Queue()

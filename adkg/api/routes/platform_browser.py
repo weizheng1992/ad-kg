@@ -124,13 +124,21 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
             if existing_auth is not None and existing_auth > prov.authority:
                 import psycopg
                 with psycopg.connect(ctx.env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+                    # 去重：同实体+同来源的未决 conflict 只留一条（幂等重抓不刷屏）
                     cur.execute(
-                        "INSERT INTO review_queue (kind, payload) VALUES ('conflict', %s)",
-                        (json.dumps({"entity": creator_id,
-                                     "incoming_source": prov.source_id,
-                                     "incoming_authority": prov.authority,
-                                     "existing_authority": existing_auth,
-                                     "incoming_props": props}, ensure_ascii=False),))
+                        "INSERT INTO review_queue (kind, payload)"
+                        " SELECT 'conflict', %(payload)s"
+                        " WHERE NOT EXISTS (SELECT 1 FROM review_queue"
+                        "  WHERE kind = 'conflict' AND status = 'open'"
+                        "  AND payload->>'entity' = %(entity)s"
+                        "  AND payload->>'incoming_source' = %(source)s)",
+                        {"payload": json.dumps(
+                            {"entity": creator_id,
+                             "incoming_source": prov.source_id,
+                             "incoming_authority": prov.authority,
+                             "existing_authority": existing_auth,
+                             "incoming_props": props}, ensure_ascii=False),
+                         "entity": creator_id, "source": prov.source_id})
                 audit(ctx.env, ctx.role, ctx.person, "platform_fetch", creator_id, "deny",
                       f"更高权威（{existing_auth}）在场未覆盖，冲突进 review_queue（§12.2）")
                 emit(5, f"库内已有更高权威记录（{existing_auth}），未覆盖——冲突进人审队列")

@@ -15,6 +15,9 @@ from adkg.guards.http import get_graph, resolve_identity
 from adkg.retrieval.metrics import agg_expr
 
 router = APIRouter()
+# 看板角色门（spec §4 矩阵）：矩阵外角色（creative/admin）服务端拒绝——
+# 导航隐藏只是体验，不是闸（2026-10-24 复审：曾只靠 nav 兑现，直连越权）
+DASHBOARD_ROLES = {"management", "ae", "optimizer", "finance", "client"}
 
 
 def _metrics(env: dict, plan, days: int) -> dict:
@@ -77,6 +80,8 @@ def stats_overview(request: Request, days: int = 90,
                    role: str | None = None, user: str | None = None,
                    authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
+    if role not in DASHBOARD_ROLES:
+        raise HTTPException(403, "数据看板仅 management/ae/optimizer/finance/client 可用（spec §4）")
     plan = planner.plan(role, person=user)
     if plan.deny_all:
         raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")

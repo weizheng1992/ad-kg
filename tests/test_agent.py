@@ -178,7 +178,12 @@ def _playwright_ok() -> bool:
                         os.environ.get("ADKG_PG_DSN")),
                     reason="星图·模拟 / playwright / .env 不在线")
 def test_浏览工具真实点击抓取入图():
-    """Playwright 端到端：搜索→点击→抽取→截图子步→幂等入图（慢，仅本机全栈在线跑）。"""
+    """Playwright 端到端：搜索→点击→抽取→截图子步→权威仲裁两分支。
+
+    状态独立（复审修）：按抓取前库内权威分叉断言——种子 100 走仲裁分支
+    （不覆盖 + review_queue 去重一跳），已被实弹覆盖成 80 则走幂等 MERGE 分支。
+    """
+    import json as j
     import os as _os
     from adkg.api.routes.platform_browser import fetch_creator_from_platform
     from adkg.store.graph import GraphStore
@@ -196,16 +201,30 @@ def test_浏览工具真实点击抓取入图():
 
     ctx = _Ctx()
     ctx.emit = _emit
+    with ctx.graph.session() as s:
+        rec0 = s.run("MATCH (n:Entity {id: 'Creator:cr11'}) RETURN n.authority AS a").single()
+    pre_auth = rec0["a"] if rec0 else None
+
     result = fetch_creator_from_platform({"query": "铲屎官"}, ctx)
-    import json as j
-    assert "ingested" in result and "Creator:cr1" in result
+    out = j.loads(result)
+    assert out["creator_id"] == "Creator:cr11"
     # 子步齐全且带截图（ZCode 式透明的证据）
-    assert len([s for s in steps if s["kind"] == "tool_step"]) >= 4
-    assert any(s.get("screenshot", "").startswith("data:image/jpeg") for s in steps)
-    # 幂等入图：prov_source_id 指向平台页
-    cid = j.loads(result)["creator_id"]
+    assert len([s_ for s_ in steps if s_["kind"] == "tool_step"]) >= 4
+    assert any(s_.get("screenshot", "").startswith("data:image/jpeg") for s_ in steps)
+
+    import psycopg
     with ctx.graph.session() as s:
         rec = s.run("MATCH (n:Entity {id: $id}) RETURN n.prov_source AS src, "
-                    "n.prov_source_id AS sid, n.name AS name", id=cid).single()
-    assert rec["src"] == "platform_api" and rec["sid"].startswith("mock-douyin:creator:")
-    assert "铲屎官" in rec["name"]
+                    "n.name AS name", id="Creator:cr11").single()
+    if pre_auth is not None and pre_auth > 80:
+        # 仲裁分支：高权威在场不覆盖，冲突去重进 review_queue
+        assert out["ingested"] is False and out.get("conflict_queued") is True
+        assert rec["src"] == "system_of_record" and "铲屎官" in rec["name"]
+        with psycopg.connect(_os.environ["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+            cur.execute("SELECT count(*) AS n FROM review_queue WHERE kind = 'conflict'"
+                        " AND status = 'open' AND payload->>'entity' = 'Creator:cr11'")
+            assert cur.fetchone()["n"] == 1           # 幂等重抓不重复挂账
+    else:
+        # 幂等 MERGE 分支（此前实弹已把节点覆盖成 platform_api/80）
+        assert out["ingested"] is True
+        assert rec["src"] == "platform_api" and "铲屎官" in rec["name"]

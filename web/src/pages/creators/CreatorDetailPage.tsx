@@ -36,7 +36,9 @@ export function CreatorDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold">{c.name}</h2>
-              <Badge variant="secondary">{c.platform === 'douyin' ? '抖音' : '小红书'}</Badge>
+              <Badge variant="secondary">
+                {c.platform === 'douyin' ? '抖音' : c.platform === 'xhs' ? '小红书' : c.platform}
+              </Badge>
             </div>
             <div className="mt-1.5">
               {c.niches.map((n) => <Badge key={n} variant="outline" className="mr-1 font-normal">{n}</Badge>)}

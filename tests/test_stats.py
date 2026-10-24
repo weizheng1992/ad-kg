@@ -1,6 +1,6 @@
-"""数据看板聚合（spec §5）：行谓词收敛 + 达人段类白名单 + 指标白名单。
+"""数据看板聚合（spec §4/§5）：角色门 + 行谓词收敛 + 达人段类白名单 + 指标白名单。
 
-真库集成（不在线跳过）；client 断言自己品牌、ae 断言锚点案例、creative 无看板。
+真库集成（不在线跳过）；client 断言自己品牌、ae 断言锚点案例、creative/admin 断言角色门 403。
 """
 import os
 from pathlib import Path
@@ -42,6 +42,13 @@ class TestStatsAPI:
         assert d["trend"] and d["platforms"] and d["brands"]
         assert {p["platform"] for p in d["platforms"]} == {"douyin", "xhs"}
         assert d["top_creators"], "management 应见达人 Top"
+
+    def test_角色门矩阵外拒绝(self):
+        client = self._client()
+        for role in ("creative", "admin"):
+            assert client.get("/stats/overview",
+                              params={"role": role}).status_code == 403, \
+                f"{role} 应被看板角色门拒绝（spec §4：导航隐藏不是闸）"
 
     def test_client只看自己品牌且无达人段(self):
         client = self._client()
