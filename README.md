@@ -495,7 +495,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | 管理后台 `/admin`（只读） | management/admin | 权限矩阵 + 账号一览 + 审计流水（M7）；review_queue 人审界面后置 |
 | 数据平台（模拟） 外链 | management/ae/optimizer | mock-douyin 服务（M2，星图·模拟） |
 
-后台管理 = 知识运营台，**不做用户管理 UI**：账号在库（`app_user`，scrypt 哈希），开户/改密走 `scripts/init_users.py`——「最小账号面，脚本即开户界面」；角色与 token 仍在 `permissions.yaml` + `.env`，身份生命周期在外部（网关 / 引擎），做用户管理 UI 是负资产（本节拍板延续，2026-10-24 重述）。
+后台管理 = 知识运营台 + **人员管理（spec §16，2026-10-24 第三轮修订：用户拍板要 UI）**：账号在库（`app_user`，scrypt 哈希），**admin 专属写操作**——web 开户 / 改密（吊销既有会话）/ 停用启用，角色过 `permissions.yaml` 合法集，一切落审计；management 仍只读账号一览。角色与 token 仍在 `permissions.yaml` + `.env`（配置文件即权限真源），身份生命周期管理收在 admin 账号面。
 
 **认证与角色头**：web 走**服务端会话**（spec §2）——`POST /auth/login` 校验 `app_user`（stdlib scrypt + 等时哑校验防用户名探测），签发 `app_session` 表支撑的 HttpOnly cookie（7 天滑动续期、可吊销）；`resolve_identity` 解析优先级 **token > cookie > dev**，登录成败均落审计。~~X-Adkg-Role 换 token~~ **已撤**（2026-10-24）：nginx 不再按头注入 Authorization，web 全靠会话 cookie；`Authorization: Bearer` 直连路保留给 smartServe / eval。每账号绑定唯一 role + Person，**演示期的管理员自由切换身份已移除**（真系统不留后门）；本地开发 `ADKG_DEV_AUTH=off` 不变。
 

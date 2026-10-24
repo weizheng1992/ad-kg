@@ -419,6 +419,36 @@ async function _get<T>(url: string): Promise<T> {
 
 export const getPermissionMatrix = () => _get<PermissionMatrix>('/admin/permission-matrix')
 export const getAdminAccounts = () => _get<{ items: AdminAccount[] }>('/admin/accounts')
+
+/** 人员管理写操作（spec §16）：仅 admin——开户 / 改密（吊销会话）/ 启停 */
+export async function createAccount(payload: { username: string; password: string
+  display_name?: string; role: string; person?: string }): Promise<{ ok: boolean }> {
+  const r = await fetch('/admin/accounts', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function resetAccountPassword(uid: string, password: string): Promise<{ ok: boolean }> {
+  const r = await fetch(`/admin/accounts/${encodeURIComponent(uid)}/reset-password`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function toggleAccount(uid: string, disabled: boolean): Promise<
+  { ok: boolean; disabled: boolean }> {
+  const r = await fetch(`/admin/accounts/${encodeURIComponent(uid)}/toggle`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ disabled }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
 export const getAuditLog = (page = 1, size = 30, filters: {
   action?: string; verdict?: string; by_role?: string; q?: string } = {}) => {
   const p = new URLSearchParams({ page: String(page), size: String(size) })

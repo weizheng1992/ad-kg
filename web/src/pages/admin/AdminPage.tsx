@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ROLE_LABEL } from '@/lib/nav'
 import { getAdminAccounts, getAuditLog, getPermissionMatrix, getReviewQueue,
-         resolveReviewQueue,
+         createAccount, resetAccountPassword, resolveReviewQueue, toggleAccount,
          type AdminAccount, type AuditRow, type PermissionMatrix,
          type ReviewQueueItem } from '@/lib/api'
+import { useSession } from '@/lib/session'
 
 const VERDICT_COLOR: Record<string, string> = {
   allow: 'bg-emerald-100 text-emerald-700', deny: 'bg-red-100 text-red-700',
@@ -60,37 +61,112 @@ function MatrixTab({ m }: { m: PermissionMatrix | null }) {
   )
 }
 
-function AccountsTab({ items }: { items: AdminAccount[] | null }) {
+/** 人员管理（spec §16）：账号一览 + admin 专属写操作（开户/改密/启停） */
+function AccountsTab({ items, roles, canWrite, onChanged }: {
+  items: AdminAccount[] | null; roles: string[]; canWrite: boolean; onChanged: () => void
+}) {
+  const [form, setForm] = useState({ username: '', password: '', display_name: '',
+                                     role: 'ae', person: '' })
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
   if (!items) return <div className="p-4 text-sm text-muted-foreground">加载中…</div>
+
+  const submit = async () => {
+    setBusy(true); setMsg('')
+    try {
+      await createAccount(form)
+      setMsg(`✅ 已开户 ${form.username}（角色 ${ROLE_LABEL[form.role] ?? form.role}）`)
+      setForm({ ...form, username: '', password: '', display_name: '', person: '' })
+      onChanged()
+    } catch (e) {
+      setMsg(`❌ ${e}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const resetPw = async (a: AdminAccount) => {
+    const pw = window.prompt(`给 ${a.display_name}（${a.username}）设置新密码：`)
+    if (!pw) return
+    try {
+      await resetAccountPassword(a.id, pw)
+      setMsg(`✅ ${a.username} 已改密（既有会话已吊销）`)
+    } catch (e) { setMsg(`❌ ${e}`) }
+  }
+  const toggle = async (a: AdminAccount) => {
+    try {
+      await toggleAccount(a.id, !a.disabled)
+      setMsg(`✅ ${a.username} 已${a.disabled ? '启用' : '停用（会话吊销）'}`)
+      onChanged()
+    } catch (e) { setMsg(`❌ ${e}`) }
+  }
+
   return (
-    <Card>
-      <CardContent className="p-0">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-              {['账号', '姓名', '角色', 'Person 绑定', '状态', '创建时间'].map((h) => (
-                <th key={h} className="px-3 py-2 font-medium">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((a) => (
-              <tr key={a.id} className="border-b last:border-0">
-                <td className="px-3 py-2.5 font-mono">{a.username}</td>
-                <td className="px-3 py-2.5">{a.display_name}</td>
-                <td className="px-3 py-2.5"><Badge variant="outline">{ROLE_LABEL[a.role] ?? a.role}</Badge></td>
-                <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">{a.person ?? '—'}</td>
-                <td className="px-3 py-2.5">{a.disabled ? <Badge variant="destructive">停用</Badge> : <Badge variant="secondary">正常</Badge>}</td>
-                <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.created_at.slice(0, 19)}</td>
-              </tr>
+    <div className="space-y-3">
+      {canWrite && (
+        <Card>
+          <CardContent className="grid gap-3 py-4 sm:grid-cols-5">
+            {([['username', '账号 *'], ['password', '初始密码 *'], ['display_name', '姓名'],
+               ['person', 'Person 绑定（可空）']] as const).map(([k, label]) => (
+              <div key={k} className="grid gap-1">
+                <span className="text-xs text-muted-foreground">{label}</span>
+                <Input value={(form as Record<string, string>)[k]}
+                       onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+              </div>
             ))}
-          </tbody>
-        </table>
-        <p className="px-3 py-2 text-[11px] text-muted-foreground">
-          最小账号面：开户/改密走 scripts/init_users.py，不做用户管理 UI（README §9.7）
-        </p>
-      </CardContent>
-    </Card>
+            <div className="grid gap-1">
+              <span className="text-xs text-muted-foreground">角色 *</span>
+              <select className="h-9 rounded-md border bg-background px-2 text-sm"
+                      value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                {roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r] ?? r}</option>)}
+              </select>
+            </div>
+            <div className="flex items-end gap-2 sm:col-span-5">
+              <Button size="sm" disabled={busy || !form.username || !form.password}
+                      onClick={submit}>{busy ? '提交中…' : '开户'}</Button>
+              <span className="text-xs text-muted-foreground">
+                密码 scrypt 哈希入库；停用即吊销会话；一切操作落审计
+              </span>
+              {msg && <span className="text-xs">{msg}</span>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      <Card>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                {['账号', '姓名', '角色', 'Person 绑定', '状态', '创建时间', ...(canWrite ? ['操作'] : [])].map((h) => (
+                  <th key={h} className="px-3 py-2 font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((a) => (
+                <tr key={a.id} className="border-b last:border-0">
+                  <td className="px-3 py-2.5 font-mono">{a.username}</td>
+                  <td className="px-3 py-2.5">{a.display_name}</td>
+                  <td className="px-3 py-2.5"><Badge variant="outline">{ROLE_LABEL[a.role] ?? a.role}</Badge></td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">{a.person ?? '—'}</td>
+                  <td className="px-3 py-2.5">{a.disabled ? <Badge variant="destructive">停用</Badge> : <Badge variant="secondary">正常</Badge>}</td>
+                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.created_at.slice(0, 19)}</td>
+                  {canWrite && (
+                    <td className="px-3 py-2.5">
+                      <div className="flex gap-1">
+                        <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]"
+                                onClick={() => void resetPw(a)}>改密</Button>
+                        <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]"
+                                onClick={() => void toggle(a)}>{a.disabled ? '启用' : '停用'}</Button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -254,6 +330,7 @@ function ReviewTab({ data, kind, setKind, reload }: {
 }
 
 export function AdminPage() {
+  const { session } = useSession()
   const [m, setM] = useState<PermissionMatrix | null>(null)
   const [accounts, setAccounts] = useState<AdminAccount[] | null>(null)
   const [audit, setAudit] = useState<{ rows: AuditRow[]; total: number; page: number } | null>(null)
@@ -277,9 +354,13 @@ export function AdminPage() {
     getReviewQueue('open', k).then(setReview).catch((e) => setError(`${e}`))
   }, [])
 
+  const loadAccounts = useCallback(() => {
+    getAdminAccounts().then((r) => setAccounts(r.items)).catch((e) => setError(`${e}`))
+  }, [])
+
   useEffect(() => {
     getPermissionMatrix().then(setM).catch((e) => setError(`${e}`))
-    getAdminAccounts().then((r) => setAccounts(r.items)).catch((e) => setError(`${e}`))
+    loadAccounts()
     void loadAudit(1)
     void loadReview('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -297,12 +378,15 @@ export function AdminPage() {
       <Tabs defaultValue="matrix">
         <TabsList>
           <TabsTrigger value="matrix">权限矩阵</TabsTrigger>
-          <TabsTrigger value="accounts">账号一览</TabsTrigger>
+          <TabsTrigger value="accounts">人员管理</TabsTrigger>
           <TabsTrigger value="audit">审计流水</TabsTrigger>
           <TabsTrigger value="review">人审队列</TabsTrigger>
         </TabsList>
         <TabsContent value="matrix"><MatrixTab m={m} /></TabsContent>
-        <TabsContent value="accounts"><AccountsTab items={accounts} /></TabsContent>
+        <TabsContent value="accounts">
+          <AccountsTab items={accounts} roles={m ? Object.keys(m.roles) : []}
+                       canWrite={session?.role === 'admin'} onChanged={loadAccounts} />
+        </TabsContent>
         <TabsContent value="audit">
           {audit && (
             <AuditTab rows={audit.rows} total={audit.total} page={audit.page}

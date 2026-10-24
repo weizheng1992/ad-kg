@@ -133,3 +133,67 @@ class TestReviewResolve:
             cur.execute("SELECT status FROM review_queue WHERE id = %s", (qid2,))
             assert cur.fetchone()[0] == "approved"
         self._cleanup()
+
+
+@pytest.mark.skipif(not _pg_up(), reason="Postgres 不在线")
+class TestAccountAdmin:
+    """人员管理（spec §16）：开户/改密吊销/启停——写操作仅 admin。"""
+
+    U = "pytest_acct"
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        return TestClient(create_app({**os.environ, "ADKG_DEV_AUTH": "off"}))
+
+    def _cleanup(self):
+        import psycopg
+        with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c, c.cursor() as cur:
+            cur.execute("DELETE FROM app_session WHERE user_id = 'u_pytest_acct'")
+            cur.execute("DELETE FROM app_user WHERE username = %s", (self.U,))
+
+    def test_闭环(self):
+        client = self._client()
+        self._cleanup()
+        # management 只读 → 403
+        assert client.post("/admin/accounts",
+                           params={"role": "management", "user": "Person:chen"},
+                           json={"username": self.U, "password": "x", "role": "ae"}
+                           ).status_code == 403
+        # admin 开户（角色过 permissions 合法集；坏角色 422；重号 409）
+        ok = client.post("/admin/accounts", params={"role": "admin"},
+                         json={"username": self.U, "password": "pw-1",
+                               "display_name": "测试账号", "role": "optimizer",
+                               "person": "Person:zhao"})
+        assert ok.status_code == 200, ok.text
+        assert client.post("/admin/accounts", params={"role": "admin"},
+                           json={"username": self.U, "password": "x", "role": "ae"}
+                           ).status_code == 409
+        assert client.post("/admin/accounts", params={"role": "admin"},
+                           json={"username": "z", "password": "x", "role": "nope"}
+                           ).status_code == 422
+        # 新账号能登录（dev 关 → 走 cookie 路）
+        r = client.post("/auth/login", json={"username": self.U, "password": "pw-1"})
+        assert r.status_code == 200 and r.json()["role"] == "optimizer"
+        client.cookies.clear()      # cookie 优先于 dev 参数（设计如此）：admin 操作先退出登录态
+        # 改密 → 旧会话吊销，新密码可登录
+        assert client.post("/admin/accounts/u_pytest_acct/reset-password",
+                           params={"role": "admin"},
+                           json={"password": "pw-2"}).status_code == 200
+        assert client.get("/auth/me").status_code == 401
+        assert client.post("/auth/login",
+                           json={"username": self.U, "password": "pw-1"}).status_code == 401
+        assert client.post("/auth/login",
+                           json={"username": self.U, "password": "pw-2"}).status_code == 200
+        # 停用 → 登录拒绝；启用恢复
+        client.cookies.clear()
+        assert client.post("/admin/accounts/u_pytest_acct/toggle", params={"role": "admin"},
+                           json={"disabled": True}).status_code == 200
+        assert client.post("/auth/login",
+                           json={"username": self.U, "password": "pw-2"}).status_code == 401
+        client.cookies.clear()
+        assert client.post("/admin/accounts/u_pytest_acct/toggle", params={"role": "admin"},
+                           json={"disabled": False}).status_code == 200
+        assert client.post("/auth/login",
+                           json={"username": self.U, "password": "pw-2"}).status_code == 200
+        self._cleanup()
