@@ -1,4 +1,5 @@
-// 登录页（演示壳）：校验演示账号表后放行；服务端权限仍走 X-Adkg-Role → token（§9.7）
+// 登录页（spec §2）：服务端认证——POST /auth/login 换 HttpOnly 会话 cookie
+// 账号由管理员经 scripts/init_users.py 开通；前端不再持有任何账号表
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ACCOUNTS } from '@/lib/accounts'
 import { useSession } from '@/lib/session'
 
 export function LoginPage() {
@@ -15,19 +15,19 @@ export function LoginPage() {
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const submit = () => {
-    const account = ACCOUNTS.find((a) => a.name === name.trim())
-    if (!account || account.password !== password) {
-      setErr('账号或密码不对（演示账号找管理员要）')
-      return
+  const submit = async () => {
+    if (!name.trim() || !password || busy) return
+    setBusy(true); setErr('')
+    try {
+      await login(name.trim(), password)
+      navigate('/', { replace: true })
+    } catch (e) {
+      setErr(`${e}`.replace(/^Error: /, ''))
+    } finally {
+      setBusy(false)
     }
-    login({
-      account: account.name, label: account.label,
-      admin: account.admin ?? false,
-      baseRole: account.persona.role, persona: account.persona,
-    })
-    navigate('/', { replace: true })
   }
 
   return (
@@ -35,21 +35,21 @@ export function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-xl font-extrabold tracking-wide">AdKG</CardTitle>
-          <CardDescription>本体驱动的广告营销知识中台 · 演示登录</CardDescription>
+          <CardDescription>本体驱动的广告营销知识中台</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="account">账号</Label>
             <Input id="account" value={name} autoComplete="username"
-                   placeholder="如：chen / gu / admin"
+                   placeholder="账号由管理员开通"
                    onChange={(e) => { setName(e.target.value); setErr('') }}
-                   onKeyDown={(e) => e.key === 'Enter' && name && password && submit()} />
+                   onKeyDown={(e) => e.key === 'Enter' && submit()} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="password">密码</Label>
             <Input id="password" type="password" value={password} autoComplete="current-password"
                    onChange={(e) => { setPassword(e.target.value); setErr('') }}
-                   onKeyDown={(e) => e.key === 'Enter' && name && password && submit()} />
+                   onKeyDown={(e) => e.key === 'Enter' && submit()} />
           </div>
           {err && (
             <Alert variant="destructive">
@@ -58,8 +58,8 @@ export function LoginPage() {
           )}
         </CardContent>
         <CardFooter>
-          <Button className="w-full" disabled={!name.trim() || !password} onClick={submit}>
-            登录
+          <Button className="w-full" disabled={!name.trim() || !password || busy} onClick={submit}>
+            {busy ? '登录中…' : '登录'}
           </Button>
         </CardFooter>
       </Card>

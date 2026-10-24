@@ -1,10 +1,13 @@
-"""认证与身份上下文收口（README §9.1，2026-10-23 起）：token→role+绑定 person / dev 兜底。
+"""认证与身份上下文收口（README §9.1，2026-10-23 起）：token→role+绑定 person / web 会话 / dev 兜底。
 
 各端点（ask / graph / agent / ingest / creative / actions / guideline）不再自抄认证块
 ——散抄曾致漏门（/ingest/assertion 无角色门即实例）。约定见 §12.4：token 路 person
 一律取 bindings 绑定值，body/query 自报仅补缺（多绑定角色）；dev 路
 （ADKG_DEV_AUTH=off）允许 body/query 传 role/user。角色合法性预检（§十二
 fail-closed）也在此统一做——dev 路可传任意值，未知即 401。
+
+web 会话 cookie 路（spec 2026-10-24 §2）：Bearer 缺席时按 adkg_session 解析
+app_session → 账号 role/person；优先级 token > cookie > dev。
 
 planner / graph 惰性单例挂 app.state（2026-10-24 收敛：本模块曾反向 import
 routes.ask._planner，且 planner 与 actions 各建一份 GraphStore）。
@@ -16,6 +19,7 @@ from pathlib import Path
 from fastapi import HTTPException, Request
 
 from adkg.guards.auth import AuthService
+from adkg.guards.sessions import SESSION_COOKIE, resolve_session
 
 
 def get_graph(request: Request):
@@ -49,6 +53,7 @@ def resolve_identity(request: Request, authorization: str | None, *,
 
     - token 路：role 取 token 映射，person 取该 role 的唯一 bindings 绑定值
       （缺省回退 body/query 自报）；dev 路入参不采信
+    - cookie 路：Bearer 缺席时 adkg_session → app_user 的 role/person
     - dev 路：ADKG_DEV_AUTH=off 时 body/query 的 role/user；dev_default 允许
       无角色调用落到默认角色（内部工具端点用，如 /ingest/docs → management）
     - role ∈ planner.roles 预检（§十二）在此统一；角色门（CASEGEN_ROLES 等）
@@ -62,6 +67,9 @@ def resolve_identity(request: Request, authorization: str | None, *,
         fallback = user if body is None else body.get("user")
         person = planner.bound_person(role) or fallback
     else:
+        sess = resolve_session(env, request.cookies.get(SESSION_COOKIE))
+        if sess and sess["role"] in planner.roles:
+            return sess["role"], sess["person"], planner
         dev_role = (body.get("role") if body is not None else None) or role or dev_default
         if not (env.get("ADKG_DEV_AUTH") == "off" and dev_role):
             raise HTTPException(401, "缺有效 service token（生产经网关注入；本地 "

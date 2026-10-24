@@ -1,10 +1,12 @@
 // 图谱页：实体展开 + 力导向图（echarts）+ 案例统计卡 + 权限过滤计数
 import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router'
 import * as echarts from 'echarts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { graphEntity, type CaseStats, type Neighbor, type Persona } from '@/lib/api'
+import { graphEntity, type CaseStats, type Neighbor } from '@/lib/api'
+import { usePersona } from '@/lib/session'
 
 const CLASS_COLOR: Record<string, string> = {
   Brand: '#0ea5e9', Product: '#6366f1', Case: '#10b981', Campaign: '#f59e0b',
@@ -17,7 +19,10 @@ interface GEdge { source: string; target: string; label?: string }
 
 const SEEDS = ['Person:li', 'Brand:B04', 'Guideline:G-01', 'Metric:cpa']
 
-export function GraphPage({ persona, focusEntity }: { persona: Persona; focusEntity?: string | null }) {
+export function GraphPage() {
+  const persona = usePersona()
+  // Agent 确认入图后带 state.focus 跳转过来（案例生成 → 图谱的衔接）
+  const focusEntity = (useLocation().state as { focus?: string } | null)?.focus ?? null
   const ref = useRef<HTMLDivElement>(null)
   const chart = useRef<echarts.ECharts | null>(null)
   const nodes = useRef<Map<string, GNode>>(new Map())
@@ -104,7 +109,7 @@ export function GraphPage({ persona, focusEntity }: { persona: Persona; focusEnt
   }, [focusEntity])
 
   return (
-    <div className="flex h-[calc(100vh-8.5rem)] flex-col">
+    <div className="flex h-[calc(100vh-3.6rem)] flex-col">
       <div className="flex items-center gap-2.5 px-5 py-3">
         <Input className="w-96 font-mono text-[13px]" value={focus}
                placeholder="实体 ID（如 Case:C-2025-005）回车展开"

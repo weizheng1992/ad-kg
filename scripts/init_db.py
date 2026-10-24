@@ -34,13 +34,13 @@ def _password_from_dsn(dsn: str) -> str:
 
 
 def init_postgres() -> None:
-    """执行 sql/001、002；创建 adkg_rw（读写）与 adkg_ro（只读，text2sql 第一闸）。"""
+    """按序执行 sql/ 全部脚本；创建 adkg_rw（读写）与 adkg_ro（只读，text2sql 第一闸）。"""
     dsn = _pg_admin_dsn()
     rw_pw = _password_from_dsn(os.environ["ADKG_PG_DSN"])
     ro_pw = _password_from_dsn(os.environ["ADKG_PG_RO_DSN"])
 
-    sql = "\n".join((ROOT / f).read_text(encoding="utf-8")
-                    for f in ("sql/001_init.sql", "sql/002_unified_metrics.sql"))
+    sql_files = sorted((ROOT / "sql").glob("*.sql"))
+    sql = "\n".join(f.read_text(encoding="utf-8") for f in sql_files)
     grants = f"""
     -- 双账号（§五 运行形态）：DO 块保证幂等
     DO $$
@@ -65,12 +65,15 @@ def init_postgres() -> None:
     -- adkg_ro：只读事实与检索面，不含 audit_log（仅 admin 可读，§八）
     GRANT SELECT ON ALL TABLES IN SCHEMA public TO adkg_ro;
     REVOKE SELECT ON audit_log FROM adkg_ro;
+    -- 账号与会话表不进只读检索面（spec §2：口令哈希 / 会话 token 不出应用层）
+    REVOKE SELECT ON app_user, app_session FROM adkg_ro;
     """
 
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute(sql)
         conn.execute(grants)
-    print("Postgres：sql/001 + 002 执行完成；adkg_rw / adkg_ro 已就绪（audit_log 只追加）")
+    print(f"Postgres：{' + '.join(f.name for f in sql_files)} 执行完成；"
+          "adkg_rw / adkg_ro 已就绪（audit_log 只追加，app_* 不进只读面）")
 
 
 def init_neo4j() -> None:

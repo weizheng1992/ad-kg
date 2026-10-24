@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
-from adkg.api.routes import actions, agent, ask, creative, guideline, graph, ingest  # noqa: E402
+from adkg.api.routes import actions, agent, ask, auth, creative, guideline, graph, ingest  # noqa: E402
 
 
 def create_app(env: dict[str, str] | None = None) -> FastAPI:
@@ -29,6 +29,7 @@ def create_app(env: dict[str, str] | None = None) -> FastAPI:
                             content={"detail": f"internal error: {type(exc).__name__}"})
 
     app.state.env = dict(env or os.environ)
+    app.include_router(auth.router)
     app.include_router(ask.router)
     app.include_router(graph.router)
     app.include_router(actions.router)

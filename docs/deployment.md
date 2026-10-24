@@ -32,6 +32,7 @@ docker compose up -d
 # 3) 数据 + 账号 + API 常驻
 uv sync
 uv run python scripts/init_db.py                 # 建表 + adkg_rw/adkg_ro + Neo4j 约束（幂等）
+uv run python scripts/init_users.py              # web 登录账号（密码随机打印一次，或 ADKG_USER_PASSWORD= 指定）
 HF_ENDPOINT=https://hf-mirror.com uv run python scripts/load_seed.py   # 种子+嵌入，2C 几分钟
 sed -i "s/__USER__/deploy/g" deploy/systemd/adkg-api.service   # 换实际用户名
 sudo cp deploy/systemd/adkg-api.service /etc/systemd/system/
@@ -72,14 +73,17 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
   只能全开，key-only 登录 + fail2ban 兜底）；自家终端 SSH 也走 22
 - 一律不对公网开放：**5433（PG）/ 8000（API）/ 7687（bolt）/ 7474（Neo4j 浏览器）**——
   PG 只经隧道到 B 机；adkg API 将来被 smartServe 消费时填隧道地址 `10.10.0.1:8000`（现未接线）
-- **唯一公网面例外：web 演示（2026-10-20 拍板；同日登录壳替代 basic auth）**——80/TCP 经宿主机
-  nginx 开放：静态 `web/dist` + 反代五个 API 路径（ask/graph/actions/guideline/ingest）到
-  `127.0.0.1:8000`。把门三层：① 前端登录壳（演示账号表↔角色绑定，README §9.7；体验件而非安全边界）
-  ② `X-Adkg-Role` 头换对应角色 token（token 只存 nginx 配置不进前端包；头缺失/陌生 → Bearer 空 →
-  API 401 fail-closed）③ limit_req 限速（/ask 1r/s burst 3，防烧 LLM 配额；其余 API 路 10r/s）。
-  8000 本体仍不对公网，nginx 是唯一入口；演示数据全合成。web/dist 更新走 rsync（CI 自动化留待
-  演示加厚时）。**nginx 配置真源：`deploy/nginx/adkg-demo.conf`（占位符 + sed 替换安装，
-  2026-10-23 落位；含探测路径 404，SPA fallback 不再对扫描器回 200）**
+- **唯一公网面例外：web（2026-10-20 拍板；2026-10-24 真实系统化改会话制，spec §2）**——80/TCP 经宿主机
+  nginx 开放：静态 `web/dist` + 反代 API 路径（auth/ask/graph/actions/guideline/ingest/agent/creative
+  及 creators/brands/settlements/stats/admin）到 `127.0.0.1:8000`。把门三层：① 服务端会话登录
+  （`/auth/login` 校验 `app_user` scrypt 哈希 → `app_session` HttpOnly cookie，7 天滑动可吊销；
+  账号由 `scripts/init_users.py` 开通，README §9.7「最小账号面」）② `resolve_identity` 优先级
+  token > cookie > dev，cookie 失效即 401 fail-closed（~~X-Adkg-Role 头换 token~~ 已撤，
+  Bearer 直连路保留给 smartServe/eval）③ limit_req 限速（/ask 1r/s burst 3，防烧 LLM 配额）。
+  HTTPS 上线时 `.env` 开 `ADKG_COOKIE_SECURE=on`（会话 cookie 加 Secure）。
+  8000 本体仍不对公网，nginx 是唯一入口。web/dist 更新走 rsync（CI 自动化留待加厚时）。
+  **nginx 配置真源：`deploy/nginx/adkg-demo.conf`（2026-10-23 落位、2026-10-24 改会话制；
+  含探测路径 404，SPA fallback 不再对扫描器回 200）**
 - 凭据分层：`.env` 永不入库（两仓都是）；LLM key 只存服务器与本地，GitHub 只有 SSH 部署钥匙
 
 ## 五、边界约定（沿用 README §五 / §9.8 的精神）

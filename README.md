@@ -364,6 +364,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 ### 9.1 身份与鉴权
 
 - **认证**：静态 service token（每 role 一枚），网关 / 引擎注入 `Authorization` 头；AdKG 校验 token → role，**不信任请求体自报的身份**。未带凭证 401；有凭证但无 Person 绑定，按最小权限只读全局类（Metric、Guideline、Channel，见 12.4）。token 本体进 `.env` / 密管，仓库里只有 bindings 映射结构（[12.4](#124-权限矩阵permissionsyaml)）
+- **Web 会话登录**（2026-10-24，spec §2）：web 前端走 `/auth/login`——账号在库（`app_user`，stdlib scrypt + 等时哑校验），`app_session` 表支撑 HttpOnly cookie（7 天滑动、可吊销、登录成败均审计）；`guards/http.py::resolve_identity` 优先级 **token > cookie > dev**，Bearer 直连路（smartServe / eval）不受影响
 - **user ↔ Person**：绑定落 entity_alias 表，作 row_filter 起点
 - **外部客户**：独立签发的只读 token（与内部隔离），凭证只标识主体、不含 brand_id；租户绑定走 `Person→external_for→Brand`（N:M，一家客户多品牌即多条），变更走 review_queue 人审并记审计；token 设有效期，吊销 = 从 bindings 移除映射并记审计
 - **Agent 受托**：凭证同时携带 agent_id 与终端用户身份；生效权限取 Agent role 与用户 role 的**交集**（最小权限），行过滤取更严者；审计记双身份
@@ -474,20 +475,25 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 换行业的重写边界只在此处声明，全文其他提到处均指回本表。
 
-### 9.7 前端与运营台（web/，Phase 5 后）
+### 9.7 前端与运营台（web/）
 
-定位只做三件事：**自助看数、演示、知识运营**——不做对话。内部用户的日常主力界面是 smartServe 的对话（独立项目，见十三）；web 的问答页只作演示、评测可视化，以及无对话入口角色（财务、管理层）的兜底。演示入口见 README 顶部；部署边界（nginx 80 唯一公网面）见 `docs/deployment.md` §四。
+> **2026-10-24 起升级为真实系统**（spec：`docs/specs/2026-10-24-真实系统化升级-spec.md`）：服务端登录 + 侧边栏多页面（达人库/客户/财务结算/数据看板/管理后台按里程碑交付）+ Agent 全局悬浮窗。定位从「演示件」改为「自助看数、演示、知识运营」的真系统；内部用户的日常对话主力仍是 smartServe（见十三），web 的 agent 悬浮窗作自包含入口。部署边界（nginx 唯一公网面）见 `docs/deployment.md` §四。
 
 | 页面 | 谁用 | 端点 |
 |---|---|---|
-| Agent 助手（问答 + 生成合一） | 所有人（证据与草稿随角色过滤） | `/agent/chat`（问答内部走 `/ask` 三路管线；生成自选只读工具后出草稿，案例草稿仍需确认入图） |
-| 图谱展开 | AE、优化师 | `/graph/entity`（Case/Product/Creative 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数；Creative 投放未对齐时不出卡——§7.4 对齐漏斗的诚实边界） |
+| 数据看板 `/` | management/ae/optimizer/finance（client 只看自己品牌） | `/stats/overview`（M5） |
+| 达人库 `/creators` | management/ae/optimizer（finance 结算视角） | `/creators`（M2，Creator 本体扩展） |
+| 客户 `/brands` | management/ae；client 只看自己 | `/brands`（M3） |
+| 财务结算 `/settlements` | management/finance | `/settlements`（M4） |
+| Agent 助手（全局悬浮窗） | 所有人（证据与草稿随角色过滤） | `/agent/chat`（问答内部走 `/ask` 三路管线；生成自选只读工具后出草稿，案例草稿仍需确认入图；M6 升级 SSE 流式轨迹） |
+| 图谱展开 `/graph` | management/ae/optimizer/creative | `/graph/entity`（Case/Product/Creative 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数；Creative 投放未对齐时不出卡——§7.4 对齐漏斗的诚实边界） |
 | 规范检查 | 创意 / AIGC | `/guideline/check` |
-| 人审队列 | 知识运营 | `review_queue` + `/ingest` |
+| 管理后台 `/admin`（只读） | management/admin | 权限矩阵 + 账号一览 + 审计流水（M7）；review_queue 人审界面后置 |
+| 数据平台（模拟） 外链 | management/ae/optimizer | mock-douyin 服务（M2，星图·模拟） |
 
-后台管理 = 知识运营台，**不做用户管理**：必须有 review_queue 人审界面（冲突对比 + unmatched 对齐——12.2 仲裁与 7.4 对齐闭环的落地）；最好有文档上传与审计查看；角色与 token 留在 `permissions.yaml` + `.env`（配置文件即管理界面），身份生命周期在外部（网关 / 引擎），做用户管理 UI 是负资产。
+后台管理 = 知识运营台，**不做用户管理 UI**：账号在库（`app_user`，scrypt 哈希），开户/改密走 `scripts/init_users.py`——「最小账号面，脚本即开户界面」；角色与 token 仍在 `permissions.yaml` + `.env`，身份生命周期在外部（网关 / 引擎），做用户管理 UI 是负资产（本节拍板延续，2026-10-24 重述）。
 
-**角色头约定**：web 调用端点时带 `X-Adkg-Role: <role>`（与 body/query 的 role 同值）——本地 dev 无认证、忽略此头；部署态由 nginx 按头注入对应角色的 Bearer token（token 只存服务器 nginx 配置，**不进前端包**；头缺失或陌生值 → Bearer 为空 → API 401 fail-closed）。边界与把门层次见 `docs/deployment.md` §四。**登录壳**：web 内置演示登录页（演示账号表↔角色绑定，纯前端校验）——它是演示体验件而非安全边界（账号表在前端包里可被读出），真实把门是 nginx 换 token + 限速；**管理员与管理层账号可在六个演示身份间自由切换**（切角色即切 `X-Adkg-Role`，部署态 nginx 换发对应 token，页面结果随切换清空），其余业务账号角色随账号绑定——权限隔离演示更真实；AdKG API 仍不做用户管理（本节拍板不变）。
+**认证与角色头**：web 走**服务端会话**（spec §2）——`POST /auth/login` 校验 `app_user`（stdlib scrypt + 等时哑校验防用户名探测），签发 `app_session` 表支撑的 HttpOnly cookie（7 天滑动续期、可吊销）；`resolve_identity` 解析优先级 **token > cookie > dev**，登录成败均落审计。~~X-Adkg-Role 换 token~~ **已撤**（2026-10-24）：nginx 不再按头注入 Authorization，web 全靠会话 cookie；`Authorization: Bearer` 直连路保留给 smartServe / eval。每账号绑定唯一 role + Person，**演示期的管理员自由切换身份已移除**（真系统不留后门）；本地开发 `ADKG_DEV_AUTH=off` 不变。
 
 ## 十、快速开始（规划，代码就绪后生效）
 
@@ -495,7 +501,8 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 docker compose up -d                         # Postgres:5433  Neo4j:7474/7687
 uv sync
 cp .env.example .env                         # 填 LLM key、service token；本地开发可 ADKG_DEV_AUTH=off
-uv run python scripts/init_db.py             # 建表（含 audit_log、ingest_job）、Neo4j 约束
+uv run python scripts/init_db.py             # 建表（含 audit_log、ingest_job、app_user/app_session）、Neo4j 约束
+ADKG_USER_PASSWORD=xxx uv run python scripts/init_users.py   # web 登录账号（不设密码则随机生成打印一次）
 uv run python scripts/gen_seed.py            # 生成种子：CSV 进 data/seed，文档直写 data/raw（幂等，clone 后首跑）
 uv run python scripts/load_seed.py           # 导入种子数据（含同素材双平台与 violates 断言样例）
 uv run uvicorn adkg.api.main:app --reload    # http://127.0.0.1:8000/docs

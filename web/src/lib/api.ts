@@ -53,14 +53,28 @@ export interface GraphResponse {
   stats?: CaseStats | null
 }
 
-export const ROLES: { role: string; user: string; label: string }[] = [
-  { role: 'management', user: 'Person:chen', label: '管理层·陈朔' },
-  { role: 'optimizer', user: 'Person:li', label: '优化师·李昂' },
-  { role: 'creative', user: 'Person:wang', label: '创意·王雪' },
-  { role: 'client', user: 'Person:client_a', label: '客户方·顾佳(外部)' },
-  { role: 'ae', user: 'Person:li', label: 'AE·李昂' },
-  { role: 'finance', user: 'Person:zhou', label: '财务·周荃' },
-]
+// ---------- 认证（spec §2：服务端会话 cookie；登录壳不再是前端账号表） ----------
+
+export interface Me { username: string; display_name: string; role: string; person: string | null }
+
+export async function login(username: string, password: string): Promise<Me> {
+  const r = await fetch('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function fetchMe(): Promise<Me | null> {
+  const r = await fetch('/auth/me')
+  return r.ok ? r.json() : null
+}
+
+export async function logout(): Promise<void> {
+  await fetch('/auth/logout', { method: 'POST' })
+}
 
 /** 错误响应 detail：500 未捕获异常时 body 是纯文本（非 JSON），先 text 再安全 parse */
 async function errorDetail(r: Response): Promise<string> {
@@ -75,7 +89,7 @@ async function errorDetail(r: Response): Promise<string> {
 export async function ask(question: string, role: string, user: string): Promise<AskResponse> {
   const r = await fetch('/ask', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Adkg-Role': role },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, role, user }),
   })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
@@ -84,7 +98,7 @@ export async function ask(question: string, role: string, user: string): Promise
 
 export async function graphEntity(id: string, role: string, user: string): Promise<GraphResponse> {
   const p = new URLSearchParams({ id, role, user })
-  const r = await fetch(`/graph/entity?${p}`, { headers: { 'X-Adkg-Role': role } })
+  const r = await fetch(`/graph/entity?${p}`)
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
 }
@@ -121,7 +135,7 @@ export interface CommitResult {
 export async function caseCommit(draft: CaseDraft, persona: Persona): Promise<CommitResult> {
   const r = await fetch('/ingest/case-commit', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Adkg-Role': persona.role },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ draft, role: persona.role, user: persona.user }),
   })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
@@ -149,6 +163,8 @@ export interface AgentChatResult {
   case_draft: CaseDraft | null
   creative_drafts: CreativeDraftItem[] | null
   trace: AgentTraceStep[]
+  /** 案例确认入图的角色门（服务端下发，前端不硬抄角色表） */
+  can_commit_case?: boolean
 }
 
 export async function agentChat(
@@ -156,7 +172,7 @@ export async function agentChat(
 ): Promise<AgentChatResult> {
   const r = await fetch('/agent/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Adkg-Role': persona.role },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, role: persona.role, user: persona.user }),
   })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
