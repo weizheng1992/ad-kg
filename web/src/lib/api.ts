@@ -260,6 +260,24 @@ export async function listSettlements(params: { status?: string; brand?: string;
   return r.json()
 }
 
+// ---------- 数据看板（spec §5：汇总比口径 + 行谓词同一道闸） ----------
+
+export interface StatsOverview {
+  trend: { date: string; cost: string | null; conversions: string | null }[]
+  platforms: { platform: string; cost: string | null; conversions: string | null }[]
+  brands: { brand_id: string; cost: string | null; conversions: string | null; cases: number }[]
+  stages: { stage: string; count: number }[]
+  top_creators: { id: string; name: string; gmv_30d: number; cases: number }[] | null
+  role: string
+  days: number
+}
+
+export async function statsOverview(days = 90): Promise<StatsOverview> {
+  const r = await fetch(`/stats/overview?days=${days}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
 
 export interface AgentTraceStep { tool: string; args: Record<string, unknown>; result: string }
