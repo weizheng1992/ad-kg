@@ -117,3 +117,69 @@ class TestCreatorsAPI:
         with graph.session() as s:
             s.run("MATCH (n:Entity) WHERE n.id STARTS WITH 'Creator:pytest-'"
                   " OR n.id STARTS WITH 'Case:PYTEST-' DETACH DELETE n")
+
+
+@pytest.mark.skipif(not (_pg_up() and _neo4j_up()), reason="Postgres/Neo4j 不在线")
+class TestCreatorIngestion:
+    """达人数据闭环（spec §13.1）：录入/导入门 + 来源标识 + 权威仲裁。"""
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        return TestClient(create_app({**os.environ, "ADKG_DEV_AUTH": "off"}))
+
+    def _cleanup(self):
+        from adkg.store.graph import GraphStore
+        import psycopg
+        g = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
+                       os.environ["ADKG_NEO4J_PASSWORD"])
+        with g.session() as s:
+            s.run("MATCH (n:Entity) WHERE n.id = 'Creator:pytest-ing' DETACH DELETE n")
+        with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c:
+            c.execute("DELETE FROM review_queue WHERE payload->>'entity' = 'Creator:cr11'"
+                      " AND payload->>'incoming_source' LIKE 'form:%'")
+
+    def test_角色门与录入校验(self):
+        client = self._client()
+        assert client.post("/creators", params={"role": "finance", "user": "Person:zhou"},
+                           json={"name": "x", "platform": "douyin", "niches": "a"}).status_code == 403
+        assert client.post("/creators", params={"role": "ae", "user": "Person:li"},
+                           json={"name": "x", "platform": "weibo", "niches": "a"}).status_code == 422
+
+    def test_录入与来源标识(self):
+        client = self._client()
+        r = client.post("/creators", params={"role": "ae", "user": "Person:li"},
+                        json={"name": "闭环测试达人", "platform": "douyin", "niches": "露营|测试",
+                              "followers": 1000, "quote_20s": 3000,
+                              "creator_id": "Creator:pytest-ing"})
+        assert r.status_code == 200 and r.json()["outcome"] == "created"
+        lst = client.get("/creators", params={"q": "闭环测试", "role": "ae", "user": "Person:li"})
+        assert lst.json()["items"][0]["source"] == "手工录入"
+        self._cleanup()
+
+    def test_录入撞高权威走仲裁(self):
+        client = self._client()
+        r = client.post("/creators", params={"role": "management", "user": "Person:chen"},
+                        json={"name": "铲屎官阿喵", "platform": "douyin", "niches": "养宠",
+                              "creator_id": "Creator:cr11"})
+        assert r.json()["outcome"] == "conflict"
+        import psycopg
+        with psycopg.connect(os.environ["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+            cur.execute("SELECT count(*) FROM review_queue WHERE kind='conflict'"
+                        " AND status='open' AND payload->>'entity'='Creator:cr11'"
+                        " AND payload->>'incoming_source' LIKE 'form:%'")
+            assert cur.fetchone()[0] == 1
+        self._cleanup()
+
+    def test_CSV导入行级容错(self):
+        client = self._client()
+        csv_data = ("name,platform,niches,followers\n导入甲,douyin,测试|甲,5000\n坏行,douyin,,5000\n")
+        r = client.post("/creators/import", params={"role": "management", "user": "Person:chen"},
+                        files={"file": ("t.csv", csv_data, "text/csv")})
+        body = r.json()
+        assert body["created"] == 1 and body["errors"] and body["errors"][0]["line"] == 3
+        from adkg.store.graph import GraphStore
+        g = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
+                       os.environ["ADKG_NEO4J_PASSWORD"])
+        with g.session() as s:
+            s.run("MATCH (n:Entity {class:'Creator'}) WHERE n.name = '导入甲' DETACH DELETE n")

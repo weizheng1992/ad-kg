@@ -107,4 +107,4 @@ constraints:
 # ------------------------------------------------------------------
 # 动作词表（/actions/check 的 op 取值域；§9.4）
 # ------------------------------------------------------------------
-actions: [read, create_creative, pause_campaign, delete_creative, create_case, update_stage, write_assertion]
+actions: [read, create_creative, pause_campaign, delete_creative, create_case, update_stage, write_assertion, create_creator]

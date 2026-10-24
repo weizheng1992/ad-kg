@@ -1,5 +1,7 @@
-// 数据看板（spec §5）：echarts 大盘——趋势/平台/品牌/达人/阶段漏斗，数据随角色收敛
+// 数据看板（spec §5 + §13.3 互链）：echarts 大盘——趋势/平台/品牌/达人/阶段漏斗，
+// 数据随角色收敛；品牌条/达人条点击跳转对应详情
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 import * as echarts from 'echarts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { statsOverview, type StatsOverview } from '@/lib/api'
@@ -30,6 +32,7 @@ function useChart(draw: (chart: echarts.ECharts) => void, dep: unknown) {
 
 export function DashboardPage() {
   const { session } = useSession()
+  const navigate = useNavigate()
   const [d, setD] = useState<StatsOverview | null>(null)
   const [error, setError] = useState('')
 
@@ -79,6 +82,11 @@ export function DashboardPage() {
       series: [{ type: 'bar', data: rows.map((b) => num(b.cost)),
                  label: { show: true, position: 'right', formatter: (p: { value: number }) => wan(p.value) } }],
     }, true)
+    c.off('click')                                        // §13.3 互链：品牌条跳详情
+    c.on('click', (p: { componentType?: string; dataIndex?: number }) => {
+      const bid = rows[p.dataIndex ?? 0]?.brand_id
+      if (p.componentType === 'series' && bid) navigate(`/brands/${encodeURIComponent(bid)}`)
+    })
   }, d)
 
   const creatorRef = useChart((c) => {
@@ -93,6 +101,11 @@ export function DashboardPage() {
                  itemStyle: { color: '#f59e0b' },
                  label: { show: true, position: 'right', formatter: (p: { value: number }) => wan(p.value) } }],
     }, true)
+    c.off('click')                                        // §13.3 互链：达人条跳详情
+    c.on('click', (p: { componentType?: string; dataIndex?: number }) => {
+      const cid = rows[p.dataIndex ?? 0]?.id
+      if (p.componentType === 'series' && cid) navigate(`/creators/${encodeURIComponent(cid)}`)
+    })
   }, d)
 
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>

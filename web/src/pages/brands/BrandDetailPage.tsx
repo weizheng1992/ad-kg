@@ -1,9 +1,9 @@
-// 客户详情（spec §5）：商品卡（详情/人群/客单价）+ 案例表（含「为什么没成」拒因）+ 汇总统计
+// 客户详情（spec §5 + §13.3 互链）：商品卡 + 案例合作史（含拒因与指标，链接案例详情）+ 汇总统计
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { getBrand, type BrandDetail } from '@/lib/api'
+import { getBrand, listCases, type BrandDetail, type CaseListItem } from '@/lib/api'
 
 const STAGE_LABEL: Record<string, string> = {
   proposal: '提案中', live: '投放中', closed: '已结案',
@@ -15,11 +15,17 @@ const yuan = (v?: string | null) =>
 export function BrandDetailPage() {
   const { id } = useParams()
   const [d, setD] = useState<BrandDetail | null>(null)
+  const [caseStats, setCaseStats] = useState<Record<string, CaseListItem>>({})
   const [error, setError] = useState('')
 
   useEffect(() => {
-    setD(null); setError('')
-    if (id) getBrand(decodeURIComponent(id)).then(setD).catch((e) => setError(`${e}`))
+    setD(null); setError(''); setCaseStats({})
+    if (!id) return
+    getBrand(decodeURIComponent(id)).then(setD).catch((e) => setError(`${e}`))
+    // 案例行指标（spec §13.3）：从案例列表端点取同品牌案例的批量统计
+    listCases({ brand: decodeURIComponent(id), size: 100 })
+      .then((r) => setCaseStats(Object.fromEntries(r.items.map((c) => [c.id, c]))))
+      .catch(() => setCaseStats({}))
   }, [id])
 
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
@@ -79,21 +85,36 @@ export function BrandDetailPage() {
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="py-2 font-medium">案例</th>
                 <th className="py-2 font-medium">阶段</th>
+                <th className="py-2 font-medium">消耗</th>
+                <th className="py-2 font-medium">CTR</th>
+                <th className="py-2 font-medium">CVR</th>
                 <th className="py-2 font-medium">未成单 / 终止原因</th>
               </tr>
             </thead>
             <tbody>
-              {d.cases.map((c) => (
-                <tr key={c.id} className="border-b last:border-0">
-                  <td className="py-2">
-                    <Link to={`/graph?focus=${encodeURIComponent(c.id)}`} className="text-primary hover:underline">
-                      {c.name}
-                    </Link>
-                  </td>
-                  <td className="py-2"><Badge variant="outline">{STAGE_LABEL[c.stage] ?? c.stage}</Badge></td>
-                  <td className="py-2 text-muted-foreground">{c.lost_reason || '—'}</td>
-                </tr>
-              ))}
+              {d.cases.map((c) => {
+                const st = caseStats[c.id]?.stats
+                return (
+                  <tr key={c.id} className="border-b last:border-0">
+                    <td className="py-2">
+                      <Link to={`/cases/${encodeURIComponent(c.id)}`} className="text-primary hover:underline">
+                        {c.name}
+                      </Link>
+                    </td>
+                    <td className="py-2"><Badge variant="outline">{STAGE_LABEL[c.stage] ?? c.stage}</Badge></td>
+                    <td className="py-2 font-mono">
+                      {st?.cost != null ? `¥${Number(st.cost).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}` : '—'}
+                    </td>
+                    <td className="py-2 font-mono">
+                      {st?.ctr != null ? `${(Number(st.ctr) * 100).toFixed(2)}%` : '—'}
+                    </td>
+                    <td className="py-2 font-mono">
+                      {st?.cvr != null ? `${(Number(st.cvr) * 100).toFixed(2)}%` : '—'}
+                    </td>
+                    <td className="py-2 text-muted-foreground">{c.lost_reason || '—'}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </CardContent>

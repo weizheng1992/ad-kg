@@ -89,7 +89,7 @@ export function SettlementsPage() {
               {items.map((s) => (
                 <tr key={s.case_id} className="border-b last:border-0 hover:bg-muted/30">
                   <td className="px-3 py-2.5">
-                    <Link to={`/graph?focus=${encodeURIComponent(s.case_id)}`} className="text-primary hover:underline">
+                    <Link to={`/cases/${encodeURIComponent(s.case_id)}`} className="text-primary hover:underline">
                       {s.case_name}
                     </Link>
                   </td>

@@ -24,10 +24,10 @@ roles:
     classes: [Brand, Product, Case, Campaign, Creative, Metric, Guideline, Creator]
     deny_properties: [Case.bd_budget, Case.gross_margin]
     metrics_deny: [gross_margin]
-    actions: [read, create_case]
+    actions: [read, create_case, create_creator]
     row_filter: Person(belongs_to_brand)->Brand<-for_brand-Case
     # Creator 为平台级主数据（schema 注记）：达人库对 ae 全量可见（选人入口），
-    # 合作历史仍随 Case 行过滤收敛——spec 2026-10-24 §3
+    # 合作历史仍随 Case 行过滤收敛——spec 2026-10-24 §3；录入/导入门 spec §13.1
 
   optimizer:                     # 与 README §12.4 逐字一致；+Creator（spec §3 达人库）
     classes: [Case, Campaign, Creative, Channel, Metric, Guideline, Creator]
@@ -58,10 +58,10 @@ roles:
   management:                    # 跨品牌聚合视图 + 规范/口径（全局类），无行过滤
     classes: [Brand, Product, Case, Campaign, Creative, Metric, Guideline, Channel, Creator]
     metrics_deny: []
-    actions: [read]
+    actions: [read, create_creator]
 
   admin:                         # 运维与审计读取；不参与业务检索
     classes: [Brand, Product, Case, Campaign, Creative, Channel, LandingPage,
               Audience, Metric, Guideline, Person, DocVersion, Creator]
     actions: [read, create_creative, pause_campaign, delete_creative, create_case,
-              update_stage, write_assertion]   # write_assertion：/ingest/assertion 动作门（§12.4）
+              update_stage, write_assertion, create_creator]   # write_assertion：/ingest/assertion 动作门（§12.4）

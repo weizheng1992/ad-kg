@@ -27,8 +27,16 @@ export function CreatorDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <div className="text-xs text-muted-foreground">
-        <Link to="/creators" className="text-primary hover:underline">← 达人库</Link>
+      <div className="flex items-center gap-3">
+        <Link to="/creators" className="text-xs text-primary hover:underline">← 达人库</Link>
+        {d.provenance && (
+          <span className="ml-auto text-[11px] text-muted-foreground">
+            来源：<Badge variant="secondary" className="font-normal">{d.provenance.source}</Badge>
+            {d.provenance.authority != null && `（权威 ${d.provenance.authority}）`}
+            {d.provenance.fetched_at && ` · ${d.provenance.fetched_at.slice(0, 10)} 入库`}
+            <span className="ml-1 font-mono">{d.provenance.source_id}</span>
+          </span>
+        )}
       </div>
 
       <Card>
@@ -106,7 +114,7 @@ export function CreatorDetailPage() {
                 {d.collabs.map((x) => (
                   <tr key={x.id} className="border-b last:border-0">
                     <td className="py-2">
-                      <Link to={`/graph?focus=${encodeURIComponent(x.id)}`} className="text-primary hover:underline">
+                      <Link to={`/cases/${encodeURIComponent(x.id)}`} className="text-primary hover:underline">
                         {x.name}
                       </Link>
                     </td>

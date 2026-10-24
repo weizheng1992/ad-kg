@@ -1,7 +1,7 @@
 // 侧边导航矩阵（spec §4）：菜单项随登录角色显隐——「权限不同看到的不同」的导航面
 // ready=false 的入口置灰占位，展示系统全貌与施工进度
 import {
-  BarChart3, Building2, LayoutDashboard, Network, ShieldCheck, Users, Wallet,
+  BarChart3, Briefcase, Building2, LayoutDashboard, Network, ShieldCheck, Users, Wallet,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -32,6 +32,8 @@ export const NAV: NavItem[] = [
     roles: ['management', 'ae', 'optimizer', 'finance'] },
   { to: '/platform', label: '数据平台(模拟)', icon: BarChart3,
     roles: ['management', 'ae', 'optimizer'], external: platformUrl() },
+  { to: '/cases', label: '案例', icon: Briefcase,
+    roles: ['management', 'ae', 'optimizer', 'client'] },
   { to: '/brands', label: '客户', icon: Building2,
     roles: ['management', 'ae', 'client'] },
   { to: '/settlements', label: '财务结算', icon: Wallet,

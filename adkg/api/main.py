@@ -11,8 +11,9 @@ from fastapi.responses import JSONResponse
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
-from adkg.api.routes import (actions, admin, agent, ask, auth, brands, creative,  # noqa: E402
-                             creators, guideline, graph, ingest, settlements, stats)
+from adkg.api.routes import (actions, admin, agent, ask, auth, brands, cases,  # noqa: E402
+                             creative, creators, guideline, graph, ingest,
+                             settlements, stats)
 
 
 def create_app(env: dict[str, str] | None = None) -> FastAPI:
@@ -33,6 +34,7 @@ def create_app(env: dict[str, str] | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(ask.router)
     app.include_router(creators.router)
+    app.include_router(cases.router)
     app.include_router(brands.router)
     app.include_router(settlements.router)
     app.include_router(stats.router)

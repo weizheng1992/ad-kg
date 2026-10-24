@@ -1,22 +1,32 @@
-"""GET /creators + /creators/{id}（spec §3）：达人库主数据端点。
+"""达人库端点（spec §3 + §13.1 数据闭环）。
 
 可见性：Creator 是平台级主数据（schema 注记）——类白名单即可见，不走
 row_filter 锚点收敛（ae/optimizer 的锚是案例子图，达人库是选人入口）；
 client / creative 类白名单不含 Creator 即 403。合作历史（collabs_with）
 仍按 plan.visible_entity_ids 收敛——锚点外的案例不出现在达人详情里。
 带货商品（promotes → Product）另过类白名单：无 Product 权限的角色不返回该段。
+
+数据闭环（§13.1）：录入（conversation/20）与 CSV 导入（official_doc/60）两条
+入口，与平台抓取（platform_api/80）、种子（system_of_record/100）构成四来源
+梯度；入库走同一权威仲裁——更高权威在场不覆盖、冲突去重进 review_queue。
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, Request
+import csv
+import io
+import re
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
 
 from adkg.guards.http import get_graph, resolve_identity
 from adkg.retrieval.metrics import STAT_FAMILY, agg_expr
 
 router = APIRouter()
 
-_COLS = ("id", "name", "platform", "niches", "followers", "quote_20s",
-         "quote_image", "gmv_30d", "city", "rating", "cases")
+CREATE_CREATOR_ROLES = {"ae", "management", "admin"}
+SOURCE_LABEL = {"system_of_record": "种子", "platform_api": "平台抓取",
+                "official_doc": "表格导入", "conversation": "手工录入"}
 
 
 def _collab_stats(env: dict, plan, case_ids: list[str]) -> dict | None:
@@ -55,9 +65,146 @@ def _require_creator(plan) -> None:
         raise HTTPException(403, "类 Creator 不在当前角色白名单")
 
 
+def _next_creator_id(graph) -> str:
+    """新达人号：现有 crNN 序号最大值 +1（Creator:cr61…；种子命名法，§12.5）。"""
+    with graph.session() as s:
+        nums = [int(m.group(1)) for m in
+                (re.match(r"Creator:cr(\d+)$", r["id"]) for r in s.run(
+                    "MATCH (c:Entity {class: 'Creator'}) RETURN c.id AS id").data())
+                if m]
+    return f"Creator:cr{max(nums, default=0) + 1:02d}"
+
+
+def _parse_creator_row(row: dict) -> tuple[str, dict]:
+    """表单/CSV 行 → (creator_id|'', props)；必填与数值域校验，失败抛 ValueError。"""
+    name = str(row.get("name") or "").strip()
+    platform = str(row.get("platform") or "").strip()
+    niches = str(row.get("niches") or "").strip()
+    if not name or not niches:
+        raise ValueError("name 与 niches（视频方向）必填")
+    if platform not in ("douyin", "xhs"):
+        raise ValueError("platform 只能是 douyin / xhs")
+    props: dict = {"name": name, "platform": platform, "niches": niches}
+    for key in ("followers", "quote_20s", "quote_image", "gmv_30d", "rating"):
+        raw = str(row.get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            v = float(raw)
+        except ValueError:
+            raise ValueError(f"{key} 不是数字：{raw!r}") from None
+        props[key] = round(v, 1) if key == "rating" else int(v)
+    city = str(row.get("city") or "").strip()
+    if city:
+        props["city"] = city
+    creator_id = str(row.get("creator_id") or "").strip()
+    if creator_id and not re.fullmatch(r"Creator:[A-Za-z0-9_-]+", creator_id):
+        raise ValueError(f"creator_id 形态应为 Creator:<slug>（§12.5）：{creator_id!r}")
+    return creator_id, props
+
+
+def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
+                    source_type: str, source_id: str,
+                    role: str, person: str | None) -> dict:
+    """入库 + 权威仲裁（§13.1，与平台抓取同一规则）：更高权威在场不覆盖、
+    冲突去重进 review_queue；返回 {outcome, creator_id}。"""
+    import json as _json
+
+    import psycopg
+    from adkg.guards.audit import audit
+    from adkg.models import Entity, Provenance
+
+    prov = Provenance(source_type=source_type, source_id=source_id,      # type: ignore[arg-type]
+                      fetched_at=datetime.now(timezone.utc))
+    with graph.session() as s:
+        rec = s.run("MATCH (n:Entity {id: $id}) RETURN n.authority AS auth",
+                    id=creator_id).single()
+    existing = rec["auth"] if rec else None
+    if existing is not None and existing > (prov.authority or 0):
+        with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+            cur.execute(
+                "INSERT INTO review_queue (kind, payload)"
+                " SELECT 'conflict', %(payload)s"
+                " WHERE NOT EXISTS (SELECT 1 FROM review_queue"
+                "  WHERE kind = 'conflict' AND status = 'open'"
+                "  AND payload->>'entity' = %(entity)s"
+                "  AND payload->>'incoming_source' = %(source)s)",
+                {"payload": _json.dumps(
+                    {"entity": creator_id, "incoming_source": prov.source_id,
+                     "incoming_authority": prov.authority,
+                     "existing_authority": existing,
+                     "incoming_props": props}, ensure_ascii=False),
+                 "entity": creator_id, "source": prov.source_id})
+        audit(env, role, person, "create_creator", creator_id, "deny",
+              f"更高权威（{existing}）在场未覆盖，冲突进 review_queue（§12.2）")
+        return {"outcome": "conflict", "creator_id": creator_id}
+    graph.upsert_entities([Entity(entity_class="Creator", entity_id=creator_id,
+                                  props=props, provenance=prov)])
+    audit(env, role, person, "create_creator", creator_id, "allow",
+          f"来源 {SOURCE_LABEL.get(source_type, source_type)}（{prov.source_id}）")
+    return {"outcome": "created" if existing is None else "merged", "creator_id": creator_id}
+
+
+@router.post("/creators")
+def create_creator(request: Request, body: dict,
+                   role: str | None = None, user: str | None = None,
+                   authorization: str | None = Header(default=None)) -> dict:
+    """达人录入（spec §13.1）：conversation/20 低权威——平台抓到更准数据可覆盖。"""
+    role, user, planner = resolve_identity(request, authorization, role=role, user=user)
+    if role not in CREATE_CREATOR_ROLES:
+        raise HTTPException(403, "达人录入仅 ae / management / admin 可用（spec §13.1）")
+    try:
+        creator_id, props = _parse_creator_row(body)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    if not creator_id:
+        creator_id = _next_creator_id(get_graph(request))
+    return _ingest_creator(request.app.state.env, get_graph(request), creator_id, props,
+                           "conversation", f"form:{creator_id}:{datetime.now():%Y%m%d}",
+                           role, user)
+
+
+@router.post("/creators/import")
+async def import_creators(request: Request, file: UploadFile,
+                          role: str | None = None, user: str | None = None,
+                          authorization: str | None = Header(default=None)) -> dict:
+    """CSV 批量导入（spec §13.1）：official_doc/60；列同 creators.csv 模板
+    （name/platform/niches/followers/quote_20s/quote_image/gmv_30d/city/rating
+    [,creator_id]）；行级容错不中断整批。"""
+    role, user, planner = resolve_identity(request, authorization, role=role, user=user)
+    if role not in CREATE_CREATOR_ROLES:
+        raise HTTPException(403, "达人导入仅 ae / management / admin 可用（spec §13.1）")
+    raw = (await file.read()).decode("utf-8-sig", errors="replace")
+    if not raw.strip():
+        raise HTTPException(422, "上传文件为空")
+    batch = f"import:{file.filename}:{datetime.now():%Y%m%d%H%M%S}"
+    graph = get_graph(request)
+    env = request.app.state.env
+    created = merged = conflicts = 0
+    errors: list[dict] = []
+    reader = csv.DictReader(io.StringIO(raw))
+    if not reader.fieldnames or "name" not in reader.fieldnames:
+        raise HTTPException(422, "CSV 缺 name 列（模板列见达人库导入提示）")
+    for line_no, row in enumerate(reader, start=2):
+        try:
+            creator_id, props = _parse_creator_row(row)
+            if not creator_id:
+                creator_id = _next_creator_id(graph)
+            out = _ingest_creator(env, graph, creator_id, props, "official_doc", batch,
+                                  role, user)
+        except ValueError as e:
+            errors.append({"line": line_no, "error": str(e)})
+            continue
+        created += out["outcome"] == "created"
+        merged += out["outcome"] == "merged"
+        conflicts += out["outcome"] == "conflict"
+    return {"created": created, "merged": merged, "conflicts": conflicts,
+            "errors": errors[:20], "total": created + merged + conflicts + len(errors)}
+
+
 @router.get("/creators")
 def list_creators(request: Request, q: str = "", platform: str = "", niche: str = "",
-                  min_followers: int = 0, max_quote: int = 0,
+                  source: str = "", min_followers: int = 0, max_quote: int = 0,
                   page: int = 1, size: int = 20,
                   role: str | None = None, user: str | None = None,
                   authorization: str | None = Header(default=None)) -> dict:
@@ -69,11 +216,12 @@ def list_creators(request: Request, q: str = "", platform: str = "", niche: str 
     where = ("($q = '' OR n.name CONTAINS $q)"
              " AND ($platform = '' OR n.platform = $platform)"
              " AND ($niche = '' OR n.niches CONTAINS $niche)"
+             " AND ($source = '' OR n.prov_source = $source)"
              " AND coalesce(n.followers, 0) >= $min_followers"
              " AND ($max_quote <= 0 OR coalesce(n.quote_20s, 0) <= $max_quote)")
     args = {"q": q.strip(), "platform": platform.strip(), "niche": niche.strip(),
-            "min_followers": min_followers, "max_quote": max_quote,
-            "skip": (page - 1) * size, "size": size}
+            "source": source.strip(), "min_followers": min_followers,
+            "max_quote": max_quote, "skip": (page - 1) * size, "size": size}
     with get_graph(request).session() as s:
         items = s.run(
             f"MATCH (n:Entity {{class: 'Creator'}}) WHERE {where} "
@@ -82,12 +230,18 @@ def list_creators(request: Request, q: str = "", platform: str = "", niche: str 
             "ORDER BY n.followers DESC SKIP $skip LIMIT $size "
             "RETURN n.id AS id, n.name AS name, n.platform AS platform, n.niches AS niches, "
             "n.followers AS followers, n.quote_20s AS quote_20s, n.quote_image AS quote_image, "
-            "n.gmv_30d AS gmv_30d, n.city AS city, n.rating AS rating, cases", **args).data()
+            "n.gmv_30d AS gmv_30d, n.city AS city, n.rating AS rating, cases, "
+            "n.prov_source AS prov_source, toString(n.prov_fetched_at) AS fetched_at",
+            **args).data()
         total = s.run(f"MATCH (n:Entity {{class: 'Creator'}}) WHERE {where} "
                       "RETURN count(n) AS total", **args).single()["total"]
-    return {"items": [{**{k: it[k] for k in _COLS[:-1]},
+    return {"items": [{"id": it["id"], "name": it["name"], "platform": it["platform"],
                        "niches": (it["niches"] or "").split("|") if it["niches"] else [],
-                       "cases": it["cases"]} for it in items],
+                       "followers": it["followers"], "quote_20s": it["quote_20s"],
+                       "quote_image": it["quote_image"], "gmv_30d": it["gmv_30d"],
+                       "city": it["city"], "rating": it["rating"], "cases": it["cases"],
+                       "source": SOURCE_LABEL.get(it["prov_source"] or "", it["prov_source"]),
+                       "fetched_at": it["fetched_at"]} for it in items],
             "total": total, "page": page, "size": size}
 
 
@@ -104,7 +258,10 @@ def creator_detail(request: Request, cid: str,
                     "n.platform AS platform, n.niches AS niches, n.followers AS followers, "
                     "n.quote_20s AS quote_20s, n.quote_image AS quote_image, "
                     "n.gmv_30d AS gmv_30d, n.city AS city, n.rating AS rating, "
-                    "n.class AS class", id=cid).single()
+                    "n.class AS class, n.prov_source AS prov_source, "
+                    "n.prov_source_id AS prov_source_id, "
+                    "toString(n.prov_fetched_at) AS fetched_at, "
+                    "n.authority AS authority", id=cid).single()
         if not rec or rec["class"] != "Creator":
             raise HTTPException(404, f"达人 {cid} 不存在")
         collabs = s.run(
@@ -130,8 +287,15 @@ def creator_detail(request: Request, cid: str,
                     "quote_image": rec["quote_image"], "gmv_30d": rec["gmv_30d"],
                     "city": rec["city"], "rating": rec["rating"]},
         # 行过滤：锚点角色只见自己子图内的合作（spec §3）；无行过滤角色（management/finance）全见
-        "collabs": visible_cases,
-        "collabs_filtered": len(collabs) - len(visible_cases),
-        "products": products,
-        "stats": stats,
+            "collabs": visible_cases,
+            "collabs_filtered": len(collabs) - len(visible_cases),
+            "products": products,
+            "stats": stats,
+            # 来源卡（§13.1 四梯度：provenance 即来源）
+            "provenance": {"source": SOURCE_LABEL.get(rec["prov_source"] or "",
+                                                      rec["prov_source"]),
+                           "source_type": rec["prov_source"],
+                           "source_id": rec["prov_source_id"],
+                           "fetched_at": rec["fetched_at"],
+                           "authority": rec["authority"]},
     }

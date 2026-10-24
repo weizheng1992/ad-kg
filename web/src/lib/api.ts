@@ -167,6 +167,9 @@ export interface CreatorItem {
   city: string
   rating: number
   cases: number
+  /** 来源四梯度（spec §13.1）：种子/平台抓取/表格导入/手工录入 */
+  source?: string
+  fetched_at?: string | null
 }
 
 export interface CreatorDetail {
@@ -178,10 +181,12 @@ export interface CreatorDetail {
   /** 合作案例维度汇总投放统计（spec §3；口径同 /graph stats，无可见案例为 null） */
   stats?: { cost?: string | null; ctr?: string | null; cvr?: string | null
             cpa?: string | null; days?: number; platforms?: string | null } | null
+  provenance?: { source?: string; source_type?: string; source_id?: string
+                 fetched_at?: string | null; authority?: number | null }
 }
 
 export interface CreatorListQuery {
-  q?: string; platform?: string; niche?: string
+  q?: string; platform?: string; niche?: string; source?: string
   min_followers?: number; max_quote?: number; page?: number; size?: number
 }
 
@@ -197,6 +202,88 @@ export async function listCreators(params: CreatorListQuery): Promise<
 
 export async function getCreator(id: string): Promise<CreatorDetail> {
   const r = await fetch(`/creators/${encodeURIComponent(id)}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+/** 达人录入（spec §13.1：conversation/20 低权威，平台抓取可覆盖） */
+export async function createCreator(payload: Record<string, unknown>): Promise<
+  { outcome: 'created' | 'merged' | 'conflict'; creator_id: string }> {
+  const r = await fetch('/creators', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+/** CSV 批量导入（spec §13.1：official_doc/60；列同 creators.csv 模板） */
+export async function importCreators(file: File): Promise<
+  { created: number; merged: number; conflicts: number
+    errors: { line: number; error: string }[]; total: number }> {
+  const r = await fetch('/creators/import', { method: 'POST', body: (() => {
+    const fd = new FormData(); fd.append('file', file); return fd
+  })() })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+// ---------- 案例全生命周期（spec §13.2） ----------
+
+export interface CaseStatsLite {
+  cost?: string | null; ctr?: string | null; cvr?: string | null
+  cpa?: string | null; days?: number; platforms?: string | null
+}
+
+export interface CaseListItem {
+  id: string
+  name: string
+  stage: string
+  brand_id: string
+  brand_name: string
+  owners: string[]
+  settlement_status?: string
+  bd_budget?: string
+  gross_margin?: string
+  lost_reason?: string | null
+  terminate_reason?: string | null
+  stats: CaseStatsLite | null
+}
+
+export interface CaseDetail {
+  case: { id: string; name: string; stage: string; bd_budget?: string
+          gross_margin?: string; settlement_status?: string
+          lost_reason?: string | null; terminate_reason?: string | null }
+  brand: { id: string; name: string } | null
+  product: { id: string; name: string; spec?: string | null; price?: string | null
+             target_age?: string | null } | null
+  owners: { id: string; name: string }[]
+  campaigns: { id: string; name: string; status: string }[]
+  creatives: { id: string; name: string
+               metrics: ({ creative_id: string; platforms?: string | null } & CaseStatsLite) | null }[]
+  creators: { id: string; name: string; niches: string[]; followers: number
+              quote_20s: number }[]
+  stats: CaseStatsLite | null
+  docs: { doc_id: string; chunk_index: number; text: string }[]
+  timeline: { ts: string; role: string; action: string; verdict: string | null
+              reason: string | null }[]
+  stage_flow: { main: string[]; branch: Record<string, string>; current: string }
+}
+
+export async function listCases(params: { q?: string; stage?: string; brand?: string
+                                           page?: number; size?: number } = {}): Promise<
+  { items: CaseListItem[]; total: number; page: number; size: number }> {
+  const p = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => [k, String(v)])))
+  const r = await fetch(`/cases?${p}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function getCase(id: string): Promise<CaseDetail> {
+  const r = await fetch(`/cases/${encodeURIComponent(id)}`)
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
 }
