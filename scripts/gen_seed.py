@@ -113,6 +113,9 @@ def gen_master() -> list[list[str]]:
         case_of_person.setdefault(person[0], case_id)
         lost_reason = LOST_REASONS[(i - 15) % 3] if stage == "lost" else ""
         term_reason = TERMINATE_REASONS[(i - 18) % 3] if stage == "terminated" else ""
+        # 毛利率（spec §5 结算中心）：live 预估 / closed 结案口径；其余阶段留空。
+        # 纯 i 算术（10%–34%），不进 rng 流——既有数值序列零扰动
+        margin = f"{((i * 13) % 25 + 10) / 100:.2f}" if stage in ("live", "closed") else ""
         for c in range(2):                                # 每案例 2 计划
             camp = f"Campaign:{case_id.split(':')[1]}-cp{c + 1}"
             channel = CHANNELS[(i + c) % 3]
@@ -128,21 +131,21 @@ def gen_master() -> list[list[str]]:
                              titles[(i + c + k) % len(titles)],
                              "1" if (i + k) % 3 == 0 else "0",
                              ["douyin", "xhs"][(i + c + k) % 2],
-                             channel, lost_reason, term_reason])
+                             channel, lost_reason, term_reason, margin])
     # 双平台同素材锚点（§12.5）：同一本体素材在两平台各有 local id
     rows.append(["Case:C-2025-005", case_name_by_id["Case:C-2025-005"], "live", "36000", "unbilled",
                  "Brand:B06", "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A",
                  "delivering", "4200", "Creative:creative_992", "上门洗护种草 15s 竖版",
-                 "1", "douyin", "信息流", "", ""])
+                 "1", "douyin", "信息流", "", "", "0.23"])
     rows.append(["Case:C-2025-005", case_name_by_id["Case:C-2025-005"], "live", "36000", "unbilled",
                  "Brand:B06", "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A",
                  "delivering", "4200", "Creative:creative_992", "上门洗护种草 15s 竖版",
-                 "1", "xhs", "信息流", "", ""])
+                 "1", "xhs", "信息流", "", "", "0.23"])
     _write_csv("cases_campaigns.csv",
                ["case_id", "case_name", "stage", "bd_budget", "settlement_status", "brand_id",
                 "product_id", "campaign_id", "campaign_name", "campaign_status", "daily_budget",
                 "creative_id", "creative_title", "is_aigc", "platform", "channel",
-                "lost_reason", "terminate_reason"], rows)
+                "lost_reason", "terminate_reason", "gross_margin"], rows)
     for idx, (pid, name, role) in enumerate(PEOPLE):
         people_rows.append([f"Person:{pid}", name, role,
                             f"Brand:{BRANDS[idx % 8][0]}", case_of_person[pid], "0"])

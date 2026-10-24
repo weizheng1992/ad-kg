@@ -235,6 +235,31 @@ export async function getBrand(id: string): Promise<BrandDetail> {
   return r.json()
 }
 
+// ---------- 财务结算（spec §5：角色门 management/finance） ----------
+
+export interface SettlementItem {
+  case_id: string
+  case_name: string
+  stage: string
+  settlement_status: string
+  bd_budget: string
+  gross_margin?: string | null
+  brand_id: string
+  brand_name: string
+  creator_count: number
+  creator_cost: number
+}
+
+export async function listSettlements(params: { status?: string; brand?: string; stage?: string } = {}): Promise<
+  { items: SettlementItem[]; total: number
+    summary: { budget_total: number; creator_cost_total: number; paid: number; unbilled: number } }> {
+  const p = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => !!v) as [string, string][]))
+  const r = await fetch(`/settlements?${p}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
 
 export interface AgentTraceStep { tool: string; args: Record<string, unknown>; result: string }

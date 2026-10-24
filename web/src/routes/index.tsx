@@ -9,6 +9,7 @@ import { CreatorsPage } from '@/pages/creators/CreatorsPage'
 import { CreatorDetailPage } from '@/pages/creators/CreatorDetailPage'
 import { BrandsPage } from '@/pages/brands/BrandsPage'
 import { BrandDetailPage } from '@/pages/brands/BrandDetailPage'
+import { SettlementsPage } from '@/pages/settlements/SettlementsPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
       { path: 'creators/:id', element: <CreatorDetailPage /> },
       { path: 'brands', element: <BrandsPage /> },
       { path: 'brands/:id', element: <BrandDetailPage /> },
+      { path: 'settlements', element: <SettlementsPage /> },
       { path: 'graph', element: <GraphPage /> },
     ],
   },

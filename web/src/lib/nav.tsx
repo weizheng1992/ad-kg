@@ -35,7 +35,7 @@ export const NAV: NavItem[] = [
   { to: '/brands', label: '客户', icon: Building2,
     roles: ['management', 'ae', 'client'] },
   { to: '/settlements', label: '财务结算', icon: Wallet,
-    roles: ['management', 'finance'], ready: false },
+    roles: ['management', 'finance'] },
   { to: '/graph', label: '图谱', icon: Network,
     roles: ['management', 'ae', 'optimizer', 'creative'] },
   { to: '/admin', label: '管理后台', icon: ShieldCheck,

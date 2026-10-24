@@ -114,7 +114,8 @@ def main() -> None:
                                    props={"name": r["case_name"], "stage": r["stage"],
                                           "bd_budget": r["bd_budget"],
                                           "settlement_status": r["settlement_status"],
-                                          **{k: r[k] for k in ("lost_reason", "terminate_reason")
+                                          **{k: r[k] for k in ("lost_reason", "terminate_reason",
+                                                               "gross_margin")
                                              if r.get(k)}},
                                    provenance=p_cc))
             relations += [
