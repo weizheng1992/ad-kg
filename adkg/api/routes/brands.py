@@ -19,11 +19,13 @@ from adkg.retrieval.metrics import STAT_FAMILY, agg_expr
 router = APIRouter()
 
 
-def _brand_stats(env: dict, plan, brand_ids: list[str]) -> dict[str, dict]:
-    """unified_metrics 按 brand 汇总比聚合（§六 铁律），一道闸 + 列白名单。"""
+def _brand_stats(env: dict, plan, brand_ids: list[str], days: int | None = None) -> dict[str, dict]:
+    """unified_metrics 按 brand 汇总比聚合（§六 铁律），一道闸 + 列白名单；
+    days 给定时只聚合近 N 天（spec §5 健康度窗口）。"""
     if not brand_ids:
         return {}
     predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
+    window = f" AND date >= current_date - {int(days)}::int" if days else ""
     try:
         proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
         with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
@@ -31,7 +33,7 @@ def _brand_stats(env: dict, plan, brand_ids: list[str]) -> dict[str, dict]:
             cur.execute(
                 f"SELECT brand_id, {proj}, count(DISTINCT date) AS days"
                 " FROM unified_metrics WHERE NOT unmatched"
-                " AND brand_id = ANY(%(ids)s)" + predicate +
+                " AND brand_id = ANY(%(ids)s)" + window + predicate +
                 " GROUP BY brand_id", {"ids": brand_ids})
             rows = cur.fetchall()
     except psycopg.Error:
@@ -67,8 +69,10 @@ def list_brands(request: Request, q: str = "",
     if "Brand" not in allowed and not items:
         raise HTTPException(403, "类 Brand 不在当前角色白名单且锚点内无品牌")
     stats = _brand_stats(request.app.state.env, plan, [r["id"] for r in items])
+    stats_30d = _brand_stats(request.app.state.env, plan, [r["id"] for r in items], days=30)
     for r in items:
         r["stats"] = stats.get(r["id"])
+        r["cost_30d"] = (stats_30d.get(r["id"]) or {}).get("cost")   # 健康度窗口（spec §5）
     return {"items": items, "total": len(items)}
 
 

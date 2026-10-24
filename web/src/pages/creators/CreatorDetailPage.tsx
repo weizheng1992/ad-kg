@@ -54,6 +54,30 @@ export function CreatorDetailPage() {
             ))}
           </div>
         </CardContent>
+        {d.stats && (
+          <CardContent className="flex flex-wrap items-center gap-3 border-t py-3 text-xs">
+            <span className="font-semibold">合作案例投放（汇总比）</span>
+            {d.stats.cost != null && (
+              <span className="rounded-md bg-muted/60 px-2 py-1">消耗
+                <b className="ml-1 font-mono">¥{Number(d.stats.cost).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</b></span>
+            )}
+            {d.stats.ctr != null && (
+              <span className="rounded-md bg-muted/60 px-2 py-1">CTR
+                <b className="ml-1 font-mono">{(Number(d.stats.ctr) * 100).toFixed(2)}%</b></span>
+            )}
+            {d.stats.cvr != null && (
+              <span className="rounded-md bg-muted/60 px-2 py-1">CVR
+                <b className="ml-1 font-mono">{(Number(d.stats.cvr) * 100).toFixed(2)}%</b></span>
+            )}
+            {d.stats.cpa != null && (
+              <span className="rounded-md bg-muted/60 px-2 py-1">CPA
+                <b className="ml-1 font-mono">¥{d.stats.cpa}</b></span>
+            )}
+            {d.stats.days != null && (
+              <span className="rounded-md bg-muted/60 px-2 py-1">{d.stats.days} 天</span>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       <Card>

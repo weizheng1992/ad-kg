@@ -305,7 +305,14 @@ def _run_tool_streamed(action: str, args: dict, ctx: _ToolCtx,
         except queue.Empty:
             pass
         try:
-            return {"result": done.get_nowait(), "events": collected}
+            result = done.get_nowait()
+            # worker 单线程：done 就绪即全部 emit 已入队——drain 尾部事件防截丢
+            while True:
+                try:
+                    collected.append(events.get_nowait())
+                except queue.Empty:
+                    break
+            return {"result": result, "events": collected}
         except queue.Empty:
             continue
 

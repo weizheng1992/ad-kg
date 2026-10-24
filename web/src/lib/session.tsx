@@ -35,9 +35,3 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 export function useSession(): SessionCtx {
   return useContext(Ctx)
 }
-
-/** 当前身份的调用形态（api.ts 各端点的 persona 参数；dev 模式兜底同值） */
-export function usePersona(): { role: string; user: string } {
-  const { session } = useSession()
-  return { role: session?.role ?? 'management', user: session?.person ?? '' }
-}

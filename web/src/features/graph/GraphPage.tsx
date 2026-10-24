@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { graphEntity, type CaseStats, type Neighbor } from '@/lib/api'
-import { usePersona } from '@/lib/session'
 
 const CLASS_COLOR: Record<string, string> = {
   Brand: '#0ea5e9', Product: '#6366f1', Case: '#10b981', Campaign: '#f59e0b',
@@ -20,7 +19,6 @@ interface GEdge { source: string; target: string; label?: string }
 const SEEDS = ['Person:li', 'Brand:B04', 'Guideline:G-01', 'Metric:cpa']
 
 export function GraphPage() {
-  const persona = usePersona()
   // Agent 确认入图后带 state.focus 跳转过来（案例生成 → 图谱的衔接）
   const focusEntity = (useLocation().state as { focus?: string } | null)?.focus ?? null
   const ref = useRef<HTMLDivElement>(null)
@@ -54,7 +52,7 @@ export function GraphPage() {
   const expand = async (id: string) => {
     setStatus(`展开 ${id} …`)
     try {
-      const g = await graphEntity(id, persona.role, persona.user)
+      const g = await graphEntity(id)
       const label = (s: string) => s.split(':').slice(1).join(':') || s
       nodes.current.set(g.entity.id, {
         id: g.entity.id, category: g.entity.class,
@@ -93,14 +91,6 @@ export function GraphPage() {
     return () => { window.removeEventListener('resize', onResize); chart.current?.dispose() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // 切角色重查：权限口径随 persona 变化（画面 4：不同角色不同子图）
-  useEffect(() => {
-    if (!chart.current) return
-    nodes.current.clear(); edges.current.clear(); setFiltered(0)
-    SEEDS.forEach((s) => expand(s))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persona.role, persona.user])
 
   // 案例生成页确认入图后跳转聚焦新 Case（案例生成 → 图谱的衔接）
   useEffect(() => {

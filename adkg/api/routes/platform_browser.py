@@ -95,8 +95,10 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
             from adkg.models import Entity, Provenance
             # h2 内含平台 tag span：inner_text 按行拼——取首行即纯名字
             props = {"name": page.locator("h2").inner_text().split("\n")[0].strip(),
-                     "platform": "douyin" if "抖音" in platform_txt else "xhs",
+                     "platform": ("douyin" if "抖音" in platform_txt
+                                  else "xhs" if "小红书" in platform_txt else None),
                      "niches": "|".join(niches)}
+            props = {k: v for k, v in props.items() if v is not None}
             if followers:
                 props["followers"] = followers
             if quote_20s:
@@ -109,12 +111,34 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
                 props["city"] = m_city.group(1)
             if m_rating:
                 props["rating"] = float(m_rating.group(1))
-            ctx.graph.upsert_entities([Entity(
-                entity_class="Creator", entity_id=creator_id, props=props,
-                provenance=Provenance(
-                    source_type="platform_api",
-                    source_id=f"mock-douyin:creator:{no}",
-                    fetched_at=datetime.now(timezone.utc)))])
+            # 权威仲裁（§12.2 / Q11A「冲突仍走 review_queue」）：已有更高权威记录
+            # （如种子 system_of_record/100）在场时不覆盖字段——冲突进 review_queue
+            # 人审，抓取结果仅随工具返回供参考
+            prov = Provenance(source_type="platform_api",
+                              source_id=f"mock-douyin:creator:{no}",
+                              fetched_at=datetime.now(timezone.utc))
+            with ctx.graph.session() as s:
+                rec = s.run("MATCH (n:Entity {id: $id}) RETURN n.authority AS auth",
+                            id=creator_id).single()
+            existing_auth = rec["auth"] if rec else None
+            if existing_auth is not None and existing_auth > prov.authority:
+                import psycopg
+                with psycopg.connect(ctx.env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO review_queue (kind, payload) VALUES ('conflict', %s)",
+                        (json.dumps({"entity": creator_id,
+                                     "incoming_source": prov.source_id,
+                                     "incoming_authority": prov.authority,
+                                     "existing_authority": existing_auth,
+                                     "incoming_props": props}, ensure_ascii=False),))
+                audit(ctx.env, ctx.role, ctx.person, "platform_fetch", creator_id, "deny",
+                      f"更高权威（{existing_auth}）在场未覆盖，冲突进 review_queue（§12.2）")
+                emit(5, f"库内已有更高权威记录（{existing_auth}），未覆盖——冲突进人审队列")
+                return json.dumps({"creator_id": creator_id, **props, "ingested": False,
+                                   "conflict_queued": True},
+                                  ensure_ascii=False, default=str)
+            ctx.graph.upsert_entities([Entity(entity_class="Creator", entity_id=creator_id,
+                                              props=props, provenance=prov)])
             audit(ctx.env, ctx.role, ctx.person, "platform_fetch", creator_id,
                   "allow", "playwright 抓取星图·模拟并幂等入图（platform_api）")
             emit(5, f"已入图（幂等 MERGE，provenance=platform_api）：{creator_id}")

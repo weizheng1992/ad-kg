@@ -1,5 +1,4 @@
-// AdKG API 客户端（README §9.7：由 OpenAPI 约定的薄封装；dev 模式带 role/user）
-export interface Persona { role: string; user: string }
+// AdKG API 客户端（README §9.7：由 OpenAPI 约定的薄封装；身份走同源会话 cookie，spec §2）
 export interface Evidence {
   type: string
   ref: string
@@ -86,18 +85,18 @@ async function errorDetail(r: Response): Promise<string> {
   }
 }
 
-export async function ask(question: string, role: string, user: string): Promise<AskResponse> {
+export async function ask(question: string): Promise<AskResponse> {
   const r = await fetch('/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, role, user }),
+    body: JSON.stringify({ question }),
   })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
 }
 
-export async function graphEntity(id: string, role: string, user: string): Promise<GraphResponse> {
-  const p = new URLSearchParams({ id, role, user })
+export async function graphEntity(id: string): Promise<GraphResponse> {
+  const p = new URLSearchParams({ id })
   const r = await fetch(`/graph/entity?${p}`)
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
@@ -132,11 +131,11 @@ export interface CommitResult {
   warnings: string[]
 }
 
-export async function caseCommit(draft: CaseDraft, persona: Persona): Promise<CommitResult> {
+export async function caseCommit(draft: CaseDraft): Promise<CommitResult> {
   const r = await fetch('/ingest/case-commit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ draft, role: persona.role, user: persona.user }),
+    body: JSON.stringify({ draft }),
   })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
@@ -176,6 +175,9 @@ export interface CreatorDetail {
   collabs_filtered: number
   products: { id: string; name: string; price?: string | null; spec?: string | null
               target_age?: string | null }[]
+  /** 合作案例维度汇总投放统计（spec §3；口径同 /graph stats，无可见案例为 null） */
+  stats?: { cost?: string | null; ctr?: string | null; cvr?: string | null
+            cpa?: string | null; days?: number; platforms?: string | null } | null
 }
 
 export interface CreatorListQuery {
@@ -209,6 +211,8 @@ export interface BrandListItem {
   cases_live: number
   cases_lost: number
   stats: { cost?: string | null; ctr?: string | null; cvr?: string | null; days?: number } | null
+  /** 近 30 天消耗（spec §5 健康度窗口） */
+  cost_30d?: string | null
 }
 
 export interface BrandDetail {
@@ -337,13 +341,13 @@ export type AgentEvent =
 
 /** POST + ReadableStream 解析 SSE（EventSource 不支持 POST，spec §6） */
 export async function agentChatStream(
-  messages: { role: string; content: string }[], persona: Persona,
+  messages: { role: string; content: string }[],
   onEvent: (ev: AgentEvent) => void,
 ): Promise<void> {
   const r = await fetch('/agent/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, role: persona.role, user: persona.user }),
+    body: JSON.stringify({ messages }),
   })
   if (!r.ok || !r.body) throw new Error(`${r.status} ${await errorDetail(r)}`)
   const reader = r.body.getReader()
@@ -363,12 +367,12 @@ export async function agentChatStream(
 }
 
 export async function agentChat(
-  messages: { role: string; content: string }[], persona: Persona,
+  messages: { role: string; content: string }[],
 ): Promise<AgentChatResult> {
   const r = await fetch('/agent/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, role: persona.role, user: persona.user }),
+    body: JSON.stringify({ messages }),
   })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()

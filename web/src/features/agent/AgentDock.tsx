@@ -3,6 +3,8 @@
 // 案例草稿仍需确认入图（/ingest/case-commit 服务端重校验，铁律不因 agent 而绕过）
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Bot, ChevronRight, Minus, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +12,6 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { agentChatStream, caseCommit, type AgentEvent } from '@/lib/api'
 import { NodeCard, DraftCard } from '@/features/shared/cards'
-import { usePersona } from '@/lib/session'
 import type { CaseDraft, CreativeDraftItem } from '@/lib/api'
 
 interface Msg {
@@ -81,7 +82,6 @@ function StepLine({ ev }: { ev: AgentEvent }) {
 
 export function AgentDock() {
   const navigate = useNavigate()
-  const persona = usePersona()
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
@@ -105,7 +105,6 @@ export function AgentDock() {
     try {
       await agentChatStream(
         history.filter((m) => !m.committed).map((m) => ({ role: m.role, content: m.content })),
-        persona,
         (ev) => patch((m) => {
           if (ev.type === 'reply') return { ...m, content: ev.text }
           if (ev.type === 'draft') {
@@ -128,7 +127,7 @@ export function AgentDock() {
   const commit = async (idx: number, draft: CaseDraft) => {
     setMsgs((prev) => prev.map((m, i) => i === idx ? { ...m, committed: true } : m))
     try {
-      await caseCommit(draft, persona)
+      await caseCommit(draft)
       alert(`已入图：${draft.case?.id ?? ''}`)
       if (draft.case?.id) navigate('/graph', { state: { focus: draft.case.id } })
     } catch (e) {
@@ -183,7 +182,17 @@ export function AgentDock() {
                   </div>
                 )}
                 {m.content && (
-                  <Card><CardContent className="whitespace-pre-wrap py-2.5 text-sm">{m.content}</CardContent></Card>
+                  <Card>
+                    <CardContent className="py-2.5 text-sm leading-relaxed
+                                            [&_p:first-child]:mt-0 [&_p:last-child]:mb-0
+                                            [&_table]:my-2 w-full [&_table]:text-[11px]
+                                            [&_th]:border [&_th]:px-1.5 [&_th]:py-1 [&_th]:bg-muted/50
+                                            [&_td]:border [&_td]:px-1.5 [&_td]:py-1
+                                            [&_code]:rounded [&_code]:bg-muted [&_code]:px-1
+                                            [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                    </CardContent>
+                  </Card>
                 )}
                 {m.caseDraft && (
                   <Card>

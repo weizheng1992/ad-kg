@@ -59,10 +59,10 @@ export function BrandsPage() {
               {b.cases_lost > 0 && <Badge variant="destructive">未成单 {b.cases_lost}</Badge>}
             </div>
             <div className="mt-3 flex items-baseline gap-5 text-xs text-muted-foreground">
-              <span>消耗 <b className="font-mono text-foreground">{yuan(b.stats?.cost)}</b></span>
+              <span>近30天 <b className="font-mono text-foreground">{yuan(b.cost_30d)}</b></span>
+              <span>累计 <b className="font-mono text-foreground">{yuan(b.stats?.cost)}</b></span>
               <span>CTR <b className="font-mono text-foreground">
                 {b.stats?.ctr != null ? `${(Number(b.stats.ctr) * 100).toFixed(2)}%` : '—'}</b></span>
-              <span>{b.stats?.days ?? 0} 天</span>
             </div>
           </Link>
         ))}

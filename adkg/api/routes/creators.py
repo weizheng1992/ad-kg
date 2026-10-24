@@ -11,11 +11,40 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from adkg.guards.http import get_graph, resolve_identity
+from adkg.retrieval.metrics import STAT_FAMILY, agg_expr
 
 router = APIRouter()
 
 _COLS = ("id", "name", "platform", "niches", "followers", "quote_20s",
          "quote_image", "gmv_30d", "city", "rating", "cases")
+
+
+def _collab_stats(env: dict, plan, case_ids: list[str]) -> dict | None:
+    """达人合作案例维度的汇总投放统计（spec §3）：unified_metrics 汇总比（§六
+    铁律）+ 指标列白名单——与 /graph stats、/brands 同一口径与同一道闸。"""
+    import psycopg
+    from psycopg.rows import dict_row
+
+    if not case_ids:
+        return None
+    predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
+    try:
+        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
+        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+                             row_factory=dict_row) as conn, conn.cursor() as cur:
+            cur.execute(
+                f"SELECT {proj}, string_agg(DISTINCT platform::text, ',') AS platforms,"
+                " count(DISTINCT date) AS days, min(date)::text AS first_day,"
+                " max(date)::text AS last_day FROM unified_metrics"
+                " WHERE NOT unmatched AND case_id = ANY(%(ids)s)" + predicate,
+                {"ids": case_ids})
+            row = cur.fetchone()
+    except psycopg.Error:
+        return None                                          # 统计失败不阻塞详情（§7.2 降级）
+    if not row or row["days"] == 0:
+        return None
+    return {k: v for k, v in row.items()
+            if k not in STAT_FAMILY or k in plan.allowed_columns}
 
 
 def _require_creator(plan) -> None:
@@ -89,6 +118,11 @@ def creator_detail(request: Request, cid: str,
                 "MATCH (n:Entity {id: $id})-[:promotes]->(p:Entity) "
                 "RETURN p.id AS id, p.name AS name, p.price AS price, "
                 "p.spec AS spec, p.target_age AS target_age ORDER BY p.id", id=cid).data()
+    visible_cases = [c for c in collabs if not visible or c["id"] in visible]
+    if plan.allow_properties:                               # 外部角色属性白名单（§12.4）
+        visible_cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"]}
+                         for c in visible_cases]
+    stats = _collab_stats(request.app.state.env, plan, [c["id"] for c in visible_cases])
     return {
         "creator": {"id": rec["id"], "name": rec["name"], "platform": rec["platform"],
                     "niches": (rec["niches"] or "").split("|") if rec["niches"] else [],
@@ -96,8 +130,8 @@ def creator_detail(request: Request, cid: str,
                     "quote_image": rec["quote_image"], "gmv_30d": rec["gmv_30d"],
                     "city": rec["city"], "rating": rec["rating"]},
         # 行过滤：锚点角色只见自己子图内的合作（spec §3）；无行过滤角色（management/finance）全见
-        "collabs": [c for c in collabs if not visible or c["id"] in visible],
-        "collabs_filtered": len(collabs) - sum(1 for c in collabs
-                                               if not visible or c["id"] in visible),
+        "collabs": visible_cases,
+        "collabs_filtered": len(collabs) - len(visible_cases),
         "products": products,
+        "stats": stats,
     }
