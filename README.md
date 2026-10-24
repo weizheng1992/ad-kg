@@ -248,7 +248,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 
 ## 六、本体概览
 
-核心类控制在 12 个，从"案例创建"主线反推，详细定义见 `ontology/schema.yaml`：
+核心类控制在 13 个，从"案例创建"主线反推（2026-10-24 spec §3 增 `Creator`），详细定义见 `ontology/schema.yaml`：
 
 | 类 | 说明 | 关键属性 | 主要来源 |
 |---|---|---|---|
@@ -259,9 +259,10 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 | **Metric** | 指标**口径定义**（非数值）：CTR / CVR / CPA / ROI 的统一公式 | expr、grain、dedup_rule、valid_scope | 语义层手工定义 |
 | Guideline | 创意规范、品牌 VI、广告法条款；可机判规范带结构化阈值属性 | 类型、max_duration 等阈值 | 文档 |
 | Person | AE / 优化师 / 客户对接人，权限与责任归属（不存联系方式） | 姓名、组织角色 | 组织系统 |
+| **Creator** | 达人 / 创作者主数据（spec 2026-10-24）：**平台级主数据——类白名单即可见、不设 row_filter**，合作历史经 Case 行过滤收敛 | 名称、平台、视频方向（niches）、粉丝数、20s/图文报价、30 天 GMV、城市、评分 | 数据平台抓取（connectors/platforms + mock-douyin 模拟）、CRM |
 | DocVersion | 文档版本链，`supersedes` | rev | 云文档同步 |
 
-关键关系：`Case→for_brand→Brand`、`Case→for_product→Product`（N:1）、`Brand→has_product→Product`、`Campaign→belongs_to→Case`、`Campaign→uses→Creative`、`Campaign→in_channel→Channel`（N:1，与事实表的平台维度区分，不重复建模）、`Campaign→targets→Audience`（N:M）、`Creative→links_to→LandingPage`（N:1）、`Creative→complies_with / violates→Guideline`、`Creative→derived_from→Creative`、`Person→responsible_for→Case`、`Person→belongs_to_brand→Brand`（内部对接人归属）、`Person→external_for→Brand`（外部客户账号绑定，N:M，变更走人审）。`平台字段→maps_to→Metric` 是 mappings 层的映射谓词，不是图关系。
+关键关系：`Case→for_brand→Brand`、`Case→for_product→Product`（N:1）、`Brand→has_product→Product`、`Case→collabs_with→Creator`（N:M，spec §3）、`Creator→promotes→Product`（N:M 带货）、`Campaign→belongs_to→Case`、`Campaign→uses→Creative`、`Campaign→in_channel→Channel`（N:1，与事实表的平台维度区分，不重复建模）、`Campaign→targets→Audience`（N:M）、`Creative→links_to→LandingPage`（N:1）、`Creative→complies_with / violates→Guideline`、`Creative→derived_from→Creative`、`Person→responsible_for→Case`、`Person→belongs_to_brand→Brand`（内部对接人归属）、`Person→external_for→Brand`（外部客户账号绑定，N:M，变更走人审）。`平台字段→maps_to→Metric` 是 mappings 层的映射谓词，不是图关系。
 
 Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指标词与 Text2SQL 可用指标白名单的依据；视图实现与 Metric 公式的一致性由 `mappings/` 保证；两平台不可比的指标在映射层不映射、视图列留空。`expr / grain / dedup_rule / valid_scope` 落在 schema.yaml。**聚合口径铁律**：比率型指标（ctr / cvr / cpa / cpm）跨行聚合一律**汇总比** `sum(分子) / NULLIF(sum(分母), 0)`（如 cpa = sum(cost) / sum(conversions)），**禁止对行比率再求 avg**——小分母行会带偏总量结论；该铁律同时约束 Text2SQL 模板与 LLM 自由生成（粒度上卷到 campaign / case / brand 同样适用）。**口径单一来源（2026-10-23 收敛）**：指标词汇与聚合口径收口 `adkg/retrieval/metrics.py`——维度列/指标词表/平台词/方向语义/汇总比聚合表达式/可算性白名单，Text2SQL 模板、图侧统计卡（§9.7）、权限指标列宇宙（§12.4）共用一处；graph ↔ text2sql 双写曾是多起口径实弹的温床（cvr 裸 sum、orders 放大、词表漂移）。**收口补完（2026-10-24）**：最X/方向词族（`RANK_WORDS` 等——router 意图词与 text2sql 方向判定同源，曾三份拷贝）、案例统计全家桶 `STAT_FAMILY`（(cost, ctr, cvr, cpa) 曾两处硬编码）、交易 join 形状（`TRADE_SELECT` + `uc_clicks_sql`——orders/gmv 与投放 clicks 的 product×day 预聚合对齐，graph 统计卡与 text2sql 交易模板同款）并入 metrics.py；全局类豁免改 schema 驱动（`models.global_classes` → PermissionPlan 字段，`{Metric, Guideline, Channel}` 字面量消灭）。**交易口径分列**：购买率（purchase_rate = orders / clicks）是**交易侧**指标（grain=product×day，数据源=商品后台导出，§五 数据三层③ seam；演示期合成种子），与投放侧转化率（cvr = conversions / clicks，平台回传的转化目标）**分列定义、不得混用**。
 

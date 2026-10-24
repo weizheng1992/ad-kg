@@ -25,8 +25,9 @@ RELATIONS = {r["predicate"]: r for r in SCHEMA["relations"]}
 
 
 class TestSchema:
-    def test_恰好12类(self):
-        assert len(CLASSES) == 12
+    def test_恰好13类(self):
+        # 2026-10-24 spec §3：+Creator（达人主数据）——12 → 13
+        assert len(CLASSES) == 13
 
     def test_关系端点都是已定义类(self):
         for predicate, rel in RELATIONS.items():
@@ -37,7 +38,7 @@ class TestSchema:
         for p in ("for_brand", "belongs_to", "uses", "violates", "derived_from",
                   "responsible_for", "belongs_to_brand", "external_for",
                   "for_product", "has_product", "in_channel", "targets", "links_to",
-                  "supersedes"):
+                  "supersedes", "collabs_with", "promotes"):
             assert p in RELATIONS
 
     def test_外部客户锚点是外部(self):
@@ -126,7 +127,9 @@ class TestPermissions:
 
     def test_optimizer与client与README_12_4逐字一致(self):
         opt = self.ROLES["optimizer"]
-        assert opt["classes"] == ["Case", "Campaign", "Creative", "Channel", "Metric", "Guideline"]
+        # 2026-10-24 spec §3：optimizer 类白名单 +Creator（达人库）
+        assert opt["classes"] == ["Case", "Campaign", "Creative", "Channel", "Metric",
+                                  "Guideline", "Creator"]
         assert opt["deny_properties"] == ["Case.bd_budget", "Case.gross_margin"]
         assert opt["metrics_deny"] == ["gross_margin"]
         assert opt["row_filter"] == "Person(responsible_for)->Case<-belongs_to-Campaign-uses->Creative"

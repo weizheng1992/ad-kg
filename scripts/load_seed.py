@@ -113,7 +113,9 @@ def main() -> None:
             entities.append(Entity(entity_class="Case", entity_id=r["case_id"],
                                    props={"name": r["case_name"], "stage": r["stage"],
                                           "bd_budget": r["bd_budget"],
-                                          "settlement_status": r["settlement_status"]},
+                                          "settlement_status": r["settlement_status"],
+                                          **{k: r[k] for k in ("lost_reason", "terminate_reason")
+                                             if r.get(k)}},
                                    provenance=p_cc))
             relations += [
                 Relation(source=r["case_id"], predicate="for_brand",
@@ -159,6 +161,25 @@ def main() -> None:
     # 衍生链（§六 derived_from）：AIGC 素材沿用同案例爆款
     relations.append(Relation(source="Creative:creative_992", predicate="derived_from",
                               target="Creative:C-2025-005-cp1-cr1", provenance=p_cc))
+
+    # ── 达人主数据（spec §3）：Creator + collabs_with / promotes ─────────
+    p_cr = prov("seed:creators.csv")
+    for r in _rows("creators.csv"):
+        entities.append(Entity(entity_class="Creator", entity_id=r["creator_id"],
+                               props={"name": r["name"], "platform": r["platform"],
+                                      "niches": r["niches"],
+                                      "followers": int(r["followers"]),
+                                      "quote_20s": int(r["quote_20s"]),
+                                      "quote_image": int(r["quote_image"]),
+                                      "gmv_30d": int(r["gmv_30d"]),
+                                      "city": r["city"], "rating": float(r["rating"])},
+                               provenance=p_cr))
+    for r in _rows("case_creators.csv"):
+        relations.append(Relation(source=r["case_id"], predicate="collabs_with",
+                                  target=r["creator_id"], provenance=p_cr))
+    for r in _rows("creator_products.csv"):
+        relations.append(Relation(source=r["creator_id"], predicate="promotes",
+                                  target=r["product_id"], provenance=p_cr))
 
     # ── 规范（frontmatter 带机判阈值）────────────────────────────────
     p_gd = prov("seed:guidelines")

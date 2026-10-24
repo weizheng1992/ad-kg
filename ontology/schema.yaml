@@ -15,7 +15,8 @@ classes:
 
   Case:
     description: 主线实体，提案到结案的生命周期
-    properties: [stage, bd_budget, gross_margin, settlement_status, terminate_reason]
+    properties: [stage, bd_budget, gross_margin, settlement_status, lost_reason, terminate_reason]
+    # lost_reason：proposal→lost 的拒因（spec §3「合同拒绝的理由」）；terminate_reason：live→terminated 必填
 
   Campaign:
     description: 投放计划
@@ -52,6 +53,11 @@ classes:
     description: AE / 优化师 / 客户对接人；权限与责任归属。不存联系方式
     properties: [name, org_role]
 
+  Creator:
+    description: 达人 / 创作者主数据（spec 2026-10-24 §3）；平台级主数据——类白名单即可见，不设 row_filter（合作历史经 Case 行过滤收敛）
+    properties: [name, platform, niches, followers, quote_20s, quote_image, gmv_30d, city, rating]
+    # niches = 主要视频方向（"|" 分隔 list 序列化）；quote_* 单条报价（元）
+
   DocVersion:
     description: 文档版本链
     properties: [rev]
@@ -63,6 +69,8 @@ relations:
   - {predicate: for_brand,        source: Case,     target: Brand,     cardinality: "N:1"}
   - {predicate: for_product,      source: Case,     target: Product,   cardinality: "N:1"}
   - {predicate: has_product,      source: Brand,    target: Product,   cardinality: "1:N"}
+  - {predicate: collabs_with,     source: Case,     target: Creator,   cardinality: "N:M"}   # 合作：案例 × 达人（spec §3）
+  - {predicate: promotes,         source: Creator,  target: Product,   cardinality: "N:M"}   # 带货：达人 × 商品（spec §3）
   - {predicate: belongs_to,       source: Campaign, target: Case,      cardinality: "N:1"}
   - {predicate: uses,             source: Campaign, target: Creative,  cardinality: "N:M"}
   - {predicate: in_channel,       source: Campaign, target: Channel,   cardinality: "N:1"}

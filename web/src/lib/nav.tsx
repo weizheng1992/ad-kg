@@ -1,7 +1,7 @@
 // 侧边导航矩阵（spec §4）：菜单项随登录角色显隐——「权限不同看到的不同」的导航面
 // ready=false 的入口置灰占位，展示系统全貌与施工进度
 import {
-  Building2, LayoutDashboard, Network, ShieldCheck, Users, Wallet,
+  BarChart3, Building2, LayoutDashboard, Network, ShieldCheck, Users, Wallet,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -9,6 +9,9 @@ export const ROLE_LABEL: Record<string, string> = {
   management: '管理层', ae: 'AE/销售', optimizer: '优化师', creative: '创意',
   client: '客户方(外部)', finance: '财务', admin: '运维',
 }
+
+/** 星图·模拟（compose 起 mock-douyin 服务，spec §3）；同主机名 8100 端口 */
+export const platformUrl = () => `http://${window.location.hostname}:8100`
 
 export interface NavItem {
   to: string
@@ -26,7 +29,9 @@ export const NAV: NavItem[] = [
   { to: '/', label: '数据看板', icon: LayoutDashboard,
     roles: ['management', 'ae', 'optimizer', 'finance', 'client'] },
   { to: '/creators', label: '达人库', icon: Users,
-    roles: ['management', 'ae', 'optimizer', 'finance'], ready: false },
+    roles: ['management', 'ae', 'optimizer', 'finance'] },
+  { to: '/platform', label: '数据平台(模拟)', icon: BarChart3,
+    roles: ['management', 'ae', 'optimizer'], external: platformUrl() },
   { to: '/brands', label: '客户', icon: Building2,
     roles: ['management', 'ae', 'client'], ready: false },
   { to: '/settlements', label: '财务结算', icon: Wallet,

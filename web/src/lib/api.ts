@@ -154,6 +154,51 @@ export interface CreativeDraftItem {
   based_on?: string[]
 }
 
+// ---------- 达人库（spec §3：Creator 平台级主数据；合作历史随行权限过滤） ----------
+
+export interface CreatorItem {
+  id: string
+  name: string
+  platform: string
+  niches: string[]
+  followers: number
+  quote_20s: number
+  quote_image: number
+  gmv_30d: number
+  city: string
+  rating: number
+  cases: number
+}
+
+export interface CreatorDetail {
+  creator: CreatorItem
+  collabs: { id: string; name: string; stage: string; lost_reason?: string | null }[]
+  collabs_filtered: number
+  products: { id: string; name: string; price?: string | null; spec?: string | null
+              target_age?: string | null }[]
+}
+
+export interface CreatorListQuery {
+  q?: string; platform?: string; niche?: string
+  min_followers?: number; max_quote?: number; page?: number; size?: number
+}
+
+export async function listCreators(params: CreatorListQuery): Promise<
+  { items: CreatorItem[]; total: number; page: number; size: number }> {
+  const p = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => [k, String(v)])))
+  const r = await fetch(`/creators?${p}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function getCreator(id: string): Promise<CreatorDetail> {
+  const r = await fetch(`/creators/${encodeURIComponent(id)}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
 
 export interface AgentTraceStep { tool: string; args: Record<string, unknown>; result: string }

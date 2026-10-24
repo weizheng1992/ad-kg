@@ -5,6 +5,8 @@ import { LoginPage } from '@/pages/login/LoginPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { GraphPage } from '@/features/graph/GraphPage'
+import { CreatorsPage } from '@/pages/creators/CreatorsPage'
+import { CreatorDetailPage } from '@/pages/creators/CreatorDetailPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -13,6 +15,8 @@ export const router = createBrowserRouter([
     element: <RequireAuth><AppLayout /></RequireAuth>,
     children: [
       { index: true, element: <DashboardPage /> },
+      { path: 'creators', element: <CreatorsPage /> },
+      { path: 'creators/:id', element: <CreatorDetailPage /> },
       { path: 'graph', element: <GraphPage /> },
     ],
   },

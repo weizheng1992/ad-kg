@@ -1,8 +1,8 @@
 """生成合成种子数据（§五 数据三层①）：静态文件提交进 repo，可重生成。
 
 确定性：random.seed(42)，同日重跑产出逐字节一致（diff 干净）；事实日期为滚动窗口（见 gen_facts），重生成即滚动到当月。
-规模取规模假设零头：品牌 8 / 商品 15 / 案例 20（覆盖 5 个 stage）/
-素材 ~80（含 1 对同素材双平台锚点）/ 事实行 ~2k / 规范 8 / 断言 10。
+规模取规模假设零头：品牌 8 / 商品 15 / 案例 20（覆盖 5 个 stage，lost/terminated 各带拒因）/
+素材 ~80（含 1 对同素材双平台锚点）/ 事实行 ~2k / 规范 8 / 断言 10 / 达人 20（spec §3）。
 """
 from __future__ import annotations
 
@@ -54,6 +54,9 @@ GUIDELINES = [
     ("G-07", "ad_law", None, "功效类表述须有证明材料，广告中须显著标明。"),
     ("G-08", "creative_spec", None, "结尾 2 秒固定品牌收尾卡，含 slogan 与下载引导。"),
 ]
+# 拒因（spec §3「合同拒绝的理由」）：lost/terminated 各 3 例，i 序即 (i-15)%3 / (i-18)%3
+LOST_REASONS = ["预算被竞品方案挤占", "达人档期冲突，提案超期", "客户侧产品改版，投放暂缓"]
+TERMINATE_REASONS = ["客户年度预算终止", "合作条款未谈拢提前终止", "效果未达约定阈值终止"]
 # 定向人群包（Audience，§六 targets N:M）：每品牌一个主包 + 前四品牌各一个次包，
 # 描述与品类强相关（真实感）；Campaign targets 本品牌的全部人群包
 AUDIENCES = {
@@ -108,6 +111,8 @@ def gen_master() -> list[list[str]]:
         case_name_by_id[case_id] = case_name
         cases.append((case_id, stage, brand, product, person))
         case_of_person.setdefault(person[0], case_id)
+        lost_reason = LOST_REASONS[(i - 15) % 3] if stage == "lost" else ""
+        term_reason = TERMINATE_REASONS[(i - 18) % 3] if stage == "terminated" else ""
         for c in range(2):                                # 每案例 2 计划
             camp = f"Campaign:{case_id.split(':')[1]}-cp{c + 1}"
             channel = CHANNELS[(i + c) % 3]
@@ -123,20 +128,21 @@ def gen_master() -> list[list[str]]:
                              titles[(i + c + k) % len(titles)],
                              "1" if (i + k) % 3 == 0 else "0",
                              ["douyin", "xhs"][(i + c + k) % 2],
-                             channel])
+                             channel, lost_reason, term_reason])
     # 双平台同素材锚点（§12.5）：同一本体素材在两平台各有 local id
     rows.append(["Case:C-2025-005", case_name_by_id["Case:C-2025-005"], "live", "36000", "unbilled",
                  "Brand:B06", "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A",
                  "delivering", "4200", "Creative:creative_992", "上门洗护种草 15s 竖版",
-                 "1", "douyin", "信息流"])
+                 "1", "douyin", "信息流", "", ""])
     rows.append(["Case:C-2025-005", case_name_by_id["Case:C-2025-005"], "live", "36000", "unbilled",
                  "Brand:B06", "Product:P06", "Campaign:C-2025-005-cp1", "信息流计划·A",
                  "delivering", "4200", "Creative:creative_992", "上门洗护种草 15s 竖版",
-                 "1", "xhs", "信息流"])
+                 "1", "xhs", "信息流", "", ""])
     _write_csv("cases_campaigns.csv",
                ["case_id", "case_name", "stage", "bd_budget", "settlement_status", "brand_id",
                 "product_id", "campaign_id", "campaign_name", "campaign_status", "daily_budget",
-                "creative_id", "creative_title", "is_aigc", "platform", "channel"], rows)
+                "creative_id", "creative_title", "is_aigc", "platform", "channel",
+                "lost_reason", "terminate_reason"], rows)
     for idx, (pid, name, role) in enumerate(PEOPLE):
         people_rows.append([f"Person:{pid}", name, role,
                             f"Brand:{BRANDS[idx % 8][0]}", case_of_person[pid], "0"])
@@ -264,6 +270,90 @@ def gen_assertions() -> None:
                ["subject", "predicate", "object", "confidence"], rows)
 
 
+# ── 达人种子（spec §3）：独立随机流 rng2，不扰动既有数值序列（确定性重跑可 diff）──
+CAT_CREATORS = {          # 8 品类 × 2 达人：与 BRANDS 品类一一对应（niche 匹配合作）
+    "餐饮":       [("轻卡食堂长", "低卡测评|探店"), ("深夜食堂老柒", "探店|美食制作")],
+    "运动健身":   [("燃脂教练阿力", "健身教学|运动装备"), ("马拉松笔记", "跑步|体能训练")],
+    "文化阅读":   [("书房夜航船", "读书|社科拆书"), ("通勤听书酱", "听书|职场成长")],
+    "美妆个护":   [("成分党阿澄", "成分测评|护肤"), ("油皮自救指南", "护肤|平价好物")],
+    "户外旅行":   [("山野老周", "露营|户外装备"), ("营地设计师小鹿", "露营|亲子出行")],
+    "宠物服务":   [("铲屎官阿喵", "养宠日常|宠物用品"), ("宠物行为学长大乖", "宠物训练|养宠科普")],
+    "教育学习":   [("速算蜂脑力课", "思维训练|学习方法"), ("职场充电宝典", "效率工具|职场技能")],
+    "健康睡眠":   [("睡眠研究所", "睡眠科普|助眠好物"), ("深眠实验室", "健康监测|作息管理")],
+}
+CROSS_CREATORS = [        # 跨品类达人：带货宽、报价高
+    ("食旅阿岛", "美食|旅行|探店", "douyin"),
+    ("穿搭研究所长", "穿搭|好物开箱", "xhs"),
+    ("数码先森", "3C数码|开箱测评", "douyin"),
+    ("亲子实验田", "亲子|家居好物", "xhs"),
+]
+CREATOR_CITIES = ["杭州", "上海", "北京", "广州", "成都", "长沙", "厦门", "重庆"]
+
+
+def gen_creators(cases) -> None:
+    """creators.csv / case_creators.csv / creator_products.csv（spec §3）。
+
+    达人 20 = 8 品类 × 2 + 跨品类 4；live/closed 案例挂 1–3 位品类匹配达人
+    （每 3 单加一位跨品类）；带货 = 品类同源商品（含 SKU），跨品类达人带全部 SKU。
+    """
+    rng2 = random.Random(4242)
+    cat_of_brand = {f"Brand:{b[0]}": b[2] for b in BRANDS}
+    products_of_cat: dict[str, list[str]] = {}
+    for p in PRODUCTS:
+        products_of_cat.setdefault(p[2], []).append(f"Product:{p[0]}")
+    for s in SKUS:
+        products_of_cat.setdefault(s[2], []).insert(0, f"Product:{s[0]}")
+    sku_ids = [f"Product:{s[0]}" for s in SKUS]
+
+    rows, collab_rows, promote_rows = [], [], []
+    cat_creator_ids: dict[str, list[str]] = {}            # 品类 → 达人 id（合作匹配用）
+    cid_seq = 0
+
+    def _add(name, niches, platform):
+        nonlocal cid_seq
+        cid_seq += 1
+        followers = rng2.randint(50_000, 8_000_000)
+        quote_20s = max(2_000, min(150_000, int(followers * rng2.uniform(0.002, 0.02))))
+        row = [f"Creator:cr{cid_seq:02d}", name, platform, niches, followers, quote_20s,
+               int(quote_20s * 0.6), rng2.randint(100_000, 30_000_000),
+               CREATOR_CITIES[cid_seq % len(CREATOR_CITIES)], round(rng2.uniform(4.0, 5.0), 1)]
+        rows.append(row)
+        return row[0]
+
+    for cat, pairs in CAT_CREATORS.items():
+        for name, niches in pairs:
+            cr_id = _add(name, niches, "douyin" if len(rows) % 2 == 0 else "xhs")
+            cat_creator_ids.setdefault(cat, []).append(cr_id)
+            # 带货：品类同源商品（品类达人主推本品类，SKU 权重靠前）
+            for pid in products_of_cat.get(cat, []):
+                promote_rows.append([cr_id, pid])
+    for name, niches, platform in CROSS_CREATORS:
+        cr_id = _add(name, niches, platform)
+        for pid in sku_ids:                    # 跨品类达人带全部 SKU
+            promote_rows.append([cr_id, pid])
+
+    # 合作：live/closed 案例挂品类匹配达人；每 3 单加一位跨品类
+    cross_ids = [r[0] for r in rows[-len(CROSS_CREATORS):]]
+    for case_id, stage, brand, product, person in cases:
+        if stage not in ("live", "closed"):
+            continue
+        picked = list(cat_creator_ids.get(brand[2], [])[:2])
+        i_num = int(case_id.split("-")[-1])
+        if i_num % 3 == 0:
+            picked.append(cross_ids[i_num % len(cross_ids)])
+        for cr_id in picked:
+            base_quote = next(r[5] for r in rows if r[0] == cr_id)
+            collab_rows.append([case_id, cr_id, int(base_quote * rng2.uniform(0.85, 1.1))])
+
+    _write_csv("creators.csv",
+               ["creator_id", "name", "platform", "niches", "followers", "quote_20s",
+                "quote_image", "gmv_30d", "city", "rating"], rows)
+    _write_csv("case_creators.csv",
+               ["case_id", "creator_id", "deal_quote"], collab_rows)
+    _write_csv("creator_products.csv",
+               ["creator_id", "product_id"], promote_rows)
+
+
 if __name__ == "__main__":
     cases = gen_master()
     gen_docs(cases)
@@ -271,6 +361,7 @@ if __name__ == "__main__":
     gen_audiences()
     gen_product_orders()
     gen_assertions()
+    gen_creators(cases)
     n_csv = sum(1 for p in SEED.rglob("*") if p.is_file())
     n_doc = sum(1 for p in RAW.rglob("*") if p.is_file())
     print(f"seed 生成完成：CSV {n_csv} 个 → data/seed/，文档 {n_doc} 个 → data/raw/")

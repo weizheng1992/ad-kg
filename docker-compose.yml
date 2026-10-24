@@ -43,6 +43,15 @@ services:
     volumes:
       - adkg_neo4jdata:/data
 
+  # 星图·模拟（spec §3/§6）：模拟抖音达人平台——独立轻量服务，M6 浏览工具的目标站
+  mock-douyin:
+    build: ./mock-douyin
+    container_name: adkg-mock-douyin
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./data/seed:/seed:ro              # 数据即种子（只读）
+
 volumes:
   adkg_pgdata:
   adkg_neo4jdata:
