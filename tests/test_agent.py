@@ -115,3 +115,97 @@ class TestAgentChat:
             "messages": [], "role": "management"}).status_code == 422
         assert self._client([FINAL], ADKG_DEV_AUTH="on").post("/agent/chat", json={
             "messages": [{"role": "user", "content": "x"}]}).status_code == 401
+
+
+ACTION_THINK = {"action": "list_brands", "args": {}, "think": "先看有哪些品牌"}
+
+
+@pytest.mark.skipif(not os.environ.get("ADKG_PG_DSN"), reason="未配置 .env")
+class TestAgentStream:
+    """SSE 事件契约（spec §6）：thought → tool_start → tool_result → reply → done。"""
+
+    def _client(self, payloads):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        env = {k: v for k, v in os.environ.items() if k.startswith(("ADKG_", "NEO4J"))}
+        c = TestClient(create_app(env))
+        c.app.state.llm = _script_llm(*payloads)
+        return c
+
+    def test_事件序列与顺序(self):
+        import json as _json
+        c = self._client([ACTION_THINK, FINAL])
+        with c.stream("POST", "/agent/chat/stream", json={
+                "messages": [{"role": "user", "content": "给途野露营出案例草稿"}],
+                "role": "management", "user": "Person:chen"}) as r:
+            assert r.status_code == 200
+            assert r.headers["content-type"].startswith("text/event-stream")
+            events = [_json.loads(line[6:]) for line in r.iter_lines()
+                      if line.startswith("data: ")]
+        types = [e["type"] for e in events]
+        assert types[0] == "thought" and events[0]["text"] == "先看有哪些品牌"
+        assert types.index("tool_start") < types.index("tool_result") < types.index("reply")
+        assert types[-1] == "done"
+        assert events[-1]["has_result"] is True and events[-1]["turns"] == 1
+        # draft 事件在 reply 与 done 之间（case_seed 带 FINAL 的草稿）
+        assert "draft" in types and types.index("reply") < types.index("draft") < types.index("done")
+
+    def test_未认证401在流开始前(self):
+        c = self._client([FINAL])
+        c.app.state.env["ADKG_DEV_AUTH"] = "on"
+        assert c.post("/agent/chat/stream",
+                      json={"messages": [{"role": "user", "content": "x"}]}).status_code == 401
+
+
+def _mock_platform_up() -> bool:
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://127.0.0.1:8100/", timeout=3)
+        return True
+    except Exception:
+        return False
+
+
+def _playwright_ok() -> bool:
+    try:
+        import playwright.sync_api  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+@pytest.mark.skipif(not (_mock_platform_up() and _playwright_ok() and
+                        os.environ.get("ADKG_PG_DSN")),
+                    reason="星图·模拟 / playwright / .env 不在线")
+def test_浏览工具真实点击抓取入图():
+    """Playwright 端到端：搜索→点击→抽取→截图子步→幂等入图（慢，仅本机全栈在线跑）。"""
+    import os as _os
+    from adkg.api.routes.platform_browser import fetch_creator_from_platform
+    from adkg.store.graph import GraphStore
+
+    class _Ctx:
+        env = dict(_os.environ)
+        graph = GraphStore(_os.environ["ADKG_NEO4J_URI"], _os.environ["ADKG_NEO4J_USER"],
+                           _os.environ["ADKG_NEO4J_PASSWORD"])
+        role, person = "management", "Person:chen"
+
+    steps: list[dict] = []
+
+    def _emit(kind, **kw):
+        steps.append({"kind": kind, **kw})
+
+    ctx = _Ctx()
+    ctx.emit = _emit
+    result = fetch_creator_from_platform({"query": "铲屎官"}, ctx)
+    import json as j
+    assert "ingested" in result and "Creator:cr1" in result
+    # 子步齐全且带截图（ZCode 式透明的证据）
+    assert len([s for s in steps if s["kind"] == "tool_step"]) >= 4
+    assert any(s.get("screenshot", "").startswith("data:image/jpeg") for s in steps)
+    # 幂等入图：prov_source_id 指向平台页
+    cid = j.loads(result)["creator_id"]
+    with ctx.graph.session() as s:
+        rec = s.run("MATCH (n:Entity {id: $id}) RETURN n.prov_source AS src, "
+                    "n.prov_source_id AS sid, n.name AS name", id=cid).single()
+    assert rec["src"] == "platform_api" and rec["sid"].startswith("mock-douyin:creator:")
+    assert "铲屎官" in rec["name"]

@@ -291,6 +291,44 @@ export interface AgentChatResult {
   can_commit_case?: boolean
 }
 
+// SSE 事件（spec §6 契约：thought / tool_start / tool_step / tool_result / reply / draft / done / error）
+export type AgentEvent =
+  | { type: 'thought'; text: string }
+  | { type: 'tool_start'; tool: string; args: Record<string, unknown> }
+  | { type: 'tool_step'; tool: string; step: number; desc: string; screenshot?: string | null }
+  | { type: 'tool_result'; tool: string; result: string }
+  | { type: 'reply'; text: string }
+  | { type: 'draft'; case_draft: CaseDraft | null; creative_drafts: CreativeDraftItem[] | null }
+  | { type: 'done'; turns: number; can_commit_case: boolean; has_result: boolean }
+  | { type: 'error'; detail: string }
+
+/** POST + ReadableStream 解析 SSE（EventSource 不支持 POST，spec §6） */
+export async function agentChatStream(
+  messages: { role: string; content: string }[], persona: Persona,
+  onEvent: (ev: AgentEvent) => void,
+): Promise<void> {
+  const r = await fetch('/agent/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, role: persona.role, user: persona.user }),
+  })
+  if (!r.ok || !r.body) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  const reader = r.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    const parts = buf.split('\n\n')
+    buf = parts.pop() ?? ''
+    for (const part of parts) {
+      const line = part.split('\n').find((l) => l.startsWith('data: '))
+      if (line) onEvent(JSON.parse(line.slice(6)) as AgentEvent)
+    }
+  }
+}
+
 export async function agentChat(
   messages: { role: string; content: string }[], persona: Persona,
 ): Promise<AgentChatResult> {

@@ -457,6 +457,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | 手动整理的文件 | `/ingest/doc` 或 `connectors/files` | 解析 → 分块 → 向量 + 抽取入图 |
 | 云文档 | `connectors/feishu` 定时 | 按 revision 增量，新版本 `supersedes` 旧版 |
 | 平台效果数据 | `connectors/platforms` 每日 | T+1 ETL 进事实表，经 `mappings/` 统一口径 |
+| 达人主数据（星图·模拟） | agent 工具 `fetch_creator_from_platform`（spec §6） | Playwright 无头浏览器真实点击抓取，逐步截图进轨迹；platform_api / 80 幂等 MERGE 入图——连接器主数据同步，非 agent 断言 |
 | CRM / 组织系统主数据 | 定期导出文件走 `/ingest/doc`（演示期即 `data/seed/org_people.csv`） | 解析入图标 system_of_record——authority 顶层级有真实数据来源 |
 | 数仓 / 业务库 | `connectors/warehouse` | 只读 schema 建映射（供 router 理解字段语义），不搬数不直查；指标查询统一走事实层视图（FDW 直查留作扩展） |
 | Agent 断言（AIGC 比对结果等） | `/ingest/assertion` | 带低 authority provenance 入图，冲突按 [12.2](#122-权威度authorityyaml) 进 review_queue |
@@ -486,7 +487,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | 达人库 `/creators` | management/ae/optimizer（finance 结算视角） | `/creators`（M2，Creator 本体扩展） |
 | 客户 `/brands` | management/ae；client 只看自己 | `/brands`（M3） |
 | 财务结算 `/settlements` | management/finance | `/settlements`（M4） |
-| Agent 助手（全局悬浮窗） | 所有人（证据与草稿随角色过滤） | `/agent/chat`（问答内部走 `/ask` 三路管线；生成自选只读工具后出草稿，案例草稿仍需确认入图；M6 升级 SSE 流式轨迹） |
+| Agent 助手（全局悬浮窗，SSE 流式） | 所有人（证据与草稿随角色过滤） | `/agent/chat/stream`（事件契约：thought / tool_start / tool_step 浏览子步含截图 / tool_result / reply / draft / done；ReAct 循环生成器化，`/agent/chat` 聚合同流保旧契约；工具面新增 `fetch_creator_from_platform`——Playwright 无头真实点击星图·模拟、逐步截图、幂等入图，spec §6） |
 | 图谱展开 `/graph` | management/ae/optimizer/creative | `/graph/entity`（Case/Product/Creative 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数；Creative 投放未对齐时不出卡——§7.4 对齐漏斗的诚实边界） |
 | 规范检查 | 创意 / AIGC | `/guideline/check` |
 | 管理后台 `/admin`（只读） | management/admin | 权限矩阵 + 账号一览 + 审计流水（M7）；review_queue 人审界面后置 |
