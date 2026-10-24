@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from adkg.guards.auth import AuthService
+from adkg.guards.http import get_graph, resolve_identity
 
 router = APIRouter()
 
@@ -15,18 +15,14 @@ router = APIRouter()
 @router.post("/guideline/check")
 def guideline_check(request: Request, body: dict,
                     authorization: str | None = Header(default=None)) -> dict:
-    env = request.app.state.env
-    resolved = AuthService(env).resolve(authorization)
-    if not resolved and not (env.get("ADKG_DEV_AUTH") == "off" and body.get("role")):
-        raise HTTPException(401, "缺有效 service token")
+    resolve_identity(request, authorization, body=body)   # 认证 + 角色预检（§十二）
 
     spec = body.get("spec") or {}
     duration = spec.get("duration_s")
     if duration is None:
         raise HTTPException(422, "spec.duration_s 必填（机判阈值项）")
 
-    from adkg.api.routes.actions import _graph
-    guidelines = _graph(request).guidelines_with_thresholds()
+    guidelines = get_graph(request).guidelines_with_thresholds()
     applicable, violations = [], []
     for g in guidelines:
         item = {"guideline_id": g["id"], "type": g["gtype"]}

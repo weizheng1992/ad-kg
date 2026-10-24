@@ -12,10 +12,9 @@ import json
 import time
 from datetime import datetime, timezone
 
-import psycopg
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from adkg.guards.auth import AuthService
+from adkg.guards.http import get_graph, resolve_identity
 
 router = APIRouter()
 
@@ -125,8 +124,7 @@ _AGENT_SYSTEM = (
 def agent_chat(request: Request, body: dict,
                authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
-    from adkg.api.routes.ask import _llm, _planner
-    from adkg.guards.http import resolve_identity
+    from adkg.api.routes.ask import _llm
     role, person, planner = resolve_identity(request, authorization, body=body)
 
     history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
@@ -137,10 +135,8 @@ def agent_chat(request: Request, body: dict,
     llm = _llm(request)
     if llm is None:
         raise HTTPException(503, "LLM 不可用（稍后重试，§7.2）")
-    if role not in planner.roles:                        # fail-closed（§十二）
-        raise HTTPException(401, f"未知角色：{role}")
     plan = planner.plan(role, person=person)
-    graph = _graph_of(request)
+    graph = get_graph(request)
 
     tool_ctx = _ToolCtx(env, graph, plan, llm, request, role, person, authorization)
 
@@ -206,11 +202,6 @@ def _turn_prompt(history: list[dict], trace: list[dict]) -> str:
 
 def _compact(data) -> str:
     return json.dumps(data, ensure_ascii=False, default=str)
-
-
-def _graph_of(request: Request):
-    from adkg.api.routes.ask import _graph
-    return _graph(request)
 
 
 def _audit(env: dict, role: str, person: str | None, question: str, turns: int) -> None:

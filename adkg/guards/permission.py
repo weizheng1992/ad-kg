@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from adkg.models import PermissionPlan, load_schema
+from adkg.models import PermissionPlan, global_classes, load_schema
 from adkg.retrieval.metrics import PERMISSION_METRIC_COLUMNS
 
 # 派生联动（§12.4）：deny 一列时同步 deny 含它的派生列（防乘法反推）
@@ -37,8 +37,7 @@ class PermissionPlanner:
     def __init__(self, permissions_path: Path, graph=None) -> None:
         self.schema = load_schema()                        # 全局类豁免要读 schema
         self.perms = load_permissions(permissions_path)
-        self.global_classes = {c for c, cfg in self.schema["classes"].items()
-                               if cfg.get("global_class")}
+        self.global_classes = global_classes()             # schema 驱动（models 单一来源）
         self._graph = graph
 
     # ----------------------------------------------------- 指标列白名单
@@ -127,6 +126,7 @@ class PermissionPlanner:
         return PermissionPlan(
             metadata_filter={"entity_class__in": classes},
             visible_entity_ids=visible,
+            global_classes=self.global_classes,
             sql_predicate="1=0" if deny_all else predicate,
             allowed_columns=self._allowed_columns(cfg),
             deny_properties=frozenset(cfg.get("deny_properties", [])),

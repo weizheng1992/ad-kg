@@ -15,8 +15,11 @@ from datetime import date
 import psycopg
 
 from adkg.retrieval.metrics import (ALL_METRICS, COMPUTABLE_METRICS, DIM_COLUMNS,
-                                    LOWER_IS_BETTER, METRIC_WORDS, PLATFORM_WORDS,
-                                    RATIO_NUM_DEN, agg_expr, uncomputable_note)
+                                    HIGH_WORDS, LOW_WORDS, LOWER_IS_BETTER,
+                                    METRIC_WORDS, PLATFORM_WORDS, RANK_WORDS,
+                                    STAT_FAMILY, TRADE_ASC_WORDS, TRADE_SELECT,
+                                    VALENCE_WORDS, agg_expr, uc_clicks_sql,
+                                    uncomputable_note)
 
 # 口径单一来源（§六）：本模块只做问句解析与 SQL 组装，口径数据全部来自 metrics.py
 _agg_expr, _COMPUTABLE, _uncomputable_note = agg_expr, COMPUTABLE_METRICS, uncomputable_note
@@ -136,11 +139,11 @@ def _metric_of(question: str) -> str:
 
 
 def _direction(metric: str, question: str) -> str:
-    if any(w in question for w in ("最高", "最多", "最大", "最凶", "最猛")):
+    if any(w in question for w in HIGH_WORDS):
         return "DESC"                       # 绝对方向词：不随成本型反转（夜检 D2）
-    if any(w in question for w in ("最低", "最少", "最小")):
+    if any(w in question for w in LOW_WORDS):
         return "ASC"
-    if not any(w in question for w in ("最差", "最好", "最佳")):
+    if not any(w in question for w in VALENCE_WORDS):
         return "DESC"          # 裸排名/统计题：多的在前（无方向词曾排成最差优先）
     best = "最好" in question or "最佳" in question
     asc = (metric in LOWER_IS_BETTER) == best              # 最好+成本型 → ASC
@@ -242,13 +245,16 @@ def _named_creative_of(question: str) -> str | None:
 
 def _named_creative_hit(question: str, sql: str) -> bool:
     """点名素材的题，生成 SQL 必须真落在该素材上：SELECT 段带 creative_id 列（证据
-    可溯源到实体）+ slug 字面量在场（确证按该素材过滤）。静态五道闸拦不住"全局
-    均值冒充单素材答案"，这道口径闸不过就弃用生成、回模板（2026-10-20 评测实测）。"""
+    可溯源到实体）+ slug 字面量落在 WHERE 段（确证按该素材过滤，而非仅"全文出现"——
+    基线对比形 SQL 可在投影/别名处带上 slug 却不给素材自身的值，2026-10-24 复验 G16
+    抓出）。静态五道闸拦不住"全局均值冒充单素材答案"，这道口径闸不过就弃用生成、
+    回模板（2026-10-20 评测实测）。"""
     slug = _named_creative_of(question)
     if not slug:
         return True
     select_part = sql.lower().split("from")[0]
-    return slug in sql and "creative_id" in select_part
+    where_at = sql.lower().find("where")
+    return where_at >= 0 and slug in sql[where_at:] and "creative_id" in select_part
 
 
 def _grain_of(question: str) -> str:
@@ -282,10 +288,10 @@ def _template(question: str, entity_ids: list[str] | None) -> tuple[str, dict]:
             or "销售额" in question or any(w in question for w in
                                            ("卖得", "卖了", "好卖", "销量", "热销", "畅销")):
         return "product_orders", {"window": _window_of(question)}
-    # 排名语义：方向/名次词 → top-N；粒度按问句实体词判（商品/品牌/案例/计划），缺省素材——
-    # 粒度判定收在排名分支内，交易分支前移后不再漏商品粒度（2026-10-22 验证回归抓出）
-    if any(w in question for w in ("最差", "最好", "最佳", "最高", "最低", "最多", "最少",
-                                   "最大", "最小", "最凶", "最猛", "排名")) or "top" in q:
+    # 排名语义：方向/名次词 → top-N（词族见 metrics.RANK_WORDS）；粒度按问句实体词判
+    # （商品/品牌/案例/计划），缺省素材——粒度判定收在排名分支内，交易分支前移后
+    # 不再漏商品粒度（2026-10-22 验证回归抓出）
+    if any(w in question for w in RANK_WORDS) or "top" in q:
         metric = _metric_of(question)
         group = _grain_of(question)
         return "top_metric", {"n": 20 if ("各" in question or "所有" in question) else n,
@@ -350,10 +356,10 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
             group = params.get("group", "creative_id")      # 粒度上卷：案例级统计（§六）
             # 案例统计常一问多指标 → 输出指标全家桶（按问句指标排序）；素材榜保持单指标；
             # 所问指标不在家族四列时追加进投影——ORDER BY 裸列引用投影外列会 42803
-            stat_cols = ([f"{_agg_expr(c)} AS {c}" for c in ("cost", "ctr", "cvr", "cpa")
-                          if c in metrics] if group == "case_id"
+            stat_cols = ([f"{_agg_expr(c)} AS {c}" for c in STAT_FAMILY if c in metrics]
+                         if group == "case_id"
                          else [_agg_expr(metric) + f" AS {metric}"])
-            if group == "case_id" and metric not in ("cost", "ctr", "cvr", "cpa"):
+            if group == "case_id" and metric not in STAT_FAMILY:
                 stat_cols.append(_agg_expr(metric) + f" AS {metric}")
             # 案例跨平台投放 → 附覆盖平台（一案例双平台各占行，DISTINCT 聚合成一列）
             plat_col = ("string_agg(DISTINCT platform::text, ',') AS platforms, "
@@ -373,10 +379,9 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
             params = {**params, "note": note} if note else params
     elif name == "product_orders":
         # 交易模板：orders/gmv 与投放 clicks 按 product×day join 出购买率（§六 分列口径）；
-        # 投放侧先预聚合到 product×day——unified 粒度是 creative×platform×day，直接 join
-        # 会把 orders/gmv 按投放行数放大（2026-10-22 夜检抓出，graph.py 同款同修）；
+        # 聚合表达式与 uc 预聚合形状收在 metrics.py（TRADE_SELECT/uc_clicks_sql，
+        # 2026-10-24 收敛——graph 统计卡同款同源）；
         # LEFT JOIN——无投放覆盖的 SKU 仍出 orders/gmv，购买率留空（诚实，不编数）；
-        # 购买率分子限定在投放覆盖天（FILTER），与分母 clicks 时间窗对齐，防虚高；
         # 行权限：谓词注入预聚合内（案例/品牌维度都在 unified 行上），且用产品级半连接
         # 只留权限内有投放的产品——权限内产品的 orders/gmv 仍是全量（与统计卡口径一致），
         # 权限外产品一行不出（fail-closed，§12.4）
@@ -390,15 +395,11 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
             order_key = "gmv"
         else:
             order_key = "orders"
-        asc = any(w in question for w in ("最低", "最少", "最差", "最小"))
+        asc = any(w in question for w in TRADE_ASC_WORDS)
+        uc = uc_clicks_sql(f"NOT unmatched{pcond}", with_product=True)
         # uc 走 CTE：半连接要在 WHERE 里引用它，join 别名进不了子查询 FROM（实测 UndefinedTable）
-        sql = ("WITH uc AS (SELECT product_id, date, sum(clicks) AS clicks"
-               "   FROM unified_metrics"
-               f"  WHERE NOT unmatched{pcond} GROUP BY 1, 2)"
-               " SELECT o.product_id, sum(o.orders) AS orders,"
-               " round(sum(o.gmv)::numeric, 2) AS gmv,"
-               " round(sum(o.orders) FILTER (WHERE uc.clicks IS NOT NULL)::numeric"
-               "   / NULLIF(sum(uc.clicks), 0), 4) AS purchase_rate"
+        sql = (f"WITH uc AS ({uc})"
+               f" SELECT o.product_id, {TRADE_SELECT}"
                " FROM product_orders_daily o LEFT JOIN uc"
                " ON uc.product_id = o.product_id AND uc.date = o.date"
                f" WHERE TRUE{wcond}{cover}"

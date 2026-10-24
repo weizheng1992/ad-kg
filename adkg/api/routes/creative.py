@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import json
-import psycopg
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from adkg.api.routes.ingest import _casegen_role
@@ -37,8 +36,6 @@ def creative_brands(request: Request, role: str | None = None, user: str | None 
     from adkg.guards.http import resolve_identity
     role, user, planner = resolve_identity(request, authorization, role=role, user=user,
                                            dev_default="management")  # dev 无角色默认管理视角
-    if role not in planner.roles:
-        raise HTTPException(401, f"未知角色：{role}")
     from adkg.api.routes.ingest import CASEGEN_ROLES
     if role not in CASEGEN_ROLES:
         raise HTTPException(403, f"角色 {role} 无素材生成权限（允许：{sorted(CASEGEN_ROLES)}）")
@@ -99,7 +96,7 @@ def creative_draft(request: Request, body: dict,
                    authorization: str | None = Header(default=None)) -> dict:
     """生成素材草稿：n 条 {标题/形式/前3秒钩子/分镜/文案}，证据与规范随响应返回。"""
     env = request.app.state.env
-    role = _casegen_role(request, body, authorization)
+    role, person = _casegen_role(request, body, authorization)
 
     brand_id = str(body.get("brand_id") or "").strip()
     if not brand_id.startswith("Brand:"):
@@ -111,13 +108,14 @@ def creative_draft(request: Request, body: dict,
     except (TypeError, ValueError):
         n = 3
 
-    from adkg.api.routes.ask import _llm, _planner
+    from adkg.api.routes.ask import _llm
+    from adkg.guards.http import get_graph, get_planner
     llm = _llm(request)
     if llm is None:
         raise HTTPException(503, "LLM 不可用，无法生成（稍后重试，§7.2）")
-    planner = _planner(request)
-    plan = planner.plan(role, person=body.get("user"))
-    graph = _graph_of(request)
+    planner = get_planner(request)
+    plan = planner.plan(role, person=person)
+    graph = get_graph(request)
 
     # 证据 1：品牌本体 + 同类目品牌集合（相关案例的"相关"口径）
     try:
@@ -154,7 +152,7 @@ def creative_draft(request: Request, body: dict,
     if not drafts:
         raise HTTPException(503, "生成结果为空，请重试或补充商品信息")
 
-    _audit(env, role, body.get("user"), brand_id, product, len(drafts))
+    _audit(env, role, person, brand_id, product, len(drafts))
     return {"brand": dict(brand), "product": product, "platform": platform,
             "drafts": drafts,
             "evidence": {"商品知识": knowledge.get("evidence", [])[:6],
@@ -173,15 +171,9 @@ def _user_prompt(brand: dict, product: str, platform: str, n: int, evidence: dic
     }, ensure_ascii=False, default=str))
 
 
-def _resolved_or_dev(request: Request, authorization: str | None) -> bool:
-    from adkg.guards.auth import AuthService
-    env = request.app.state.env
-    return bool(AuthService(env).resolve(authorization)) or env.get("ADKG_DEV_AUTH") == "off"
-
-
 def _graph_of(request: Request):
-    from adkg.api.routes.ask import _graph
-    return _graph(request)
+    from adkg.guards.http import get_graph
+    return get_graph(request)
 
 
 def _audit(env: dict, role: str, person: str | None,

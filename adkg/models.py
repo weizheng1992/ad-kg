@@ -46,6 +46,14 @@ def load_schema() -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def global_classes() -> frozenset[str]:
+    """schema 驱动的全局类（global_class: true：不挂锚点、不参与 row_filter，§12.4）。
+    graph_search 与 /graph/entity 的类豁免共用——{Metric, Guideline, Channel} 字面量
+    曾两处硬编码，schema 加全局类会静默漂移（2026-10-24 收敛）。"""
+    return frozenset(c for c, cfg in load_schema()["classes"].items()
+                     if cfg.get("global_class"))
+
+
 class CaseStage(str, Enum):
     """Case 状态机（§六）：proposal→live｜lost，live→closed｜terminated，终态不可逆。"""
 
@@ -157,6 +165,7 @@ class PermissionPlan(BaseModel):
 
     metadata_filter: dict[str, Any] = Field(default_factory=dict)  # vector 路：下推进 SQL
     visible_entity_ids: frozenset[str] = Field(default_factory=frozenset)  # graph 路：Cypher 白名单
+    global_classes: frozenset[str] = Field(default_factory=global_classes)  # 类白名单豁免的全局类（schema 驱动，graph 路消费）
     sql_predicate: str = ""  # text2sql 路：系统拼进 WHERE，不信任生成的 SQL
     allowed_columns: list[str] = Field(default_factory=list)  # 视图/列白名单
     deny_properties: frozenset[str] = Field(default_factory=frozenset)  # graph 路证据的属性黑名单（Class.prop）

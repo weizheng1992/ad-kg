@@ -271,5 +271,6 @@ if __name__ == "__main__":
     gen_audiences()
     gen_product_orders()
     gen_assertions()
-    n = sum(1 for p in SEED.rglob("*") if p.is_file())
-    print(f"seed 生成完成：{n} 个文件 → data/seed/")
+    n_csv = sum(1 for p in SEED.rglob("*") if p.is_file())
+    n_doc = sum(1 for p in RAW.rglob("*") if p.is_file())
+    print(f"seed 生成完成：CSV {n_csv} 个 → data/seed/，文档 {n_doc} 个 → data/raw/")

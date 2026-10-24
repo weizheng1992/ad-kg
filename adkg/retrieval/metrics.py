@@ -42,6 +42,36 @@ METRIC_WORDS = {"点击率": "ctr", "ctr": "ctr", "转化率": "cvr", "cvr": "cv
                 "千次曝光": "cpm", "千次曝光成本": "cpm", "千次展现成本": "cpm", "cpm": "cpm"}
 PLATFORM_WORDS = {"抖音": "douyin", "巨量": "douyin", "小红书": "xhs", "聚光": "xhs"}
 
+# —— 最X/方向词族（排名语义，§六 方向反转）：router 意图词（_FACT/_DEF_EXCLUDE）与
+# text2sql 排名/方向判定的单一来源（2026-10-24 收敛：此前三处各抄一份，加词曾三处
+# 漂移）——加词只改这里，两端自动跟随
+HIGH_WORDS = ("最高", "最多", "最大", "最凶", "最猛")     # 绝对高向：不随成本型反转
+LOW_WORDS = ("最低", "最少", "最小")                      # 绝对低向
+VALENCE_WORDS = ("最差", "最好", "最佳")                  # 好坏向：按成本型反转（§六）
+RANK_WORDS = HIGH_WORDS + LOW_WORDS + VALENCE_WORDS + ("排名",)   # 排名语义全集
+TRADE_ASC_WORDS = LOW_WORDS + ("最差",)   # 交易模板方向：orders/gmv 无成本型，最差=最少
+
+# 案例统计全家桶（§六）：一问多指标的默认投影族——graph 统计卡与 text2sql 案例粒度
+# top_metric 共用（曾两处硬编码 ("cost","ctr","cvr","cpa")）
+STAT_FAMILY = ("cost", "ctr", "cvr", "cpa")
+
+# —— 交易口径（§六 分列）：orders/gmv 与投放 clicks 按 product×day 对齐 ——
+# unified 粒度是 creative×platform×day，直接 join 会把 orders/gmv 按投放行数放大
+# （2026-10-22 夜检抓出，graph 统计卡与 text2sql 模板同款同修；2026-10-24 形状收口
+# 进本模块）。购买率分子限定在投放覆盖天（FILTER），与分母 clicks 时间窗对齐，防虚高
+TRADE_SELECT = ("sum(o.orders) AS orders, round(sum(o.gmv)::numeric, 2) AS gmv, "
+                "round(sum(o.orders) FILTER (WHERE uc.clicks IS NOT NULL)::numeric"
+                " / NULLIF(sum(uc.clicks), 0), 4) AS purchase_rate")
+
+
+def uc_clicks_sql(where: str, *, with_product: bool) -> str:
+    """投放侧 clicks 预聚合（上卷到 product×day / 单产品 day）——graph 统计卡与
+    text2sql 交易模板共用的 uc 子查询体（调用方自行包 CTE/括号与命名 uc）。"""
+    cols = "product_id, date" if with_product else "date"
+    group = "1, 2" if with_product else "1"
+    return (f"SELECT {cols}, sum(clicks) AS clicks FROM unified_metrics"
+            f" WHERE {where} GROUP BY {group}")
+
 
 def agg_expr(metric: str) -> str:
     """指标聚合表达式：比率型=汇总比（§六 铁律），总量型=sum。"""

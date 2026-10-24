@@ -108,7 +108,7 @@ def search(question: str, plan, graph, *, limit: int = 50, person: str | None = 
             " n.prov_source_id AS psid, n.authority AS auth, properties(n) AS props",
             ids=sorted(ids)).data()
 
-    global_classes = {"Metric", "Guideline", "Channel"}
+    global_classes = plan.global_classes             # schema 驱动（§12.4，models 单一来源）
     evidence, kept_ids, filtered = [], set(ids), 0
     # entity 证据项：可见集 + 属性白名单（外部，fail-closed）/ 黑名单（内部）双过滤
     # （prov_* 与 authority 是溯源不是业务属性；§12.6 人名对外掩码在此兜底）

@@ -9,36 +9,14 @@ from __future__ import annotations
 
 import time
 
-import psycopg
-
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from adkg.guards.auth import AuthService
-from adkg.guards.permission import PermissionPlanner
+from adkg.guards.http import get_graph, resolve_identity
 from adkg.retrieval import graph_search, text2sql, vector_search
 from adkg.retrieval.assemble import assemble
 from adkg.retrieval.router import llm_route, rule_route
 
 router = APIRouter()
-
-
-def _planner(request: Request) -> PermissionPlanner:
-    if not hasattr(request.app.state, "planner"):
-        from pathlib import Path
-
-        from adkg.store.graph import GraphStore
-        env = request.app.state.env
-        graph = GraphStore(env["ADKG_NEO4J_URI"], env["ADKG_NEO4J_USER"],
-                           env["ADKG_NEO4J_PASSWORD"])
-        request.app.state.planner = PermissionPlanner(
-            Path(__file__).resolve().parents[3] / "ontology" / "permissions.yaml",
-            graph=graph)
-    return request.app.state.planner
-
-
-def _graph(request: Request):
-    _planner(request)
-    return request.app.state.planner._graph
 
 
 def _llm(request: Request):
@@ -73,15 +51,12 @@ def ask(request: Request, body: dict,
         authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
 
-    from adkg.guards.http import resolve_identity
     role, person, planner = resolve_identity(request, authorization, body=body)
 
     question = str(body.get("question", "")).strip()
     if not question:
         raise HTTPException(422, "question 不能为空")
 
-    if role not in planner.roles:                        # dev 路可传任意值，fail-closed（§十二）
-        raise HTTPException(401, f"未知角色：{role}")
     plan = planner.plan(role, person=person)
     llm = _llm(request)
     embed_fn = _embed_fn(request)
@@ -100,7 +75,7 @@ def ask(request: Request, body: dict,
                 "endpoint": "/actions/check",
                 "reason": "操作类请求请直接调用 /actions/check 做裁决（AdKG 只裁决不代执行）"}
 
-    graph = _graph(request)
+    graph = get_graph(request)
     results: dict[str, dict] = {}
     for step in decision.plan.steps:                        # 按序执行即满足依赖
         if step.route.value == "graph":

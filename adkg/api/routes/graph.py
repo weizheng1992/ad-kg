@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from adkg.guards.auth import AuthService
+from adkg.guards.http import get_graph, resolve_identity
+from adkg.retrieval.metrics import STAT_FAMILY, TRADE_SELECT, agg_expr, uc_clicks_sql
 
 router = APIRouter()
 
@@ -17,17 +18,13 @@ def graph_entity(request: Request, id: str, hops: int = 1,
                  role: str | None = None, user: str | None = None,
                  authorization: str | None = Header(default=None)) -> dict:
     env = request.app.state.env
-    from adkg.api.routes.ask import _graph, _planner
-    from adkg.guards.http import resolve_identity
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
 
-    if role not in planner.roles:                        # dev 路可传任意值，fail-closed（§十二）
-        raise HTTPException(401, f"未知角色：{role}")
-    graph = _graph(request)
+    graph = get_graph(request)
     plan = planner.plan(role, person=user)
     visible = plan.visible_entity_ids
     allowed_classes = set(plan.metadata_filter.get("entity_class__in", []))
-    global_classes = {"Metric", "Guideline", "Channel"}
+    global_classes = planner.global_classes       # schema 驱动（§12.4，单一来源）
 
     with graph.session() as s:
         rec = s.run("MATCH (n:Entity {id: $id})"
@@ -99,8 +96,7 @@ def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
 
     predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
     try:
-        from adkg.retrieval.metrics import agg_expr
-        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in ("cost", "ctr", "cvr", "cpa"))
+        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
         with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn:
             with conn.cursor() as cur:
@@ -120,7 +116,7 @@ def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
     # 指标列出口过白名单（§12.4）：统计卡不得绕过 metrics 权限——client 不见 cpa、
     # creative 不见 cost/cpa（deny 派生联动已在 PermissionPlanner 展开，这里只做成员过滤）
     return {k: v for k, v in row.items()
-            if k not in ("cost", "ctr", "cvr", "cpa") or k in plan.allowed_columns}
+            if k not in STAT_FAMILY or k in plan.allowed_columns}
 
 
 def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
@@ -142,20 +138,15 @@ def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
         with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn:
             with conn.cursor() as cur:
-                # 投放侧预聚合到 product×day：unified 粒度是 creative×platform×day，
-                # 直接 join 会把 orders/gmv 按投放行数放大（2026-10-22 与 text2sql 同修）；
+                # 投放 clicks 预聚合 + 聚合表达式收在 metrics.py（uc_clicks_sql/
+                # TRADE_SELECT）——与 text2sql 交易模板同一形状（2026-10-24 收敛）；
                 # 行谓词同注入（与 _invest_stats 同一道闸）——购买率分母只计权限内案例
                 pred = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
                 cur.execute(
-                    "SELECT sum(o.orders) AS orders,"
-                    " round(sum(o.gmv)::numeric, 2) AS gmv,"
-                    " round(sum(o.orders) FILTER (WHERE uc.clicks IS NOT NULL)::numeric"
-                    "   / NULLIF(sum(uc.clicks), 0), 4) AS purchase_rate"
+                    f"SELECT {TRADE_SELECT}"
                     " FROM product_orders_daily o"
-                    " LEFT JOIN (SELECT date, sum(clicks) AS clicks"
-                    "   FROM unified_metrics WHERE product_id = %(id)s"
-                    "   AND NOT unmatched" + pred +
-                    "   GROUP BY date) uc ON uc.date = o.date"
+                    f" LEFT JOIN ({uc_clicks_sql('product_id = %(id)s AND NOT unmatched' + pred, with_product=False)})"
+                    " uc ON uc.date = o.date"
                     " WHERE o.product_id = %(id)s", {"id": product_id})
                 row = cur.fetchone()
     except psycopg.Error:

@@ -18,8 +18,7 @@ import yaml
 from fastapi import APIRouter, Header, HTTPException, Request
 from pathlib import Path
 
-from adkg.api.routes.actions import _graph
-from adkg.guards.auth import AuthService
+from adkg.guards.http import get_graph
 from adkg.models import Provenance, Relation
 from adkg.pipeline.resolution import normalize_name
 
@@ -30,13 +29,14 @@ CASEGEN_ROLES = {"admin", "management", "optimizer", "ae"}     # 案例生成 = 
 
 
 def _casegen_role(request: Request, body: dict,
-                  authorization: str | None) -> str:
-    """认证 + 案例生成角色门（token 反查优先，dev 模式 body 兜底，fail-closed）。"""
+                  authorization: str | None) -> tuple[str, str | None]:
+    """认证 + 案例生成角色门（token 反查优先，dev 模式 body 兜底，fail-closed）；
+    person 一并返回（token 路取绑定值——审计 user_id 用，2026-10-24 起）。"""
     from adkg.guards.http import resolve_identity
-    role, _person, _planner = resolve_identity(request, authorization, body=body)
+    role, person, _planner = resolve_identity(request, authorization, body=body)
     if role not in CASEGEN_ROLES:
         raise HTTPException(403, f"角色 {role} 无案例生成权限（允许：{sorted(CASEGEN_ROLES)}）")
-    return role
+    return role, person
 
 
 @router.get("/ingest/docs")
@@ -98,7 +98,7 @@ def case_draft(request: Request, body: dict,
         raise HTTPException(503, "LLM 不可用，无法抽取草稿（稍后重试，§7.2）")
     from adkg.models import load_schema
     from adkg.pipeline.case_gen import build_draft
-    graph = _graph(request)
+    graph = get_graph(request)
     try:
         return build_draft(doc_id, "\n".join(r[0] for r in rows)[:6000], graph,
                            load_schema(),
@@ -115,30 +115,29 @@ def case_commit(request: Request, body: dict,
                 authorization: str | None = Header(default=None)) -> dict:
     """草稿确认入图：服务端重校验（不信客户端）→ 写实体/关系 → 别名注册 → 审计。"""
     env = request.app.state.env
-    role, person = _casegen_role(request, body, authorization), body.get("user")
+    role, person = _casegen_role(request, body, authorization)
     draft = body.get("draft")
     if not isinstance(draft, dict):
         raise HTTPException(422, "draft 必填（/ingest/case-draft 的返回原样传回）")
 
     from adkg.models import load_schema
     from adkg.pipeline.case_gen import commit_draft
-    graph = _graph(request)
+    graph = get_graph(request)
     try:
         result = commit_draft(draft, graph, load_schema(), now=datetime.now(timezone.utc))
     except ValueError as e:
         raise HTTPException(422, str(e))
 
-    resolved = AuthService(env).resolve(authorization)
-    actor = resolved[1] if resolved else person
-    with psycopg.connect(env["ADKG_PG_DSN"]) as conn, conn.cursor() as cur:
-        for w in result.get("written", []):              # 新实体注册别名：后续 ETL/抽取 L1 可命中
-            cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
-                        " VALUES ('name', %s, %s) ON CONFLICT DO NOTHING",
-                        (normalize_name(str(w["name"])), w["id"]))
-        cur.execute("INSERT INTO audit_log (user_id, role, action, target, verdict, reason)"
-                    " VALUES (%s,%s,'create_case',%s,'allow',%s)",
-                    (actor, role, result["case_id"],
-                     f"case-commit from {draft.get('doc_id')}"))
+    with psycopg.connect(env["ADKG_PG_DSN"]) as conn:
+        with conn.cursor() as cur:
+            for w in result.get("written", []):          # 新实体注册别名：后续 ETL/抽取 L1 可命中
+                cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
+                            " VALUES ('name', %s, %s) ON CONFLICT DO NOTHING",
+                            (normalize_name(str(w["name"])), w["id"]))
+        # 审计收口（§9.1）：与别名注册同事务落账（外部 conn 复用），回滚同生共死
+        from adkg.guards.audit import audit
+        audit(env, role, person, "create_case", result["case_id"], "allow",
+              f"case-commit from {draft.get('doc_id')}", conn=conn)
 
     return {"status": "written", **result}
 
@@ -187,7 +186,7 @@ def ingest_assertion(request: Request, body: dict,
         return {"status": "review", "reason": f"confidence ∈ [0.4, 0.7) → 人审（§12.1）"}
 
     # 冲突仲裁：已有更高 authority 的同边 → 低者不覆盖
-    graph = _graph(request)
+    graph = get_graph(request)
     with graph.session() as s:
         prev = s.run(f"MATCH (a:Entity {{id: $s}})-[r:{predicate}]->(b:Entity {{id: $o}})"
                      " RETURN r.authority AS auth LIMIT 1", s=subject, o=obj).single()
