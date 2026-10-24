@@ -7,6 +7,8 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { GraphPage } from '@/features/graph/GraphPage'
 import { CreatorsPage } from '@/pages/creators/CreatorsPage'
 import { CreatorDetailPage } from '@/pages/creators/CreatorDetailPage'
+import { BrandsPage } from '@/pages/brands/BrandsPage'
+import { BrandDetailPage } from '@/pages/brands/BrandDetailPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -17,6 +19,8 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'creators', element: <CreatorsPage /> },
       { path: 'creators/:id', element: <CreatorDetailPage /> },
+      { path: 'brands', element: <BrandsPage /> },
+      { path: 'brands/:id', element: <BrandDetailPage /> },
       { path: 'graph', element: <GraphPage /> },
     ],
   },

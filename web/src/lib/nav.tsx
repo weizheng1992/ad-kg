@@ -33,7 +33,7 @@ export const NAV: NavItem[] = [
   { to: '/platform', label: '数据平台(模拟)', icon: BarChart3,
     roles: ['management', 'ae', 'optimizer'], external: platformUrl() },
   { to: '/brands', label: '客户', icon: Building2,
-    roles: ['management', 'ae', 'client'], ready: false },
+    roles: ['management', 'ae', 'client'] },
   { to: '/settlements', label: '财务结算', icon: Wallet,
     roles: ['management', 'finance'], ready: false },
   { to: '/graph', label: '图谱', icon: Network,

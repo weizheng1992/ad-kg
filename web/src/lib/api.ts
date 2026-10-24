@@ -199,6 +199,42 @@ export async function getCreator(id: string): Promise<CreatorDetail> {
   return r.json()
 }
 
+// ---------- 客户页（spec §5）：品牌列表 + 子图详情；client 锚点豁免类闸只见自己 ----------
+
+export interface BrandListItem {
+  id: string
+  name: string
+  category: string
+  cases_total: number
+  cases_live: number
+  cases_lost: number
+  stats: { cost?: string | null; ctr?: string | null; cvr?: string | null; days?: number } | null
+}
+
+export interface BrandDetail {
+  brand: { id: string; name: string; category: string }
+  products: { id: string; name: string; category?: string; spec?: string | null
+              detail?: string | null; price?: string | null; target_age?: string | null
+              platform?: string | null }[]
+  cases: { id: string; name: string; stage: string; lost_reason?: string | null
+           settlement_status?: string | null }[]
+  stats: BrandListItem['stats']
+}
+
+export async function listBrands(q = ''): Promise<{ items: BrandListItem[]; total: number }> {
+  const p = new URLSearchParams()
+  if (q.trim()) p.set('q', q.trim())
+  const r = await fetch(`/brands?${p}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function getBrand(id: string): Promise<BrandDetail> {
+  const r = await fetch(`/brands/${encodeURIComponent(id)}`)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
 
 export interface AgentTraceStep { tool: string; args: Record<string, unknown>; result: string }
