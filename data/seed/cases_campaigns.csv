@@ -81,3 +81,163 @@ Case:C-2025-020,途野露营·途野露营App投放案例,terminated,90000,unbil
 Case:C-2025-020,途野露营·途野露营App投放案例,terminated,90000,unbilled,Brand:B05,Product:P05,Campaign:C-2025-020-cp2,信息流计划·B,paused,4000,Creative:C-2025-020-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流,,效果未达约定阈值终止,
 Case:C-2025-005,喵汪到家·喵汪到家上门洗护年卡投放案例,live,36000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,信息流计划·A,delivering,4200,Creative:creative_992,上门洗护种草 15s 竖版,1,douyin,信息流,,,0.23
 Case:C-2025-005,喵汪到家·喵汪到家上门洗护年卡投放案例,live,36000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-005-cp1,信息流计划·A,delivering,4200,Creative:creative_992,上门洗护种草 15s 竖版,1,xhs,信息流,,,0.23
+Case:C-2025-021,轻食日记·轻食日记App投放案例,live,40000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-021-cp1,信息流计划·A,delivering,4000,Creative:C-2025-021-cp1-cr1,痛点开箱 30s 竖版,1,xhs,信息流,,,0.33
+Case:C-2025-021,轻食日记·轻食日记App投放案例,live,40000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-021-cp1,信息流计划·A,delivering,4000,Creative:C-2025-021-cp1-cr2,达人种草 20s 竖版,0,douyin,信息流,,,0.33
+Case:C-2025-021,轻食日记·轻食日记App投放案例,live,70000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-021-cp2,搜索计划·B,delivering,5000,Creative:C-2025-021-cp2-cr1,品牌专区图文,1,douyin,搜索,,,0.33
+Case:C-2025-021,轻食日记·轻食日记App投放案例,live,70000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-021-cp2,搜索计划·B,delivering,5000,Creative:C-2025-021-cp2-cr2,长尾词图文,0,xhs,搜索,,,0.33
+Case:C-2025-022,律动星球·铁山攀岩镁粉袋套装投放案例,live,20000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-022-cp1,搜索计划·A,delivering,5000,Creative:C-2025-022-cp1-cr1,品牌专区图文,0,douyin,搜索,,,0.21
+Case:C-2025-022,律动星球·铁山攀岩镁粉袋套装投放案例,live,20000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-022-cp1,搜索计划·A,delivering,5000,Creative:C-2025-022-cp1-cr2,长尾词图文,0,xhs,搜索,,,0.21
+Case:C-2025-022,律动星球·铁山攀岩镁粉袋套装投放案例,live,50000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-022-cp2,开屏计划·B,delivering,6000,Creative:C-2025-022-cp2-cr1,大促静态 4s,0,xhs,开屏,,,0.21
+Case:C-2025-022,律动星球·铁山攀岩镁粉袋套装投放案例,live,50000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-022-cp2,开屏计划·B,delivering,6000,Creative:C-2025-022-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏,,,0.21
+Case:C-2025-023,拾光书屋·拾光书屋App投放案例,live,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-023-cp1,开屏计划·A,delivering,6000,Creative:C-2025-023-cp1-cr1,大促静态 4s,0,xhs,开屏,,,0.34
+Case:C-2025-023,拾光书屋·拾光书屋App投放案例,live,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-023-cp1,开屏计划·A,delivering,6000,Creative:C-2025-023-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏,,,0.34
+Case:C-2025-023,拾光书屋·拾光书屋App投放案例,live,30000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-023-cp2,信息流计划·B,delivering,7000,Creative:C-2025-023-cp2-cr1,场景短剧 15s 竖版,0,douyin,信息流,,,0.34
+Case:C-2025-023,拾光书屋·拾光书屋App投放案例,live,30000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-023-cp2,信息流计划·B,delivering,7000,Creative:C-2025-023-cp2-cr2,痛点开箱 30s 竖版,1,xhs,信息流,,,0.34
+Case:C-2025-024,澄肌研究所·澄肌研究所小程序投放案例,live,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-024-cp1,信息流计划·A,delivering,7000,Creative:C-2025-024-cp1-cr1,场景短剧 15s 竖版,1,douyin,信息流,,,0.22
+Case:C-2025-024,澄肌研究所·澄肌研究所小程序投放案例,live,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-024-cp1,信息流计划·A,delivering,7000,Creative:C-2025-024-cp1-cr2,痛点开箱 30s 竖版,0,xhs,信息流,,,0.22
+Case:C-2025-024,澄肌研究所·澄肌研究所小程序投放案例,live,10000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-024-cp2,搜索计划·B,delivering,3000,Creative:C-2025-024-cp2-cr1,品牌专区图文,1,xhs,搜索,,,0.22
+Case:C-2025-024,澄肌研究所·澄肌研究所小程序投放案例,live,10000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-024-cp2,搜索计划·B,delivering,3000,Creative:C-2025-024-cp2-cr2,长尾词图文,0,douyin,搜索,,,0.22
+Case:C-2025-025,途野露营·苔原户外四季帐篷投放案例,live,50000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-025-cp1,搜索计划·A,delivering,3000,Creative:C-2025-025-cp1-cr1,品牌专区图文,0,xhs,搜索,,,0.10
+Case:C-2025-025,途野露营·苔原户外四季帐篷投放案例,live,50000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-025-cp1,搜索计划·A,delivering,3000,Creative:C-2025-025-cp1-cr2,长尾词图文,0,douyin,搜索,,,0.10
+Case:C-2025-025,途野露营·苔原户外四季帐篷投放案例,live,80000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-025-cp2,开屏计划·B,delivering,4000,Creative:C-2025-025-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.10
+Case:C-2025-025,途野露营·苔原户外四季帐篷投放案例,live,80000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-025-cp2,开屏计划·B,delivering,4000,Creative:C-2025-025-cp2-cr2,大促静态 4s,0,xhs,开屏,,,0.10
+Case:C-2025-026,喵汪到家·喵汪到家小程序投放案例,live,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-026-cp1,开屏计划·A,delivering,4000,Creative:C-2025-026-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.23
+Case:C-2025-026,喵汪到家·喵汪到家小程序投放案例,live,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-026-cp1,开屏计划·A,delivering,4000,Creative:C-2025-026-cp1-cr2,大促静态 4s,1,xhs,开屏,,,0.23
+Case:C-2025-026,喵汪到家·喵汪到家小程序投放案例,live,60000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-026-cp2,信息流计划·B,delivering,5000,Creative:C-2025-026-cp2-cr1,UGC 口播 15s 竖版,0,xhs,信息流,,,0.23
+Case:C-2025-026,喵汪到家·喵汪到家小程序投放案例,live,60000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-026-cp2,信息流计划·B,delivering,5000,Creative:C-2025-026-cp2-cr2,场景短剧 15s 竖版,1,douyin,信息流,,,0.23
+Case:C-2025-027,速算蜂·速算蜂App投放案例,live,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-027-cp1,信息流计划·A,delivering,5000,Creative:C-2025-027-cp1-cr1,UGC 口播 15s 竖版,1,xhs,信息流,,,0.11
+Case:C-2025-027,速算蜂·速算蜂App投放案例,live,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-027-cp1,信息流计划·A,delivering,5000,Creative:C-2025-027-cp1-cr2,场景短剧 15s 竖版,0,douyin,信息流,,,0.11
+Case:C-2025-027,速算蜂·速算蜂App投放案例,live,40000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-027-cp2,搜索计划·B,delivering,6000,Creative:C-2025-027-cp2-cr1,品牌专区图文,1,douyin,搜索,,,0.11
+Case:C-2025-027,速算蜂·速算蜂App投放案例,live,40000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-027-cp2,搜索计划·B,delivering,6000,Creative:C-2025-027-cp2-cr2,长尾词图文,0,xhs,搜索,,,0.11
+Case:C-2025-028,眠海科技·晚安研究所褪黑素软糖投放案例,live,80000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-028-cp1,搜索计划·A,delivering,6000,Creative:C-2025-028-cp1-cr1,品牌专区图文,0,douyin,搜索,,,0.24
+Case:C-2025-028,眠海科技·晚安研究所褪黑素软糖投放案例,live,80000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-028-cp1,搜索计划·A,delivering,6000,Creative:C-2025-028-cp1-cr2,长尾词图文,0,xhs,搜索,,,0.24
+Case:C-2025-028,眠海科技·晚安研究所褪黑素软糖投放案例,live,20000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-028-cp2,开屏计划·B,delivering,7000,Creative:C-2025-028-cp2-cr1,大促静态 4s,0,xhs,开屏,,,0.24
+Case:C-2025-028,眠海科技·晚安研究所褪黑素软糖投放案例,live,20000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-028-cp2,开屏计划·B,delivering,7000,Creative:C-2025-028-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏,,,0.24
+Case:C-2025-029,植愈研社·植愈研社App投放案例,live,60000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-029-cp1,开屏计划·A,delivering,7000,Creative:C-2025-029-cp1-cr1,大促静态 4s,0,xhs,开屏,,,0.12
+Case:C-2025-029,植愈研社·植愈研社App投放案例,live,60000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-029-cp1,开屏计划·A,delivering,7000,Creative:C-2025-029-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏,,,0.12
+Case:C-2025-029,植愈研社·植愈研社App投放案例,live,90000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-029-cp2,信息流计划·B,delivering,3000,Creative:C-2025-029-cp2-cr1,达人种草 20s 竖版,0,douyin,信息流,,,0.12
+Case:C-2025-029,植愈研社·植愈研社App投放案例,live,90000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-029-cp2,信息流计划·B,delivering,3000,Creative:C-2025-029-cp2-cr2,UGC 口播 15s 竖版,1,xhs,信息流,,,0.12
+Case:C-2025-030,轻卡星球·轻卡星球App投放案例,live,40000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-030-cp1,信息流计划·A,delivering,3000,Creative:C-2025-030-cp1-cr1,达人种草 20s 竖版,1,douyin,信息流,,,0.25
+Case:C-2025-030,轻卡星球·轻卡星球App投放案例,live,40000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-030-cp1,信息流计划·A,delivering,3000,Creative:C-2025-030-cp1-cr2,UGC 口播 15s 竖版,0,xhs,信息流,,,0.25
+Case:C-2025-030,轻卡星球·轻卡星球App投放案例,live,70000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-030-cp2,搜索计划·B,delivering,4000,Creative:C-2025-030-cp2-cr1,品牌专区图文,1,xhs,搜索,,,0.25
+Case:C-2025-030,轻卡星球·轻卡星球App投放案例,live,70000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-030-cp2,搜索计划·B,delivering,4000,Creative:C-2025-030-cp2-cr2,长尾词图文,0,douyin,搜索,,,0.25
+Case:C-2025-031,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,closed,20000,paid,Brand:B11,Product:P37,Campaign:C-2025-031-cp1,搜索计划·A,paused,4000,Creative:C-2025-031-cp1-cr1,品牌专区图文,0,xhs,搜索,,,0.13
+Case:C-2025-031,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,closed,20000,paid,Brand:B11,Product:P37,Campaign:C-2025-031-cp1,搜索计划·A,paused,4000,Creative:C-2025-031-cp1-cr2,长尾词图文,0,douyin,搜索,,,0.13
+Case:C-2025-031,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,closed,50000,paid,Brand:B11,Product:P37,Campaign:C-2025-031-cp2,开屏计划·B,paused,5000,Creative:C-2025-031-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.13
+Case:C-2025-031,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,closed,50000,paid,Brand:B11,Product:P37,Campaign:C-2025-031-cp2,开屏计划·B,paused,5000,Creative:C-2025-031-cp2-cr2,大促静态 4s,0,xhs,开屏,,,0.13
+Case:C-2025-032,字句出版社·字句出版社App投放案例,closed,90000,paid,Brand:B12,Product:P22,Campaign:C-2025-032-cp1,开屏计划·A,paused,5000,Creative:C-2025-032-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.26
+Case:C-2025-032,字句出版社·字句出版社App投放案例,closed,90000,paid,Brand:B12,Product:P22,Campaign:C-2025-032-cp1,开屏计划·A,paused,5000,Creative:C-2025-032-cp1-cr2,大促静态 4s,1,xhs,开屏,,,0.26
+Case:C-2025-032,字句出版社·字句出版社App投放案例,closed,30000,paid,Brand:B12,Product:P22,Campaign:C-2025-032-cp2,信息流计划·B,paused,6000,Creative:C-2025-032-cp2-cr1,痛点开箱 30s 竖版,0,xhs,信息流,,,0.26
+Case:C-2025-032,字句出版社·字句出版社App投放案例,closed,30000,paid,Brand:B12,Product:P22,Campaign:C-2025-032-cp2,信息流计划·B,paused,6000,Creative:C-2025-032-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流,,,0.26
+Case:C-2025-033,苔原户外·苔原户外App投放案例,closed,70000,paid,Brand:B13,Product:P23,Campaign:C-2025-033-cp1,信息流计划·A,paused,6000,Creative:C-2025-033-cp1-cr1,痛点开箱 30s 竖版,1,xhs,信息流,,,0.14
+Case:C-2025-033,苔原户外·苔原户外App投放案例,closed,70000,paid,Brand:B13,Product:P23,Campaign:C-2025-033-cp1,信息流计划·A,paused,6000,Creative:C-2025-033-cp1-cr2,达人种草 20s 竖版,0,douyin,信息流,,,0.14
+Case:C-2025-033,苔原户外·苔原户外App投放案例,closed,10000,paid,Brand:B13,Product:P23,Campaign:C-2025-033-cp2,搜索计划·B,paused,7000,Creative:C-2025-033-cp2-cr1,品牌专区图文,1,douyin,搜索,,,0.14
+Case:C-2025-033,苔原户外·苔原户外App投放案例,closed,10000,paid,Brand:B13,Product:P23,Campaign:C-2025-033-cp2,搜索计划·B,paused,7000,Creative:C-2025-033-cp2-cr2,长尾词图文,0,xhs,搜索,,,0.14
+Case:C-2025-034,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,closed,50000,paid,Brand:B14,Product:P39,Campaign:C-2025-034-cp1,搜索计划·A,paused,7000,Creative:C-2025-034-cp1-cr1,品牌专区图文,0,douyin,搜索,,,0.27
+Case:C-2025-034,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,closed,50000,paid,Brand:B14,Product:P39,Campaign:C-2025-034-cp1,搜索计划·A,paused,7000,Creative:C-2025-034-cp1-cr2,长尾词图文,0,xhs,搜索,,,0.27
+Case:C-2025-034,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,closed,80000,paid,Brand:B14,Product:P39,Campaign:C-2025-034-cp2,开屏计划·B,paused,3000,Creative:C-2025-034-cp2-cr1,大促静态 4s,0,xhs,开屏,,,0.27
+Case:C-2025-034,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,closed,80000,paid,Brand:B14,Product:P39,Campaign:C-2025-034-cp2,开屏计划·B,paused,3000,Creative:C-2025-034-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏,,,0.27
+Case:C-2025-035,口算星人·口算星人App投放案例,closed,30000,paid,Brand:B15,Product:P25,Campaign:C-2025-035-cp1,开屏计划·A,paused,3000,Creative:C-2025-035-cp1-cr1,大促静态 4s,0,xhs,开屏,,,0.15
+Case:C-2025-035,口算星人·口算星人App投放案例,closed,30000,paid,Brand:B15,Product:P25,Campaign:C-2025-035-cp1,开屏计划·A,paused,3000,Creative:C-2025-035-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏,,,0.15
+Case:C-2025-035,口算星人·口算星人App投放案例,closed,60000,paid,Brand:B15,Product:P25,Campaign:C-2025-035-cp2,信息流计划·B,paused,4000,Creative:C-2025-035-cp2-cr1,场景短剧 15s 竖版,0,douyin,信息流,,,0.15
+Case:C-2025-035,口算星人·口算星人App投放案例,closed,60000,paid,Brand:B15,Product:P25,Campaign:C-2025-035-cp2,信息流计划·B,paused,4000,Creative:C-2025-035-cp2-cr2,痛点开箱 30s 竖版,1,xhs,信息流,,,0.15
+Case:C-2025-036,晚安研究所·晚安研究所App投放案例,closed,10000,paid,Brand:B16,Product:P26,Campaign:C-2025-036-cp1,信息流计划·A,paused,4000,Creative:C-2025-036-cp1-cr1,场景短剧 15s 竖版,1,douyin,信息流,,,0.28
+Case:C-2025-036,晚安研究所·晚安研究所App投放案例,closed,10000,paid,Brand:B16,Product:P26,Campaign:C-2025-036-cp1,信息流计划·A,paused,4000,Creative:C-2025-036-cp1-cr2,痛点开箱 30s 竖版,0,xhs,信息流,,,0.28
+Case:C-2025-036,晚安研究所·晚安研究所App投放案例,closed,40000,paid,Brand:B16,Product:P26,Campaign:C-2025-036-cp2,搜索计划·B,paused,5000,Creative:C-2025-036-cp2-cr1,品牌专区图文,1,xhs,搜索,,,0.28
+Case:C-2025-036,晚安研究所·晚安研究所App投放案例,closed,40000,paid,Brand:B16,Product:P26,Campaign:C-2025-036-cp2,搜索计划·B,paused,5000,Creative:C-2025-036-cp2-cr2,长尾词图文,0,douyin,搜索,,,0.28
+Case:C-2025-037,烟酰胺实验室·植愈研社神经酰胺面霜投放案例,closed,80000,paid,Brand:B17,Product:P36,Campaign:C-2025-037-cp1,搜索计划·A,paused,5000,Creative:C-2025-037-cp1-cr1,品牌专区图文,0,xhs,搜索,,,0.16
+Case:C-2025-037,烟酰胺实验室·植愈研社神经酰胺面霜投放案例,closed,80000,paid,Brand:B17,Product:P36,Campaign:C-2025-037-cp1,搜索计划·A,paused,5000,Creative:C-2025-037-cp1-cr2,长尾词图文,0,douyin,搜索,,,0.16
+Case:C-2025-037,烟酰胺实验室·植愈研社神经酰胺面霜投放案例,closed,20000,paid,Brand:B17,Product:P36,Campaign:C-2025-037-cp2,开屏计划·B,paused,6000,Creative:C-2025-037-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.16
+Case:C-2025-037,烟酰胺实验室·植愈研社神经酰胺面霜投放案例,closed,20000,paid,Brand:B17,Product:P36,Campaign:C-2025-037-cp2,开屏计划·B,paused,6000,Creative:C-2025-037-cp2-cr2,大促静态 4s,0,xhs,开屏,,,0.16
+Case:C-2025-038,海盐轻食·海盐轻食App投放案例,closed,60000,paid,Brand:B18,Product:P28,Campaign:C-2025-038-cp1,开屏计划·A,paused,6000,Creative:C-2025-038-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.29
+Case:C-2025-038,海盐轻食·海盐轻食App投放案例,closed,60000,paid,Brand:B18,Product:P28,Campaign:C-2025-038-cp1,开屏计划·A,paused,6000,Creative:C-2025-038-cp1-cr2,大促静态 4s,1,xhs,开屏,,,0.29
+Case:C-2025-038,海盐轻食·海盐轻食App投放案例,closed,90000,paid,Brand:B18,Product:P28,Campaign:C-2025-038-cp2,信息流计划·B,paused,7000,Creative:C-2025-038-cp2-cr1,UGC 口播 15s 竖版,0,xhs,信息流,,,0.29
+Case:C-2025-038,海盐轻食·海盐轻食App投放案例,closed,90000,paid,Brand:B18,Product:P28,Campaign:C-2025-038-cp2,信息流计划·B,paused,7000,Creative:C-2025-038-cp2-cr2,场景短剧 15s 竖版,1,douyin,信息流,,,0.29
+Case:C-2025-039,肌力芳草地·肌力芳草地App投放案例,closed,40000,paid,Brand:B19,Product:P29,Campaign:C-2025-039-cp1,信息流计划·A,paused,7000,Creative:C-2025-039-cp1-cr1,UGC 口播 15s 竖版,1,xhs,信息流,,,0.17
+Case:C-2025-039,肌力芳草地·肌力芳草地App投放案例,closed,40000,paid,Brand:B19,Product:P29,Campaign:C-2025-039-cp1,信息流计划·A,paused,7000,Creative:C-2025-039-cp1-cr2,场景短剧 15s 竖版,0,douyin,信息流,,,0.17
+Case:C-2025-039,肌力芳草地·肌力芳草地App投放案例,closed,70000,paid,Brand:B19,Product:P29,Campaign:C-2025-039-cp2,搜索计划·B,paused,3000,Creative:C-2025-039-cp2-cr1,品牌专区图文,1,douyin,搜索,,,0.17
+Case:C-2025-039,肌力芳草地·肌力芳草地App投放案例,closed,70000,paid,Brand:B19,Product:P29,Campaign:C-2025-039-cp2,搜索计划·B,paused,3000,Creative:C-2025-039-cp2-cr2,长尾词图文,0,xhs,搜索,,,0.17
+Case:C-2025-040,古卷书局·古卷书局App投放案例,closed,20000,paid,Brand:B20,Product:P30,Campaign:C-2025-040-cp1,搜索计划·A,paused,3000,Creative:C-2025-040-cp1-cr1,品牌专区图文,0,douyin,搜索,,,0.30
+Case:C-2025-040,古卷书局·古卷书局App投放案例,closed,20000,paid,Brand:B20,Product:P30,Campaign:C-2025-040-cp1,搜索计划·A,paused,3000,Creative:C-2025-040-cp1-cr2,长尾词图文,0,xhs,搜索,,,0.30
+Case:C-2025-040,古卷书局·古卷书局App投放案例,closed,50000,paid,Brand:B20,Product:P30,Campaign:C-2025-040-cp2,开屏计划·B,paused,4000,Creative:C-2025-040-cp2-cr1,大促静态 4s,0,xhs,开屏,,,0.30
+Case:C-2025-040,古卷书局·古卷书局App投放案例,closed,50000,paid,Brand:B20,Product:P30,Campaign:C-2025-040-cp2,开屏计划·B,paused,4000,Creative:C-2025-040-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏,,,0.30
+Case:C-2025-041,星野营地·星野营地App投放案例,closed,90000,paid,Brand:B21,Product:P31,Campaign:C-2025-041-cp1,开屏计划·A,paused,4000,Creative:C-2025-041-cp1-cr1,大促静态 4s,0,xhs,开屏,,,0.18
+Case:C-2025-041,星野营地·星野营地App投放案例,closed,90000,paid,Brand:B21,Product:P31,Campaign:C-2025-041-cp1,开屏计划·A,paused,4000,Creative:C-2025-041-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏,,,0.18
+Case:C-2025-041,星野营地·星野营地App投放案例,closed,30000,paid,Brand:B21,Product:P31,Campaign:C-2025-041-cp2,信息流计划·B,paused,5000,Creative:C-2025-041-cp2-cr1,达人种草 20s 竖版,0,douyin,信息流,,,0.18
+Case:C-2025-041,星野营地·星野营地App投放案例,closed,30000,paid,Brand:B21,Product:P31,Campaign:C-2025-041-cp2,信息流计划·B,paused,5000,Creative:C-2025-041-cp2-cr2,UGC 口播 15s 竖版,1,xhs,信息流,,,0.18
+Case:C-2025-042,布偶家族·布偶家族App投放案例,closed,70000,paid,Brand:B22,Product:P32,Campaign:C-2025-042-cp1,信息流计划·A,paused,5000,Creative:C-2025-042-cp1-cr1,达人种草 20s 竖版,1,douyin,信息流,,,0.31
+Case:C-2025-042,布偶家族·布偶家族App投放案例,closed,70000,paid,Brand:B22,Product:P32,Campaign:C-2025-042-cp1,信息流计划·A,paused,5000,Creative:C-2025-042-cp1-cr2,UGC 口播 15s 竖版,0,xhs,信息流,,,0.31
+Case:C-2025-042,布偶家族·布偶家族App投放案例,closed,10000,paid,Brand:B22,Product:P32,Campaign:C-2025-042-cp2,搜索计划·B,paused,6000,Creative:C-2025-042-cp2-cr1,品牌专区图文,1,xhs,搜索,,,0.31
+Case:C-2025-042,布偶家族·布偶家族App投放案例,closed,10000,paid,Brand:B22,Product:P32,Campaign:C-2025-042-cp2,搜索计划·B,paused,6000,Creative:C-2025-042-cp2-cr2,长尾词图文,0,douyin,搜索,,,0.31
+Case:C-2025-043,思维导图侠·思维导图侠App投放案例,closed,50000,paid,Brand:B23,Product:P33,Campaign:C-2025-043-cp1,搜索计划·A,paused,6000,Creative:C-2025-043-cp1-cr1,品牌专区图文,0,xhs,搜索,,,0.19
+Case:C-2025-043,思维导图侠·思维导图侠App投放案例,closed,50000,paid,Brand:B23,Product:P33,Campaign:C-2025-043-cp1,搜索计划·A,paused,6000,Creative:C-2025-043-cp1-cr2,长尾词图文,0,douyin,搜索,,,0.19
+Case:C-2025-043,思维导图侠·思维导图侠App投放案例,closed,80000,paid,Brand:B23,Product:P33,Campaign:C-2025-043-cp2,开屏计划·B,paused,7000,Creative:C-2025-043-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.19
+Case:C-2025-043,思维导图侠·思维导图侠App投放案例,closed,80000,paid,Brand:B23,Product:P33,Campaign:C-2025-043-cp2,开屏计划·B,paused,7000,Creative:C-2025-043-cp2-cr2,大促静态 4s,0,xhs,开屏,,,0.19
+Case:C-2025-044,静音舱·静音舱App投放案例,closed,30000,paid,Brand:B24,Product:P34,Campaign:C-2025-044-cp1,开屏计划·A,paused,7000,Creative:C-2025-044-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,0.32
+Case:C-2025-044,静音舱·静音舱App投放案例,closed,30000,paid,Brand:B24,Product:P34,Campaign:C-2025-044-cp1,开屏计划·A,paused,7000,Creative:C-2025-044-cp1-cr2,大促静态 4s,1,xhs,开屏,,,0.32
+Case:C-2025-044,静音舱·静音舱App投放案例,closed,60000,paid,Brand:B24,Product:P34,Campaign:C-2025-044-cp2,信息流计划·B,paused,3000,Creative:C-2025-044-cp2-cr1,痛点开箱 30s 竖版,0,xhs,信息流,,,0.32
+Case:C-2025-044,静音舱·静音舱App投放案例,closed,60000,paid,Brand:B24,Product:P34,Campaign:C-2025-044-cp2,信息流计划·B,paused,3000,Creative:C-2025-044-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流,,,0.32
+Case:C-2025-045,轻食日记·轻食日记App投放案例,proposal,10000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-045-cp1,信息流计划·A,paused,3000,Creative:C-2025-045-cp1-cr1,痛点开箱 30s 竖版,1,xhs,信息流,,,
+Case:C-2025-045,轻食日记·轻食日记App投放案例,proposal,10000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-045-cp1,信息流计划·A,paused,3000,Creative:C-2025-045-cp1-cr2,达人种草 20s 竖版,0,douyin,信息流,,,
+Case:C-2025-045,轻食日记·轻食日记App投放案例,proposal,40000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-045-cp2,搜索计划·B,paused,4000,Creative:C-2025-045-cp2-cr1,品牌专区图文,1,douyin,搜索,,,
+Case:C-2025-045,轻食日记·轻食日记App投放案例,proposal,40000,unbilled,Brand:B01,Product:P01,Campaign:C-2025-045-cp2,搜索计划·B,paused,4000,Creative:C-2025-045-cp2-cr2,长尾词图文,0,xhs,搜索,,,
+Case:C-2025-046,律动星球·铁山攀岩镁粉袋套装投放案例,proposal,80000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-046-cp1,搜索计划·A,paused,4000,Creative:C-2025-046-cp1-cr1,品牌专区图文,0,douyin,搜索,,,
+Case:C-2025-046,律动星球·铁山攀岩镁粉袋套装投放案例,proposal,80000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-046-cp1,搜索计划·A,paused,4000,Creative:C-2025-046-cp1-cr2,长尾词图文,0,xhs,搜索,,,
+Case:C-2025-046,律动星球·铁山攀岩镁粉袋套装投放案例,proposal,20000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-046-cp2,开屏计划·B,paused,5000,Creative:C-2025-046-cp2-cr1,大促静态 4s,0,xhs,开屏,,,
+Case:C-2025-046,律动星球·铁山攀岩镁粉袋套装投放案例,proposal,20000,unbilled,Brand:B02,Product:P37,Campaign:C-2025-046-cp2,开屏计划·B,paused,5000,Creative:C-2025-046-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏,,,
+Case:C-2025-047,拾光书屋·拾光书屋App投放案例,proposal,60000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-047-cp1,开屏计划·A,paused,5000,Creative:C-2025-047-cp1-cr1,大促静态 4s,0,xhs,开屏,,,
+Case:C-2025-047,拾光书屋·拾光书屋App投放案例,proposal,60000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-047-cp1,开屏计划·A,paused,5000,Creative:C-2025-047-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏,,,
+Case:C-2025-047,拾光书屋·拾光书屋App投放案例,proposal,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-047-cp2,信息流计划·B,paused,6000,Creative:C-2025-047-cp2-cr1,场景短剧 15s 竖版,0,douyin,信息流,,,
+Case:C-2025-047,拾光书屋·拾光书屋App投放案例,proposal,90000,unbilled,Brand:B03,Product:P03,Campaign:C-2025-047-cp2,信息流计划·B,paused,6000,Creative:C-2025-047-cp2-cr2,痛点开箱 30s 竖版,1,xhs,信息流,,,
+Case:C-2025-048,澄肌研究所·澄肌研究所小程序投放案例,proposal,40000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-048-cp1,信息流计划·A,paused,6000,Creative:C-2025-048-cp1-cr1,场景短剧 15s 竖版,1,douyin,信息流,,,
+Case:C-2025-048,澄肌研究所·澄肌研究所小程序投放案例,proposal,40000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-048-cp1,信息流计划·A,paused,6000,Creative:C-2025-048-cp1-cr2,痛点开箱 30s 竖版,0,xhs,信息流,,,
+Case:C-2025-048,澄肌研究所·澄肌研究所小程序投放案例,proposal,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-048-cp2,搜索计划·B,paused,7000,Creative:C-2025-048-cp2-cr1,品牌专区图文,1,xhs,搜索,,,
+Case:C-2025-048,澄肌研究所·澄肌研究所小程序投放案例,proposal,70000,unbilled,Brand:B04,Product:P04,Campaign:C-2025-048-cp2,搜索计划·B,paused,7000,Creative:C-2025-048-cp2-cr2,长尾词图文,0,douyin,搜索,,,
+Case:C-2025-049,途野露营·苔原户外四季帐篷投放案例,proposal,20000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-049-cp1,搜索计划·A,paused,7000,Creative:C-2025-049-cp1-cr1,品牌专区图文,0,xhs,搜索,,,
+Case:C-2025-049,途野露营·苔原户外四季帐篷投放案例,proposal,20000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-049-cp1,搜索计划·A,paused,7000,Creative:C-2025-049-cp1-cr2,长尾词图文,0,douyin,搜索,,,
+Case:C-2025-049,途野露营·苔原户外四季帐篷投放案例,proposal,50000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-049-cp2,开屏计划·B,paused,3000,Creative:C-2025-049-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,
+Case:C-2025-049,途野露营·苔原户外四季帐篷投放案例,proposal,50000,unbilled,Brand:B05,Product:P38,Campaign:C-2025-049-cp2,开屏计划·B,paused,3000,Creative:C-2025-049-cp2-cr2,大促静态 4s,0,xhs,开屏,,,
+Case:C-2025-050,喵汪到家·喵汪到家小程序投放案例,proposal,90000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-050-cp1,开屏计划·A,paused,3000,Creative:C-2025-050-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏,,,
+Case:C-2025-050,喵汪到家·喵汪到家小程序投放案例,proposal,90000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-050-cp1,开屏计划·A,paused,3000,Creative:C-2025-050-cp1-cr2,大促静态 4s,1,xhs,开屏,,,
+Case:C-2025-050,喵汪到家·喵汪到家小程序投放案例,proposal,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-050-cp2,信息流计划·B,paused,4000,Creative:C-2025-050-cp2-cr1,UGC 口播 15s 竖版,0,xhs,信息流,,,
+Case:C-2025-050,喵汪到家·喵汪到家小程序投放案例,proposal,30000,unbilled,Brand:B06,Product:P06,Campaign:C-2025-050-cp2,信息流计划·B,paused,4000,Creative:C-2025-050-cp2-cr2,场景短剧 15s 竖版,1,douyin,信息流,,,
+Case:C-2025-051,速算蜂·速算蜂App投放案例,lost,70000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-051-cp1,信息流计划·A,paused,4000,Creative:C-2025-051-cp1-cr1,UGC 口播 15s 竖版,1,xhs,信息流,预算被竞品方案挤占,,
+Case:C-2025-051,速算蜂·速算蜂App投放案例,lost,70000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-051-cp1,信息流计划·A,paused,4000,Creative:C-2025-051-cp1-cr2,场景短剧 15s 竖版,0,douyin,信息流,预算被竞品方案挤占,,
+Case:C-2025-051,速算蜂·速算蜂App投放案例,lost,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-051-cp2,搜索计划·B,paused,5000,Creative:C-2025-051-cp2-cr1,品牌专区图文,1,douyin,搜索,预算被竞品方案挤占,,
+Case:C-2025-051,速算蜂·速算蜂App投放案例,lost,10000,unbilled,Brand:B07,Product:P07,Campaign:C-2025-051-cp2,搜索计划·B,paused,5000,Creative:C-2025-051-cp2-cr2,长尾词图文,0,xhs,搜索,预算被竞品方案挤占,,
+Case:C-2025-052,眠海科技·晚安研究所褪黑素软糖投放案例,lost,50000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-052-cp1,搜索计划·A,paused,5000,Creative:C-2025-052-cp1-cr1,品牌专区图文,0,douyin,搜索,达人档期冲突，提案超期,,
+Case:C-2025-052,眠海科技·晚安研究所褪黑素软糖投放案例,lost,50000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-052-cp1,搜索计划·A,paused,5000,Creative:C-2025-052-cp1-cr2,长尾词图文,0,xhs,搜索,达人档期冲突，提案超期,,
+Case:C-2025-052,眠海科技·晚安研究所褪黑素软糖投放案例,lost,80000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-052-cp2,开屏计划·B,paused,6000,Creative:C-2025-052-cp2-cr1,大促静态 4s,0,xhs,开屏,达人档期冲突，提案超期,,
+Case:C-2025-052,眠海科技·晚安研究所褪黑素软糖投放案例,lost,80000,unbilled,Brand:B08,Product:P40,Campaign:C-2025-052-cp2,开屏计划·B,paused,6000,Creative:C-2025-052-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏,达人档期冲突，提案超期,,
+Case:C-2025-053,植愈研社·植愈研社App投放案例,lost,30000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-053-cp1,开屏计划·A,paused,6000,Creative:C-2025-053-cp1-cr1,大促静态 4s,0,xhs,开屏,客户侧产品改版，投放暂缓,,
+Case:C-2025-053,植愈研社·植愈研社App投放案例,lost,30000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-053-cp1,开屏计划·A,paused,6000,Creative:C-2025-053-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏,客户侧产品改版，投放暂缓,,
+Case:C-2025-053,植愈研社·植愈研社App投放案例,lost,60000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-053-cp2,信息流计划·B,paused,7000,Creative:C-2025-053-cp2-cr1,达人种草 20s 竖版,0,douyin,信息流,客户侧产品改版，投放暂缓,,
+Case:C-2025-053,植愈研社·植愈研社App投放案例,lost,60000,unbilled,Brand:B09,Product:P19,Campaign:C-2025-053-cp2,信息流计划·B,paused,7000,Creative:C-2025-053-cp2-cr2,UGC 口播 15s 竖版,1,xhs,信息流,客户侧产品改版，投放暂缓,,
+Case:C-2025-054,轻卡星球·轻卡星球App投放案例,lost,10000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-054-cp1,信息流计划·A,paused,7000,Creative:C-2025-054-cp1-cr1,达人种草 20s 竖版,1,douyin,信息流,预算被竞品方案挤占,,
+Case:C-2025-054,轻卡星球·轻卡星球App投放案例,lost,10000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-054-cp1,信息流计划·A,paused,7000,Creative:C-2025-054-cp1-cr2,UGC 口播 15s 竖版,0,xhs,信息流,预算被竞品方案挤占,,
+Case:C-2025-054,轻卡星球·轻卡星球App投放案例,lost,40000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-054-cp2,搜索计划·B,paused,3000,Creative:C-2025-054-cp2-cr1,品牌专区图文,1,xhs,搜索,预算被竞品方案挤占,,
+Case:C-2025-054,轻卡星球·轻卡星球App投放案例,lost,40000,unbilled,Brand:B10,Product:P20,Campaign:C-2025-054-cp2,搜索计划·B,paused,3000,Creative:C-2025-054-cp2-cr2,长尾词图文,0,douyin,搜索,预算被竞品方案挤占,,
+Case:C-2025-055,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,lost,80000,unbilled,Brand:B11,Product:P37,Campaign:C-2025-055-cp1,搜索计划·A,paused,3000,Creative:C-2025-055-cp1-cr1,品牌专区图文,0,xhs,搜索,达人档期冲突，提案超期,,
+Case:C-2025-055,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,lost,80000,unbilled,Brand:B11,Product:P37,Campaign:C-2025-055-cp1,搜索计划·A,paused,3000,Creative:C-2025-055-cp1-cr2,长尾词图文,0,douyin,搜索,达人档期冲突，提案超期,,
+Case:C-2025-055,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,lost,20000,unbilled,Brand:B11,Product:P37,Campaign:C-2025-055-cp2,开屏计划·B,paused,4000,Creative:C-2025-055-cp2-cr1,品牌主视觉 5s 动态,0,douyin,开屏,达人档期冲突，提案超期,,
+Case:C-2025-055,铁山攀岩馆·铁山攀岩镁粉袋套装投放案例,lost,20000,unbilled,Brand:B11,Product:P37,Campaign:C-2025-055-cp2,开屏计划·B,paused,4000,Creative:C-2025-055-cp2-cr2,大促静态 4s,0,xhs,开屏,达人档期冲突，提案超期,,
+Case:C-2025-056,字句出版社·字句出版社App投放案例,lost,60000,unbilled,Brand:B12,Product:P22,Campaign:C-2025-056-cp1,开屏计划·A,paused,4000,Creative:C-2025-056-cp1-cr1,品牌主视觉 5s 动态,0,douyin,开屏,客户侧产品改版，投放暂缓,,
+Case:C-2025-056,字句出版社·字句出版社App投放案例,lost,60000,unbilled,Brand:B12,Product:P22,Campaign:C-2025-056-cp1,开屏计划·A,paused,4000,Creative:C-2025-056-cp1-cr2,大促静态 4s,1,xhs,开屏,客户侧产品改版，投放暂缓,,
+Case:C-2025-056,字句出版社·字句出版社App投放案例,lost,90000,unbilled,Brand:B12,Product:P22,Campaign:C-2025-056-cp2,信息流计划·B,paused,5000,Creative:C-2025-056-cp2-cr1,痛点开箱 30s 竖版,0,xhs,信息流,客户侧产品改版，投放暂缓,,
+Case:C-2025-056,字句出版社·字句出版社App投放案例,lost,90000,unbilled,Brand:B12,Product:P22,Campaign:C-2025-056-cp2,信息流计划·B,paused,5000,Creative:C-2025-056-cp2-cr2,达人种草 20s 竖版,1,douyin,信息流,客户侧产品改版，投放暂缓,,
+Case:C-2025-057,苔原户外·苔原户外App投放案例,terminated,40000,unbilled,Brand:B13,Product:P23,Campaign:C-2025-057-cp1,信息流计划·A,paused,5000,Creative:C-2025-057-cp1-cr1,痛点开箱 30s 竖版,1,xhs,信息流,,客户年度预算终止,
+Case:C-2025-057,苔原户外·苔原户外App投放案例,terminated,40000,unbilled,Brand:B13,Product:P23,Campaign:C-2025-057-cp1,信息流计划·A,paused,5000,Creative:C-2025-057-cp1-cr2,达人种草 20s 竖版,0,douyin,信息流,,客户年度预算终止,
+Case:C-2025-057,苔原户外·苔原户外App投放案例,terminated,70000,unbilled,Brand:B13,Product:P23,Campaign:C-2025-057-cp2,搜索计划·B,paused,6000,Creative:C-2025-057-cp2-cr1,品牌专区图文,1,douyin,搜索,,客户年度预算终止,
+Case:C-2025-057,苔原户外·苔原户外App投放案例,terminated,70000,unbilled,Brand:B13,Product:P23,Campaign:C-2025-057-cp2,搜索计划·B,paused,6000,Creative:C-2025-057-cp2-cr2,长尾词图文,0,xhs,搜索,,客户年度预算终止,
+Case:C-2025-058,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,terminated,20000,unbilled,Brand:B14,Product:P39,Campaign:C-2025-058-cp1,搜索计划·A,paused,6000,Creative:C-2025-058-cp1-cr1,品牌专区图文,0,douyin,搜索,,合作条款未谈拢提前终止,
+Case:C-2025-058,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,terminated,20000,unbilled,Brand:B14,Product:P39,Campaign:C-2025-058-cp1,搜索计划·A,paused,6000,Creative:C-2025-058-cp1-cr2,长尾词图文,0,xhs,搜索,,合作条款未谈拢提前终止,
+Case:C-2025-058,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,terminated,50000,unbilled,Brand:B14,Product:P39,Campaign:C-2025-058-cp2,开屏计划·B,paused,7000,Creative:C-2025-058-cp2-cr1,大促静态 4s,0,xhs,开屏,,合作条款未谈拢提前终止,
+Case:C-2025-058,爪爪联盟·爪爪联盟冻干主食试吃装投放案例,terminated,50000,unbilled,Brand:B14,Product:P39,Campaign:C-2025-058-cp2,开屏计划·B,paused,7000,Creative:C-2025-058-cp2-cr2,品牌主视觉 5s 动态,0,douyin,开屏,,合作条款未谈拢提前终止,
+Case:C-2025-059,口算星人·口算星人App投放案例,terminated,90000,unbilled,Brand:B15,Product:P25,Campaign:C-2025-059-cp1,开屏计划·A,paused,7000,Creative:C-2025-059-cp1-cr1,大促静态 4s,0,xhs,开屏,,效果未达约定阈值终止,
+Case:C-2025-059,口算星人·口算星人App投放案例,terminated,90000,unbilled,Brand:B15,Product:P25,Campaign:C-2025-059-cp1,开屏计划·A,paused,7000,Creative:C-2025-059-cp1-cr2,品牌主视觉 5s 动态,1,douyin,开屏,,效果未达约定阈值终止,
+Case:C-2025-059,口算星人·口算星人App投放案例,terminated,30000,unbilled,Brand:B15,Product:P25,Campaign:C-2025-059-cp2,信息流计划·B,paused,3000,Creative:C-2025-059-cp2-cr1,场景短剧 15s 竖版,0,douyin,信息流,,效果未达约定阈值终止,
+Case:C-2025-059,口算星人·口算星人App投放案例,terminated,30000,unbilled,Brand:B15,Product:P25,Campaign:C-2025-059-cp2,信息流计划·B,paused,3000,Creative:C-2025-059-cp2-cr2,痛点开箱 30s 竖版,1,xhs,信息流,,效果未达约定阈值终止,
+Case:C-2025-060,晚安研究所·晚安研究所App投放案例,terminated,70000,unbilled,Brand:B16,Product:P26,Campaign:C-2025-060-cp1,信息流计划·A,paused,3000,Creative:C-2025-060-cp1-cr1,场景短剧 15s 竖版,1,douyin,信息流,,客户年度预算终止,
+Case:C-2025-060,晚安研究所·晚安研究所App投放案例,terminated,70000,unbilled,Brand:B16,Product:P26,Campaign:C-2025-060-cp1,信息流计划·A,paused,3000,Creative:C-2025-060-cp1-cr2,痛点开箱 30s 竖版,0,xhs,信息流,,客户年度预算终止,
+Case:C-2025-060,晚安研究所·晚安研究所App投放案例,terminated,10000,unbilled,Brand:B16,Product:P26,Campaign:C-2025-060-cp2,搜索计划·B,paused,4000,Creative:C-2025-060-cp2-cr1,品牌专区图文,1,xhs,搜索,,客户年度预算终止,
+Case:C-2025-060,晚安研究所·晚安研究所App投放案例,terminated,10000,unbilled,Brand:B16,Product:P26,Campaign:C-2025-060-cp2,搜索计划·B,paused,4000,Creative:C-2025-060-cp2-cr2,长尾词图文,0,douyin,搜索,,客户年度预算终止,

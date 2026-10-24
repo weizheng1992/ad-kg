@@ -181,6 +181,11 @@ def main() -> None:
     for r in _rows("creator_products.csv"):
         relations.append(Relation(source=r["creator_id"], predicate="promotes",
                                   target=r["product_id"], provenance=p_cr))
+    # ── 扩容批次（2026-10-24）：新案例负责人——org_people 逐字节不动，单独立表 ──
+    if (SEED / "case_persons.csv").exists():
+        for r in _rows("case_persons.csv"):
+            relations.append(Relation(source=r["person_id"], predicate="responsible_for",
+                                      target=r["case_id"], provenance=p_people))
 
     # ── 规范（frontmatter 带机判阈值）────────────────────────────────
     p_gd = prov("seed:guidelines")
@@ -240,7 +245,19 @@ def main() -> None:
             cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
                         " VALUES ('xhs', %s, %s) ON CONFLICT DO NOTHING",
                         (f"xhs_cr{i}", cid))
-    print("entity_alias：双平台锚点 + 16 条平台回执对齐（其余 unmatched 留给人审演示）")
+        # 扩容批次对齐（2026-10-24）：新案例素材 ↔ dy_cr100+ / xhs_cr100+ 段（各 80，
+        # 与 gen_seed 扩容事实一一对应——新案例全部进 unified_metrics 口径面）
+        for i, cid in enumerate([r["creative_id"] for r in cc if r["platform"] == "douyin"
+                                 and int(r["case_id"].rsplit("-", 1)[1]) > 20][:80]):
+            cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
+                        " VALUES ('douyin', %s, %s) ON CONFLICT DO NOTHING",
+                        (f"dy_cr{100 + i}", cid))
+        for i, cid in enumerate([r["creative_id"] for r in cc if r["platform"] == "xhs"
+                                 and int(r["case_id"].rsplit("-", 1)[1]) > 20][:80]):
+            cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
+                        " VALUES ('xhs', %s, %s) ON CONFLICT DO NOTHING",
+                        (f"xhs_cr{100 + i}", cid))
+    print("entity_alias：双平台锚点 + 16 条平台回执对齐 + 扩容 160 条（其余 unmatched 留给人审演示）")
 
     # ── 文档路：cases + guidelines 走流水线（raw + chunk 入 PG，嵌入本地当场生成）──
     from adkg.llm import LLMClient

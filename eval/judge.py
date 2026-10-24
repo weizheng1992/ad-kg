@@ -18,8 +18,10 @@ def judge_item(chat_json, question: str, points: list[str],
                evidence: list[dict]) -> dict | None:
     if not points:
         return None
+    # 证据窗口 8→16（2026-10-24 种子扩容，spec §12）：graph 腿关系边变多后，
+    # fact/doc 证据常排在 8 条关系边之后——窗口太小判分员根本看不到数值与文档
     trimmed = [{k: (v[:3] if isinstance(v, list) else v) for k, v in ev.items()}
-               for ev in evidence[:8]]
+               for ev in evidence[:16]]
     try:
         payload = chat_json(
             JUDGE_PROMPT,

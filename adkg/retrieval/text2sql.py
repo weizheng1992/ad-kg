@@ -410,8 +410,11 @@ def build_sql(question: str, plan, entity_ids: list[str] | None = None) -> tuple
         cols = ", ".join(f"{_agg_expr(c)} AS {c}"
                          for c in priority + [m for m in metrics if m not in priority][:2])
         ids = [i for i in params["ids"] if i.startswith("Creative:")]
-        sql = (f"SELECT creative_id, {cols} FROM unified_metrics"
-               f" WHERE {' AND '.join(conds + ['creative_id = ANY(%(ids)s)'])} GROUP BY 1 LIMIT 50")
+        # 双平台同素材锚点（§12.5）：按 (素材, 平台) 分行——单平台素材行数不变
+        # （G08/G31-35 期望零影响），双平台锚点出两行供「双平台数值」类证据点
+        sql = (f"SELECT creative_id, platform, {cols} FROM unified_metrics"
+               f" WHERE {' AND '.join(conds + ['creative_id = ANY(%(ids)s)'])}"
+               f" GROUP BY 1, 2 LIMIT 50")
         params = {**params, "ids": ids or ["Creative:-"]}
     else:
         # 平台汇总：投影一律 _agg_expr——比率列汇总比，禁止裸 sum(ctr/cvr)（§六 铁律，
