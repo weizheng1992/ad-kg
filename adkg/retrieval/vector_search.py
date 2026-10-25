@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import psycopg
 
+from adkg.store import pg_pool
+
 
 def _vec_literal(v: list[float]) -> str:
     return "[" + ",".join(f"{x:.6f}" for x in v) + "]"
@@ -47,7 +49,7 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
             return {"evidence": [], "degraded": False}
         like = " OR ".join("text ILIKE %s" for _ in kws)
         kws = [f"%{k}%" for k in kws]
-        with psycopg.connect(dsn, options="-c statement_timeout=3000") as conn:
+        with pg_pool.connect(dsn, options="-c statement_timeout=3000") as conn:
             with conn.cursor() as cur:
                 cur.execute(f"SELECT doc_id, chunk_index, text, 0.5 FROM chunks"
                             f" WHERE {' AND '.join(where)} AND ({like})"
@@ -78,7 +80,7 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
                                     ORDER BY embedding <=> %s::vector) AS rn
           FROM chunks WHERE embedding IS NOT NULL{''.join(' AND ' + c for c in perm)}
         ) t WHERE rn <= 3 ORDER BY score DESC LIMIT {int(limit)}""")
-    with psycopg.connect(dsn, options="-c statement_timeout=3000") as conn:
+    with pg_pool.connect(dsn, options="-c statement_timeout=3000") as conn:
         with conn.cursor() as cur:
             cur.execute(sql, [vec, vec, *where_params])
             rows = cur.fetchall()

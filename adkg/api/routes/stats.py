@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
@@ -28,7 +30,7 @@ def _metrics(env: dict, plan, days: int) -> dict:
     cost_sel = f"{agg_expr('cost')} AS cost" if show_cost else "NULL::numeric AS cost"
     conv_sel = "sum(conversions) AS conversions" if show_conv else "NULL::numeric AS conversions"
     try:
-        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=4000",
+        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=4000",
                              row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT date::text AS date, " + cost_sel + ", " + conv_sel +

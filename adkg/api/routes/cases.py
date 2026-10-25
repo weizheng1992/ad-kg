@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -32,7 +34,7 @@ def _case_stats_batch(env: dict, plan, case_ids: list[str]) -> dict[str, dict]:
     predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
     try:
         proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=4000",
+        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=4000",
                              row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT case_id, {proj}, string_agg(DISTINCT platform::text, ',') AS platforms,"
@@ -168,7 +170,7 @@ def case_detail(request: Request, cid: str,
     creative_rows: list[dict] = []
     try:
         proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT creative_id, string_agg(DISTINCT platform::text, ',') AS platforms,"
@@ -184,7 +186,7 @@ def case_detail(request: Request, cid: str,
     # 内容：案例文档 chunks（gen_seed 模板即真源，chunk#0 首行为标题）
     docs: list[dict] = []
     try:
-        with psycopg.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as conn, conn.cursor() as cur:
+        with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute("SELECT doc_id, chunk_index, text FROM chunks"
                         " WHERE case_id = %(id)s ORDER BY doc_id, chunk_index LIMIT 30",
                         {"id": cid})
@@ -196,7 +198,7 @@ def case_detail(request: Request, cid: str,
     # 流转记录：该案例的审计动作（种子无记录时前端诚实显示「暂无」）
     timeline: list[dict] = []
     try:
-        with psycopg.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as conn, conn.cursor() as cur:
+        with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute("SELECT ts::text AS ts, role, action, verdict, reason"
                         " FROM audit_log WHERE target = %(id)s"
                         " ORDER BY ts DESC LIMIT 20", {"id": cid})

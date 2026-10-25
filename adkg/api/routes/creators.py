@@ -18,6 +18,8 @@ import re
 from datetime import datetime, timezone
 
 import psycopg
+
+from adkg.store import pg_pool
 from psycopg.rows import dict_row
 from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
 
@@ -42,7 +44,7 @@ def _collab_stats(env: dict, plan, case_ids: list[str]) -> dict | None:
     predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
     try:
         proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT {proj}, string_agg(DISTINCT platform::text, ',') AS platforms,"
@@ -112,7 +114,7 @@ def record_quote_history(env: dict, creator_id: str, quote_20s, source_type: str
 
     if not quote_20s:
         return
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute(
             "INSERT INTO creator_quote_history (creator_id, date, quote_20s, source_type,"
             " source_id) VALUES (%s, current_date, %s, %s, %s)"
@@ -160,7 +162,7 @@ def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                   f"更高权威（{existing}）在场，仅补空缺字段 {sorted(filled)}（§10 字段级仲裁）")
             return {"outcome": "merged", "creator_id": creator_id,
                     "filled": sorted(filled)}
-        with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+        with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
             cur.execute(
                 "INSERT INTO review_queue (kind, payload)"
                 " SELECT 'conflict', %(payload)s"
@@ -354,7 +356,7 @@ def creator_detail(request: Request, cid: str,
     # 报价历史（spec §15）：种子轨迹 + 三条入库口的运行时快照
     history: list[dict] = []
     try:
-        with psycopg.connect(request.app.state.env["ADKG_PG_DSN"],
+        with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
                              row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute("SELECT date::text AS date, quote_20s, source_type"
                         " FROM creator_quote_history WHERE creator_id = %(id)s"

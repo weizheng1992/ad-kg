@@ -5,13 +5,15 @@ import json
 
 import psycopg
 
+from adkg.store import pg_pool
+
 
 class TraceStore:
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
 
     def insert_provenance(self, prov) -> str:
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO provenance (source_type, source_id, fetched_at, authority,"
                 " source_url, version, confidence) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
@@ -20,12 +22,12 @@ class TraceStore:
             return str(cur.fetchone()[0])
 
     def provenance_count(self) -> int:
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM provenance")
             return cur.fetchone()[0]
 
     def job_upsert(self, source_id: str, version: str, raw_ref: str) -> None:
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO ingest_job (source_id, version, raw_ref)"
                 " VALUES (%s,%s,%s) ON CONFLICT (source_id, version) DO UPDATE"
@@ -34,7 +36,7 @@ class TraceStore:
 
     def job_done(self, source_id: str, version: str) -> bool:
         """(source_id, version) 两段都已 done 才算同步完成——定时增量的跳过判据（§7.2）。"""
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT pg_status = 'done' AND neo4j_status = 'done'"
                 " FROM ingest_job WHERE source_id = %s AND version = %s",
@@ -44,7 +46,7 @@ class TraceStore:
 
     def job_mark(self, source_id: str, version: str, *, pg: str | None = None,
                  neo4j: str | None = None, error: str | None = None) -> None:
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "UPDATE ingest_job SET"
                 " pg_status = coalesce(%s, pg_status),"
@@ -54,7 +56,7 @@ class TraceStore:
                 (pg, neo4j, error, source_id, version))
 
     def push_review(self, kind: str, payload: dict) -> None:
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO review_queue (kind, payload) VALUES (%s, %s)",
                 (kind, json.dumps(payload, ensure_ascii=False, default=str)))

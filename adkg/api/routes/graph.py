@@ -92,12 +92,13 @@ def _entity_stats(env: dict, plan, graph, cls: str | None, entity_id: str) -> di
 def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
     """投放侧统计：unified_metrics 按 case/product 维度汇总比聚合。"""
     import psycopg
+    from adkg.store import pg_pool
     from psycopg.rows import dict_row
 
     predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
     try:
         proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -135,7 +136,7 @@ def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
     from psycopg.rows import dict_row
 
     try:
-        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 # 投放 clicks 预聚合 + 聚合表达式收在 metrics.py（uc_clicks_sql/

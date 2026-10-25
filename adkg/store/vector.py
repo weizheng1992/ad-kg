@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import psycopg
 
+from adkg.store import pg_pool
+
 
 class VectorStore:
     def __init__(self, dsn: str) -> None:
@@ -14,7 +16,7 @@ class VectorStore:
 
     def save_chunks(self, chunks) -> None:
         """一批 chunk 连同各自 provenance 一次事务写入。"""
-        with psycopg.connect(self.dsn) as conn:
+        with pg_pool.connect(self.dsn) as conn:
             for c in chunks:
                 with conn.cursor() as cur:
                     cur.execute(
@@ -39,10 +41,10 @@ class VectorStore:
                          c.embedding, prov_id))
 
     def count_by_doc(self, doc_id: str) -> int:
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM chunks WHERE doc_id = %s", (doc_id,))
             return cur.fetchone()[0]
 
     def delete_by_doc(self, doc_id: str) -> None:
-        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+        with pg_pool.connect(self.dsn) as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM chunks WHERE doc_id = %s", (doc_id,))

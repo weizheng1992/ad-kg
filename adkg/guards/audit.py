@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import psycopg
 
+from adkg.store import pg_pool
+
 
 def audit(env: dict, role: str, person: str | None, action: str,
           target: str, verdict: str = "info", reason: str = "", *,
@@ -24,6 +26,6 @@ def audit(env: dict, role: str, person: str | None, action: str,
         with conn.cursor() as cur:
             cur.execute(stmt, vals)
             return str(cur.fetchone()[0])
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute(stmt, vals)
         return str(cur.fetchone()[0])

@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from adkg.guards.http import resolve_identity
@@ -36,7 +38,7 @@ def list_roles(request: Request,
     _require_admin_view(role_)
     env = request.app.state.env
     roles = roles_of(env)
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("SELECT role, count(*) FROM app_user WHERE NOT disabled"
                     " GROUP BY role")
         used = dict(cur.fetchall())
@@ -71,7 +73,7 @@ def create_role(request: Request, body: dict,
     if base_role not in existing or existing[base_role]["source"] != "system":
         raise HTTPException(422, f"base_role 必须是系统角色：{base_role}")
     from adkg.guards.audit import audit
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("INSERT INTO app_role (name, label, source, base_role, description)"
                     " VALUES (%s, %s, 'custom', %s, %s)", (name, label, base_role, description))
         cur.executemany("INSERT INTO app_role_action (role, action) VALUES (%s, %s)",
@@ -100,11 +102,11 @@ def update_role(request: Request, name: str, body: dict,
         new_base = str(body["base_role"])
         if new_base in existing and existing[new_base]["source"] == "system" \
                 and new_base != name:
-            with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+            with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
                 cur.execute("UPDATE app_role SET base_role = %s WHERE name = %s",
                             (new_base, name))
     from adkg.guards.audit import audit
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("UPDATE app_role SET label = %s, description = %s WHERE name = %s",
                     (str(body.get("label") or existing[name]["label"]),
                      str(body.get("description") or existing[name]["description"]), name))
@@ -128,7 +130,7 @@ def delete_role(request: Request, name: str,
         raise HTTPException(404, f"角色 {name} 不存在")
     if existing[name]["source"] == "system":
         raise HTTPException(422, "系统角色不可删（数据面定义在 permissions.yaml）")
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("SELECT count(*) FROM app_user WHERE role = %s", (name,))
         if cur.fetchone()[0]:
             raise HTTPException(409, "仍有账号占用该角色（先在人员管理改绑）")
@@ -153,7 +155,7 @@ def set_account_role(request: Request, uid: str, body: dict,
     if new_role not in roles:
         raise HTTPException(422, f"未知角色：{new_role}")
     from adkg.guards.audit import audit
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         n = cur.execute("UPDATE app_user SET role = %s WHERE id = %s RETURNING username",
                         (new_role, uid)).fetchall()
         if not n:

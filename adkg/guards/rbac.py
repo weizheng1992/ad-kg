@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from psycopg.rows import dict_row
 
 # 按钮权限词表（前端按钮显隐同一份语义）
@@ -58,7 +60,7 @@ def ensure_seed(env: dict[str, str], yaml_roles: list[str]) -> None:
     from pathlib import Path
     base = Path(__file__).resolve().parents[2] / "ontology" / "permissions.yaml"
     roles_cfg = _yaml.safe_load(base.read_text(encoding="utf-8"))["roles"]  # noqa: F841
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         for name in yaml_roles:
             cur.execute(
                 "INSERT INTO app_role (name, label, source, base_role, description)"
@@ -81,7 +83,7 @@ def roles_of(env: dict[str, str]) -> dict[str, dict]:
     base = Path(__file__).resolve().parents[2] / "ontology" / "permissions.yaml"
     yaml_roles = list(_yaml.safe_load(base.read_text(encoding="utf-8"))["roles"])
     ensure_seed(env, yaml_roles)
-    with psycopg.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT name, label, source, base_role, description FROM app_role"
                     " ORDER BY source DESC, name")          # system 在前
         roles = {r["name"]: {**r, "actions": []} for r in cur.fetchall()}
@@ -93,7 +95,7 @@ def roles_of(env: dict[str, str]) -> dict[str, dict]:
 
 def custom_base(env: dict[str, str], role: str) -> str | None:
     """自定义角色 → 基角色（数据面映射用）；系统/未知角色返回 None。"""
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("SELECT base_role FROM app_role WHERE name = %s AND source = 'custom'",
                     (role,))
         row = cur.fetchone()
@@ -123,7 +125,7 @@ def role_allows(env: dict[str, str], role: str, gate: str) -> bool:
     自定义角色查自身 DB action，无配置时回落基角色的门行为。"""
     _maybe_seed(env)
     action = GATES.get(gate, gate)      # 端点门映射；纯按钮键原样即 action
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("SELECT 1 FROM app_role_action WHERE role = %s AND action = %s",
                     (role, action))
         if cur.fetchone():

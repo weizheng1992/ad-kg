@@ -107,6 +107,13 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
 
   未授权前 CI 的这两步打 `SKIP:` 日志继续跑（不阻塞代码发布）；授权后自动生效。
 
+- **运行三件套（2026-10-25）**：① **PG 连接池**——API 层统一走 `adkg/store/pg_pool.connect()`
+  （psycopg_pool，按 DSN×选项×行工厂键缓存，min1/max8），替代每请求临时连接
+  （agent ReAct 嵌套 /ask 曾可叠多个临时连接撞 `max_connections=100`）；脚本类批任务仍直连。
+  ② **慢查询日志**——compose 里 postgres `log_min_duration_statement=200ms` +
+  `log_lock_waits=on`（`docker logs adkg-postgres` 看），客户端 `statement_timeout` 兜底不变。
+  ③ **docker 硬内存上限**——postgres 768m / neo4j 1280m（env 管堆，mem_limit 兜全进程）/
+  mock-douyin 128m，4G 机防互挤。改 compose 后 `docker compose up -d <svc>` 重建即生效（数据在卷）。
 - **飞书服务器报警（2026-10-25 起）**：两层——
   ① A 机 `deploy/alerts/health_alert.sh` 每 5 分钟（deploy 用户 crontab）巡检 API 探活/服务状态/
   磁盘>85%/内存>90%/负载>4，异常进群、30 分钟节流、恢复发恢复通知；webhook 存

@@ -14,6 +14,8 @@ from datetime import date
 
 import psycopg
 
+from adkg.store import pg_pool
+
 from adkg.retrieval.metrics import (ALL_METRICS, COMPUTABLE_METRICS, DIM_COLUMNS,
                                     HIGH_WORDS, LOW_WORDS, LOWER_IS_BETTER,
                                     METRIC_WORDS, PLATFORM_WORDS, RANK_WORDS,
@@ -452,7 +454,7 @@ def run(question: str, plan, dsn_ro: str, entity_ids: list[str] | None = None,
     if sql is None:
         sql, params = build_sql(question, plan, entity_ids)
     note = _drain_note(params)
-    with psycopg.connect(dsn_ro, options="-c statement_timeout=3000") as conn:   # 闸 1 + 5
+    with pg_pool.connect(dsn_ro, options="-c statement_timeout=3000") as conn:   # 闸 1 + 5
         def q(stmt: str):
             with conn.cursor() as cur:
                 cur.execute(stmt, params)                 # 闸 2/3：校验后的生成 SQL 或模板

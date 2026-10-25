@@ -13,7 +13,8 @@ export default defineConfig({
     port: 5173,
     proxy: Object.fromEntries(
       ['/ask', '/graph', '/actions', '/guideline', '/ingest', '/creative', '/agent',
-       '/auth', '/creators', '/cases', '/brands', '/settlements', '/stats', '/admin']
+       '/auth', '/creators', '/cases', '/brands', '/settlements', '/stats',
+       '/admin', '/menus', '/my-actions']
         .map((p) => [p, 'http://127.0.0.1:8000']),
     ),
   },

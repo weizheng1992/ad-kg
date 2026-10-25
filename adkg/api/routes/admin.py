@@ -7,6 +7,8 @@ permissions.yaml，这里只做可视化与审计查阅。
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
@@ -44,7 +46,7 @@ def accounts(request: Request,
              authorization: str | None = Header(default=None)) -> dict:
     role_, user_, _planner = resolve_identity(request, authorization, role=role, user=user)
     _require_admin(role_)
-    with psycopg.connect(request.app.state.env["ADKG_PG_DSN"],
+    with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
                          row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT id, username, display_name, role, person, disabled, "
                     "created_at FROM app_user ORDER BY username")
@@ -77,7 +79,7 @@ def create_account(request: Request, body: dict,
     from adkg.guards.passwords import hash_password
     env = request.app.state.env
     try:
-        with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+        with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
             cur.execute("INSERT INTO app_user (id, username, password_hash, display_name,"
                         " role, person) VALUES (%s, %s, %s, %s, %s, %s)",
                         (f"u_{username}", username, hash_password(password),
@@ -103,7 +105,7 @@ def reset_password(request: Request, uid: str, body: dict,
     from adkg.guards.audit import audit
     from adkg.guards.passwords import hash_password
     env = request.app.state.env
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         n = cur.execute("UPDATE app_user SET password_hash = %s WHERE id = %s"
                         " RETURNING username", (hash_password(password), uid)).fetchall()
         if not n:
@@ -125,7 +127,7 @@ def toggle_account(request: Request, uid: str, body: dict,
     disabled = bool(body.get("disabled"))
     from adkg.guards.audit import audit
     env = request.app.state.env
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         n = cur.execute("UPDATE app_user SET disabled = %s WHERE id = %s"
                         " RETURNING username", (disabled, uid)).fetchall()
         if not n:
@@ -157,7 +159,7 @@ def audit_log(request: Request, page: int = 1, size: int = 30,
     if q.strip():
         conds.append("target ILIKE %(q)s"); args["q"] = f"%{q.strip()}%"
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
-    with psycopg.connect(request.app.state.env["ADKG_PG_DSN"],
+    with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
                          row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT count(*) AS total FROM audit_log" + where, args)
         total = cur.fetchone()["total"]
@@ -183,7 +185,7 @@ def review_queue(request: Request, status: str = "open", kind: str = "",
     if kind.strip():
         conds.append("kind = %(kind)s"); args["kind"] = kind.strip()
     where = " WHERE " + " AND ".join(conds)
-    with psycopg.connect(request.app.state.env["ADKG_PG_DSN"],
+    with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
                          row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT kind, count(*) AS n FROM review_queue"
                     " WHERE status = %(status)s GROUP BY kind", {"status": status})
@@ -214,7 +216,7 @@ def resolve_review(request: Request, qid: str, body: dict,
     if decision not in ("approved", "rejected"):
         raise HTTPException(422, "decision 只能是 approved / rejected")
     env = request.app.state.env
-    with psycopg.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT id, kind, payload FROM review_queue"
                     " WHERE id = %(id)s AND status = 'open'", {"id": qid})
         row = cur.fetchone()
@@ -250,7 +252,7 @@ def resolve_review(request: Request, qid: str, body: dict,
                                  src_type, src_id)      # 采纳即留痕（§15）
         applied = True
     from psycopg.types.json import Json
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("UPDATE review_queue SET status = %s, resolved_at = now(),"
                     " resolved_by = %s, payload = payload || %s::jsonb"
                     " WHERE id = %s",

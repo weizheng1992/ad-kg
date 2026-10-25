@@ -10,6 +10,8 @@ external_for 锚点路径上的品牌豁免——只见自己绑定的品牌，�
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
@@ -28,7 +30,7 @@ def _brand_stats(env: dict, plan, brand_ids: list[str], days: int | None = None)
     window = f" AND date >= current_date - {int(days)}::int" if days else ""
     try:
         proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with psycopg.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
+        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT brand_id, {proj}, count(DISTINCT date) AS days"

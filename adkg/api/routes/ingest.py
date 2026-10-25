@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import psycopg
+
+from adkg.store import pg_pool
 import yaml
 from fastapi import APIRouter, Header, HTTPException, Request
 from pathlib import Path
@@ -55,7 +57,7 @@ def list_synced_docs(request: Request, q: str | None = None, role: str | None = 
 
 def synced_docs(pg_dsn: str, q: str | None = None) -> list[dict]:
     """已同步飞书文档清单（route 与 agent 工具共用）。"""
-    with psycopg.connect(pg_dsn) as conn, conn.cursor() as cur:
+    with pg_pool.connect(pg_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT doc_id, count(*), min(text) FILTER (WHERE chunk_index = 0)"
                     " FROM chunks WHERE doc_id LIKE 'feishu:%' GROUP BY doc_id ORDER BY doc_id")
         rows = cur.fetchall()
@@ -86,7 +88,7 @@ def case_draft(request: Request, body: dict,
     if not doc_id.startswith("feishu:"):
         raise HTTPException(422, "doc_id 必须是已同步飞书文档（feishu:doc:…，见 GET /ingest/docs）")
     env = request.app.state.env
-    with psycopg.connect(env["ADKG_PG_DSN"]) as conn, conn.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as conn, conn.cursor() as cur:
         cur.execute("SELECT text FROM chunks WHERE doc_id = %s ORDER BY chunk_index", (doc_id,))
         rows = cur.fetchall()
     if not rows:
@@ -128,7 +130,7 @@ def case_commit(request: Request, body: dict,
     except ValueError as e:
         raise HTTPException(422, str(e))
 
-    with psycopg.connect(env["ADKG_PG_DSN"]) as conn:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as conn:
         with conn.cursor() as cur:
             for w in result.get("written", []):          # 新实体注册别名：后续 ETL/抽取 L1 可命中
                 cur.execute("INSERT INTO entity_alias (source, external_id, internal_id)"
@@ -176,7 +178,7 @@ def ingest_assertion(request: Request, body: dict,
 
     def push_review(kind: str, payload: dict) -> None:
         import json
-        with psycopg.connect(pg) as conn, conn.cursor() as cur:
+        with pg_pool.connect(pg) as conn, conn.cursor() as cur:
             cur.execute("INSERT INTO review_queue (kind, payload) VALUES (%s, %s)",
                         (kind, json.dumps(payload, ensure_ascii=False, default=str)))
 

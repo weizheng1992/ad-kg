@@ -6,6 +6,8 @@ HttpOnly + SameSite=Lax，部署态 HTTPS 由 ADKG_COOKIE_SECURE=on 加 Secure�
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from adkg.guards.audit import audit
@@ -17,7 +19,7 @@ router = APIRouter()
 
 
 def _find_user(env: dict[str, str], username: str) -> dict | None:
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("SELECT id, username, display_name, role, person, "
                     "password_hash, disabled FROM app_user WHERE username = %s",
                     (username,))

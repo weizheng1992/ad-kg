@@ -129,7 +129,8 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
             existing_auth = rec["auth"] if rec else None
             if existing_auth is not None and existing_auth > prov.authority:
                 import psycopg
-                with psycopg.connect(ctx.env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+                from adkg.store import pg_pool
+                with pg_pool.connect(ctx.env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
                     # 去重：同实体+同来源的未决 conflict 只留一条（幂等重抓不刷屏）；
                     # incoming_source_type 供人审处置回放（spec §15）
                     cur.execute(

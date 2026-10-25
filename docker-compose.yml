@@ -23,6 +23,19 @@ services:
     volumes:
       # PG18+ 镜像约定：挂 /var/lib/postgresql（数据落在版本子目录，便于 pg_upgrade）
       - adkg_pgdata:/var/lib/postgresql
+    # 慢查询日志（2026-10-25 三件套）：>200ms 进容器日志（docker logs adkg-postgres）；
+    # 锁等待一并记——线上排障不再靠猜。客户端已有 statement_timeout=3000 兜底
+    command:
+      - postgres
+      - -c
+      - log_min_duration_statement=200
+      - -c
+      - log_lock_waits=on
+      - -c
+      - log_line_prefix=%m [%p] %u@%d
+    # 硬内存上限（4G 机预算：PG ≤768M，防与 Neo4j/API 互挤）
+    mem_limit: 768m
+    memswap_limit: 768m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -37,6 +50,8 @@ services:
       # 内存压限：4G 机器防 Neo4j 按默认比例抓满（docs/deployment.md §一）
       NEO4J_server_memory_heap_max__size: 512m
       NEO4J_server_memory_pagecache_size: 256m
+    mem_limit: 1280m          # env 管堆/pagecache，这里兜全进程（堆512+缓存256+余量）
+    memswap_limit: 1280m
     ports:
       - "7474:7474"                       # 浏览器可视化（演示用，§五）
       - "7687:7687"
@@ -51,6 +66,8 @@ services:
       - "8100:8100"
     volumes:
       - ./data/seed:/seed:ro              # 数据即种子（只读）
+    mem_limit: 128m
+    memswap_limit: 128m
 
 volumes:
   adkg_pgdata:

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
+
+from adkg.store import pg_pool
 import yaml
 
 UNIFIED_COLUMNS = {"date", "campaign_local_id", "creative_local_id",
@@ -52,7 +54,7 @@ def etl_csv(pg_dsn: str, graph, mapping_path: Path, csv_path: Path,
         rows = parse_rows(mapping, list(csv.DictReader(f)))
     stats = EtlStats(rows=len(rows))
 
-    with psycopg.connect(pg_dsn) as conn, conn.cursor() as cur:
+    with pg_pool.connect(pg_dsn) as conn, conn.cursor() as cur:
         cur.execute("SELECT source, external_id, internal_id FROM entity_alias")
         aliases = {(s, e): i for s, e, i in cur.fetchall()}
         alias_source = mapping["alias_source"]

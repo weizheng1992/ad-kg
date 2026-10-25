@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import psycopg
+
+from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
@@ -46,7 +48,7 @@ _ICONS = {m[2] for m in DEFAULT_MENUS} | {b[0] + "#" + b[1] for b in DEFAULT_BUT
 
 
 def _ensure_seed(env: dict[str, str]) -> None:
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("SELECT count(*) FROM app_menu WHERE type = 'page'")
         if cur.fetchone()[0] < len(DEFAULT_MENUS):
             cur.executemany(
@@ -63,7 +65,7 @@ def _ensure_seed(env: dict[str, str]) -> None:
 
 def _items(env: dict[str, str]) -> list[dict]:
     _ensure_seed(env)
-    with psycopg.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT path, label, icon, roles, sort, enabled, type, parent,"
                     " action_key FROM app_menu ORDER BY sort")
         return [{"path": r["path"], "label": r["label"], "icon": r["icon"],
@@ -142,7 +144,7 @@ def save_menus(request: Request, body: dict,
     if menus_row is None or not menus_row[5] or "admin" not in menus_row[3].split(","):
         raise HTTPException(422, "/menus 自身必须对 admin 可见且启用（防自锁）")
     env = request.app.state.env
-    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         for label, path, icon, roles, sort, enabled in cleaned:
             cur.execute("UPDATE app_menu SET label=%s, roles=%s, sort=%s,"
                         " enabled=%s, updated_at=now() WHERE path=%s",
