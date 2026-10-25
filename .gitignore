@@ -27,3 +27,6 @@ web/dist/
 
 # 飞书授权二维码残留（一次性产物）
 auth_qr.png
+
+# 飞书报警 webhook（服务器本地，600 权限）
+.feishu_alert_url

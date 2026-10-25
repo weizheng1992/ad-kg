@@ -55,9 +55,10 @@ jobs:
           ssh -i ~/deploy_key -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
           set -euo pipefail
           cd ~/ad-kg
-          # uv.lock 自愈：服务器裸 uv sync 会改写 lock 使下次 pull 被拒（2026-10-25 实测）；
-          # repo 的 lock 是唯一真源，服务器侧改动一律丢弃
-          git checkout -- uv.lock 2>/dev/null || true
+          # 自愈：服务器侧生成物一律丢弃（repo 是唯一真源）——
+          # uv.lock（裸 uv sync 改写，10-25 实测）与 data/seed（gen_seed 按当日滚动窗
+          # 重写 CSV，每次数据刷新都会脏）；.feishu_alert_url 等未跟踪配置不碍 pull
+          git checkout -- uv.lock data/seed 2>/dev/null || true
           git pull --ff-only
           # uv 用全路径：非交互 SSH 不走 .bashrc，~/.local/bin 不在 PATH（首次部署实测踩坑）
           "$HOME/.local/bin/uv" sync --frozen
