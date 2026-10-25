@@ -19,8 +19,9 @@ def settlements(request: Request, status: str = "", brand: str = "", stage: str 
                 role: str | None = None, user: str | None = None,
                 authorization: str | None = Header(default=None)) -> dict:
     role, user, _planner = resolve_identity(request, authorization, role=role, user=user)
-    if role not in SETTLE_ROLES:
-        raise HTTPException(403, "结算中心仅 management / finance 可用（spec §4）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role, "settlement"):
+        raise HTTPException(403, "当前角色无财务结算权限（spec §18 角色门）")
     with get_graph(request).session() as s:
         rows = s.run(
             "MATCH (c:Entity {class: 'Case'})-[:for_brand]->(b:Entity) "

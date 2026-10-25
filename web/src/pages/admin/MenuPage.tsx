@@ -7,9 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { getAdminMenus, saveMenus, type MenuDef } from '@/lib/api'
-import { ICONS, ROLE_LABEL } from '@/lib/nav'
+import { ICONS } from '@/lib/nav'
 
-const ALL_ROLES = Object.keys(ROLE_LABEL)
 
 export function MenuPage() {
   const [items, setItems] = useState<MenuDef[] | null>(null)
@@ -54,7 +53,7 @@ export function MenuPage() {
       <div className="flex flex-wrap items-baseline gap-3">
         <h2 className="text-base font-bold">菜单管理</h2>
         <span className="text-xs text-muted-foreground">
-          菜单项可见角色 / 排序 / 名称 / 启停——菜单可见性是导航层，数据权限闸在各页面后端
+          菜单项排序 / 名称 / 启停——给角色分配菜单在「权限管理」，菜单可见性是导航层不是权限闸
         </span>
         <Button size="sm" className="ml-auto" disabled={busy} onClick={save}>
           {busy ? '保存中…' : '保存'}
@@ -94,23 +93,6 @@ export function MenuPage() {
                     <td className="px-3 py-2.5">
                       <Input className="h-8 w-36 text-sm" value={m.label}
                              onChange={(e) => patch(m.path, (x) => ({ ...x, label: e.target.value }))} />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex max-w-md flex-wrap gap-1">
-                        {ALL_ROLES.map((r) => (
-                          <button key={r}
-                                  onClick={() => patch(m.path, (x) => ({
-                                    ...x,
-                                    roles: x.roles.includes(r)
-                                      ? x.roles.filter((v) => v !== r)
-                                      : [...x.roles, r],
-                                  }))}
-                                  className={`rounded px-2 py-0.5 text-[11px] ${m.roles.includes(r)
-                                    ? 'bg-primary text-primary-foreground' : 'border text-muted-foreground'}`}>
-                            {ROLE_LABEL[r]}
-                          </button>
-                        ))}
-                      </div>
                     </td>
                     <td className="px-3 py-2.5">
                       <button onClick={() => patch(m.path, (x) => ({ ...x, enabled: !x.enabled }))}>

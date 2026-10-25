@@ -219,7 +219,8 @@ def case_detail(request: Request, cid: str,
                                      "terminate_reason")})
     stats = _case_stats_batch(env, plan, [cid]).get(cid)
     # 状态变更权限（spec §15）：按 permissions.yaml actions 动态判定，不硬抄角色表
-    role_actions = planner.perms["roles"].get(role, {}).get("actions", [])
+    from adkg.guards.rbac import role_allows
+    can_stage = role_allows(env, role, "case_stage")
     return {"case": {"id": rec["id"], "name": rec["name"], **props},
             "brand": brand, "product": product, "owners": owners,
             "campaigns": campaigns,
@@ -234,7 +235,7 @@ def case_detail(request: Request, cid: str,
             "stats": stats, "docs": docs, "timeline": timeline,
             "stage_flow": {"main": STAGE_FLOW, "branch": STAGE_BRANCH,
                            "current": rec["stage"]},
-            "can_update_stage": "update_stage" in role_actions}
+            "can_update_stage": can_stage}
 
 
 # 状态机合法目标（schema.yaml#constraints 的展示形态，与 ActionChecker 同源语义）
@@ -248,10 +249,10 @@ def update_case_stage(request: Request, cid: str, body: dict,
     迁移合法性走 ActionChecker 状态机（terminated 必填原因）——拒绝 409 + 审计 deny，
     通过则写图（stage + 拒因）+ 审计 allow。"""
     role, person, planner = resolve_identity(request, authorization, role=role, user=user)
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role, "case_stage"):
+        raise HTTPException(403, "当前角色无案例阶段变更权限（spec §18 角色门）")
     plan = planner.plan(role, person=person)
-    role_actions = planner.perms["roles"].get(role, {}).get("actions", [])
-    if "update_stage" not in role_actions:
-        raise HTTPException(403, "当前角色无 update_stage 权限（§12.4 动作词表）")
     to_stage = str(body.get("to_stage") or "")
     reason = str(body.get("reason") or "").strip()
     graph = get_graph(request)

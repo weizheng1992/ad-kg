@@ -4,15 +4,15 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { createAccount, getAdminAccounts, getPermissionMatrix,
-         resetAccountPassword, toggleAccount,
-         type AdminAccount, type PermissionMatrix } from '@/lib/api'
+import { createAccount, getAdminAccounts, listRoles, resetAccountPassword,
+         setAccountRole, toggleAccount,
+         type AdminAccount, type RoleDef } from '@/lib/api'
 import { ROLE_LABEL } from '@/lib/nav'
 import { useSession } from '@/lib/session'
 
 /** 人员管理（spec §16）：账号一览 + admin 专属写操作（开户/改密/启停） */
 export function AccountsTab({ items, roles, canWrite, onChanged }: {
-  items: AdminAccount[] | null; roles: string[]; canWrite: boolean; onChanged: () => void
+  items: AdminAccount[] | null; roles: RoleDef[]; canWrite: boolean; onChanged: () => void
 }) {
   const [form, setForm] = useState({ username: '', password: '', display_name: '',
                                      role: 'ae', person: '' })
@@ -41,6 +41,13 @@ export function AccountsTab({ items, roles, canWrite, onChanged }: {
       setMsg(`✅ ${a.username} 已改密（既有会话已吊销）`)
     } catch (e) { setMsg(`❌ ${e}`) }
   }
+  const setRole = async (a: AdminAccount, role: string) => {
+    try {
+      await setAccountRole(a.id, role)
+      setMsg(`✅ ${a.username} 已改绑 ${role}（会话已吊销，重新登录生效）`)
+      onChanged()
+    } catch (e) { setMsg(`❌ ${e}`) }
+  }
   const toggle = async (a: AdminAccount) => {
     try {
       await toggleAccount(a.id, !a.disabled)
@@ -66,7 +73,11 @@ export function AccountsTab({ items, roles, canWrite, onChanged }: {
               <span className="text-xs text-muted-foreground">角色 *</span>
               <select className="h-9 rounded-md border bg-background px-2 text-sm"
                       value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r] ?? r}</option>)}
+                {roles.map((r) => (
+                  <option key={r.name} value={r.name}>
+                    {ROLE_LABEL[r.name] ?? r.label}{r.source === 'custom' ? '（自定义）' : ''}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="flex items-end gap-2 sm:col-span-5">
@@ -95,7 +106,21 @@ export function AccountsTab({ items, roles, canWrite, onChanged }: {
                 <tr key={a.id} className="border-b last:border-0">
                   <td className="px-3 py-2.5 font-mono">{a.username}</td>
                   <td className="px-3 py-2.5">{a.display_name}</td>
-                  <td className="px-3 py-2.5"><Badge variant="outline">{ROLE_LABEL[a.role] ?? a.role}</Badge></td>
+                  <td className="px-3 py-2.5">
+                    {canWrite ? (
+                      <select className="h-7 rounded-md border bg-background px-1.5 text-xs"
+                              value={a.role}
+                              onChange={(e) => void setRole(a, e.target.value)}>
+                        {roles.map((r) => (
+                          <option key={r.name} value={r.name}>
+                            {ROLE_LABEL[r.name] ?? r.label}{r.source === 'custom' ? '（自定义）' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Badge variant="outline">{ROLE_LABEL[a.role] ?? a.role}</Badge>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">{a.person ?? '—'}</td>
                   <td className="px-3 py-2.5">{a.disabled ? <Badge variant="destructive">停用</Badge> : <Badge variant="secondary">正常</Badge>}</td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground">{a.created_at.slice(0, 19)}</td>
@@ -125,7 +150,7 @@ export function AccountsTab({ items, roles, canWrite, onChanged }: {
 export function PeoplePage() {
   const { session } = useSession()
   const [items, setItems] = useState<AdminAccount[] | null>(null)
-  const [m, setM] = useState<PermissionMatrix | null>(null)
+  const [roles, setRoles] = useState<RoleDef[]>([])
   const [error, setError] = useState('')
 
   const load = useCallback(() => {
@@ -134,7 +159,7 @@ export function PeoplePage() {
 
   useEffect(() => {
     load()
-    getPermissionMatrix().then(setM).catch((e) => setError(`${e}`))
+    listRoles().then((r) => setRoles(r.items)).catch((e) => setError(`${e}`))
   }, [load])
 
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
@@ -146,7 +171,7 @@ export function PeoplePage() {
           账号 · 角色 · Person 绑定——开户/改密/停启用为 admin 专属（改密与停用即吊销会话），management 只读
         </span>
       </div>
-      <AccountsTab items={items} roles={m ? Object.keys(m.roles) : []}
+      <AccountsTab items={items} roles={roles}
                    canWrite={session?.role === 'admin'} onChanged={load} />
     </div>
   )

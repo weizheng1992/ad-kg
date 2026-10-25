@@ -13,7 +13,7 @@ load_dotenv(ROOT / ".env")
 
 from adkg.api.routes import (actions, admin, agent, ask, auth, brands, cases,  # noqa: E402
                              creative, creators, guideline, graph, ingest,
-                             menus, settlements, stats)
+                             menus, roles, settlements, stats)
 
 
 def create_app(env: dict[str, str] | None = None) -> FastAPI:
@@ -40,6 +40,7 @@ def create_app(env: dict[str, str] | None = None) -> FastAPI:
     app.include_router(stats.router)
     app.include_router(admin.router)
     app.include_router(menus.router)
+    app.include_router(roles.router)
     app.include_router(graph.router)
     app.include_router(actions.router)
     app.include_router(guideline.router)

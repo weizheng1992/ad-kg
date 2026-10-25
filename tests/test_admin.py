@@ -252,3 +252,79 @@ class TestMenus:
                      "sort": s, "enabled": True} for p, l, i, r, s in DEFAULT_MENUS]
         assert client.put("/admin/menus", params={"role": "admin"},
                           json={"items": restored}).status_code == 200
+
+
+@pytest.mark.skipif(not _pg_up(), reason="Postgres 不在线")
+class TestRBAC:
+    """RBAC（spec §18）：自定义角色 → 开户绑定 → 登录 → 菜单/按钮/数据面继承。"""
+
+    R = "pytest_role"
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        return TestClient(create_app({**os.environ, "ADKG_DEV_AUTH": "off"}))
+
+    def _cleanup(self):
+        import psycopg
+        with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c, c.cursor() as cur:
+            cur.execute("DELETE FROM app_session WHERE user_id='u_pytest_rbac'")
+            cur.execute("DELETE FROM app_user WHERE username='pytest_rbac'")
+            cur.execute("DELETE FROM app_role WHERE name=%s", (self.R,))
+            cur.execute("UPDATE app_menu SET roles = replace(roles, %s, '')"
+                        " WHERE roles LIKE '%%' || %s || '%%'", (f",{self.R}", self.R))
+
+    def test_自定义角色全链(self):
+        import psycopg
+        client = self._client()
+        self._cleanup()
+        # 建角色（management 拒；admin 成；重名 409；坏 base 422）
+        assert client.post("/admin/roles", params={"role": "management", "user": "Person:chen"},
+                           json={"name": self.R, "base_role": "ae"}).status_code == 403
+        r = client.post("/admin/roles", params={"role": "admin"},
+                        json={"name": self.R, "label": "测试角色", "base_role": "finance",
+                              "actions": ["dashboard_view", "settlement_view"]})
+        assert r.status_code == 200, r.text
+        assert client.post("/admin/roles", params={"role": "admin"},
+                           json={"name": self.R, "base_role": "ae"}).status_code == 409
+        assert client.post("/admin/roles", params={"role": "admin"},
+                           json={"name": "bad name", "base_role": "ae"}).status_code == 422
+        # 开户绑自定义角色 → 登录
+        assert client.post("/admin/accounts", params={"role": "admin"},
+                           json={"username": "pytest_rbac", "password": "pw-1",
+                                 "role": self.R}).status_code == 200
+        assert client.post("/auth/login",
+                           json={"username": "pytest_rbac", "password": "pw-1"}
+                           ).status_code == 200
+        # 按钮权限与数据面继承
+        my = client.get("/my-actions")
+        assert my.json()["role"] == self.R and "settlement_view" in my.json()["actions"]
+        assert client.get("/settlements").status_code == 200          # finance 数据面
+        assert client.get("/stats/overview").status_code == 200       # dashboard_view
+        assert client.post("/creators", json={"name": "x", "platform": "douyin",
+                                              "niches": "y"}).status_code == 403
+        # 菜单：勾给自定义角色（save_menus 角色全集含自定义）
+        client.cookies.clear()      # cookie 优先于 dev 参数（设计如此）
+        items = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
+        for m in items:
+            if m["path"] == "/settlements":
+                m["roles"] = m["roles"] + [self.R]
+        assert client.put("/admin/menus", params={"role": "admin"},
+                          json={"items": items}).status_code == 200
+        client.cookies.clear()
+        client.post("/auth/login", json={"username": "pytest_rbac", "password": "pw-1"})
+        labels = [m["path"] for m in client.get("/menus").json()["items"]]
+        assert "/settlements" in labels and "/" not in labels[1:]     # 只见被勾的
+        # 系统角色不可删；被占用不可删
+        client.cookies.clear()
+        assert client.delete("/admin/roles/finance", params={"role": "admin"}).status_code == 422
+        assert client.delete(f"/admin/roles/{self.R}", params={"role": "admin"}).status_code == 409
+        # 改绑（set-role）后旧角色可删
+        uid = None
+        with psycopg.connect(os.environ["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+            cur.execute("SELECT id FROM app_user WHERE username='pytest_rbac'")
+            uid = cur.fetchone()[0]
+        assert client.post(f"/admin/accounts/{uid}/set-role", params={"role": "admin"},
+                           json={"role": "finance"}).status_code == 200
+        assert client.delete(f"/admin/roles/{self.R}", params={"role": "admin"}).status_code == 200
+        self._cleanup()

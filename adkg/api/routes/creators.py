@@ -196,8 +196,9 @@ def create_creator(request: Request, body: dict,
                    authorization: str | None = Header(default=None)) -> dict:
     """达人录入（spec §13.1）：conversation/20 低权威——平台抓到更准数据可覆盖。"""
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
-    if role not in CREATE_CREATOR_ROLES:
-        raise HTTPException(403, "达人录入仅 ae / management / admin 可用（spec §13.1）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role, "creator_write"):
+        raise HTTPException(403, "当前角色无达人录入权限（spec §18 角色门）")
     try:
         creator_id, props = _parse_creator_row(body)
     except ValueError as e:
@@ -216,8 +217,9 @@ async def import_creators(request: Request, file: UploadFile,
     """CSV / xlsx 批量导入（spec §13.1 + §15）：official_doc/60；xlsx 经 openpyxl
     转行后走与 CSV 完全相同的校验/仲裁/审计路；行级容错不中断整批。"""
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
-    if role not in CREATE_CREATOR_ROLES:
-        raise HTTPException(403, "达人导入仅 ae / management / admin 可用（spec §13.1）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role, "creator_write"):
+        raise HTTPException(403, "当前角色无达人导入权限（spec §18 角色门）")
     raw = await file.read()
     if (file.filename or "").lower().endswith((".xlsx", ".xls")):
         try:

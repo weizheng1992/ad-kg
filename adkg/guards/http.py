@@ -19,6 +19,7 @@ from pathlib import Path
 from fastapi import HTTPException, Request
 
 from adkg.guards.auth import AuthService
+from adkg.guards.rbac import custom_base
 from adkg.guards.sessions import SESSION_COOKIE, resolve_session
 
 
@@ -68,8 +69,14 @@ def resolve_identity(request: Request, authorization: str | None, *,
         person = planner.bound_person(role) or fallback
     else:
         sess = resolve_session(env, request.cookies.get(SESSION_COOKIE))
-        if sess and sess["role"] in planner.roles:
-            return sess["role"], sess["person"], planner
+        if sess:
+            # RBAC（§18）：cookie 角色可为自定义角色——数据面映射基角色后放行
+            r = sess["role"]
+            if r in planner.roles:
+                return r, sess["person"], planner
+            base = custom_base(env, r)
+            if base and base in planner.roles:
+                return base, sess["person"], planner
         dev_role = (body.get("role") if body is not None else None) or role or dev_default
         if not (env.get("ADKG_DEV_AUTH") == "off" and dev_role):
             raise HTTPException(401, "缺有效 service token（生产经网关注入；本地 "
@@ -77,5 +84,9 @@ def resolve_identity(request: Request, authorization: str | None, *,
         role = dev_role
         person = (body.get("user") if body is not None else None) or user
     if role not in planner.roles:                        # fail-closed（§十二）
-        raise HTTPException(401, f"未知角色：{role}")
+        # 自定义角色（spec §18 RBAC）：数据面映射到基角色——菜单/按钮权限在 DB
+        base = custom_base(env, role)
+        if base is None or base not in planner.roles:
+            raise HTTPException(401, f"未知角色：{role}")
+        role = base
     return role, person, planner

@@ -14,7 +14,6 @@ from adkg.guards.http import get_graph, get_planner, resolve_identity
 
 router = APIRouter()
 ADMIN_ROLES = {"management", "admin"}
-ACCOUNT_WRITE_ROLES = {"admin"}   # 人员管理写操作（spec §16）：运维专属；management 只读
 
 
 def _require_admin(role: str) -> None:
@@ -60,8 +59,9 @@ def create_account(request: Request, body: dict,
     """开户（spec §16 人员管理）：admin 专属；role 过 permissions.yaml 合法集。"""
     role_, person, planner = resolve_identity(request, authorization, role=role, user=user)
     _require_admin(role_)
-    if role_ not in ACCOUNT_WRITE_ROLES:
-        raise HTTPException(403, "人员管理写操作仅 admin 可用（spec §16）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role_, "account_write"):
+        raise HTTPException(403, "当前角色无人员管理写权限（spec §18 角色门）")
     username = str(body.get("username") or "").strip()
     password = str(body.get("password") or "")
     display_name = str(body.get("display_name") or "").strip() or username
@@ -69,8 +69,9 @@ def create_account(request: Request, body: dict,
     bind_person = str(body.get("person") or "").strip() or None
     if not username or not password:
         raise HTTPException(422, "username 与 password 必填")
-    if new_role not in planner.roles:
-        raise HTTPException(422, f"未知角色：{new_role}（合法：{', '.join(sorted(planner.roles))}）")
+    from adkg.guards.rbac import roles_of
+    if new_role not in roles_of(request.app.state.env):     # RBAC 全集（系统+自定义）
+        raise HTTPException(422, f"未知角色：{new_role}")
     import psycopg as _p
     from adkg.guards.audit import audit
     from adkg.guards.passwords import hash_password
@@ -93,8 +94,9 @@ def reset_password(request: Request, uid: str, body: dict,
                    authorization: str | None = Header(default=None)) -> dict:
     role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
     _require_admin(role_)
-    if role_ not in ACCOUNT_WRITE_ROLES:
-        raise HTTPException(403, "人员管理写操作仅 admin 可用（spec §16）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role_, "account_write"):
+        raise HTTPException(403, "当前角色无人员管理写权限（spec §18 角色门）")
     password = str(body.get("password") or "")
     if not password:
         raise HTTPException(422, "password 必填")
@@ -117,8 +119,9 @@ def toggle_account(request: Request, uid: str, body: dict,
                    authorization: str | None = Header(default=None)) -> dict:
     role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
     _require_admin(role_)
-    if role_ not in ACCOUNT_WRITE_ROLES:
-        raise HTTPException(403, "人员管理写操作仅 admin 可用（spec §16）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role_, "account_write"):
+        raise HTTPException(403, "当前角色无人员管理写权限（spec §18 角色门）")
     disabled = bool(body.get("disabled"))
     from adkg.guards.audit import audit
     env = request.app.state.env
@@ -203,6 +206,9 @@ def resolve_review(request: Request, qid: str, body: dict,
     """
     role, person, _planner = resolve_identity(request, authorization, role=role, user=user)
     _require_admin(role)
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role, "review_resolve"):
+        raise HTTPException(403, "当前角色无人审处置权限（spec §18 角色门）")
     decision = str(body.get("decision") or "")
     note = str(body.get("note") or "").strip()
     if decision not in ("approved", "rejected"):

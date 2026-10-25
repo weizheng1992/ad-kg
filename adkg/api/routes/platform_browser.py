@@ -38,14 +38,15 @@ def _num(text: str) -> int:
 def fetch_creator_from_platform(args: dict, ctx) -> str:
     """星图·模拟抓取并入库（写图）——与 POST /creators 同一道动作门（§12.4：
     agent 写工具不得比端点宽；2026-10-25 审查勘误）。"""
-    from adkg.api.routes.creators import CREATE_CREATOR_ROLES
-    if ctx.role not in CREATE_CREATOR_ROLES:
-        return f"当前角色无 create_creator 权限，不能触发平台抓取入库（允许：{sorted(CREATE_CREATOR_ROLES)}）"
+
     base = ctx.env.get("ADKG_MOCK_DOUYIN_URL", "http://127.0.0.1:8100").rstrip("/")
     no = str(args.get("creator_id") or args.get("creator_no") or "").strip()
     query = str(args.get("query") or "").strip()
     if not no and not query:
         return "query（达人名/方向，模糊搜）与 creator_id（cr11 形态，直达详情）必填一个"
+    from adkg.guards.rbac import role_allows
+    if not role_allows(ctx.env, ctx.role, "creator_write"):
+        return "当前角色无达人录入权限，不能触发平台抓取入库（spec §18 角色门）"
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:

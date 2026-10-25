@@ -571,3 +571,62 @@ export async function agentChat(
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
 }
+
+// ---------- RBAC 角色管理（spec §18） ----------
+
+export interface RoleDef {
+  name: string; label: string; source: 'system' | 'custom'
+  base_role: string; description: string
+  actions: string[]; used: number; actions_all?: Record<string, string>
+}
+
+export async function listRoles(): Promise<{ items: RoleDef[] }> {
+  const r = await fetch('/admin/roles')
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function createRole(payload: { name: string; label?: string
+  base_role: string; description?: string; actions?: string[] }): Promise<{ ok: boolean }> {
+  const r = await fetch('/admin/roles', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function updateRole(name: string, payload: { label?: string
+  description?: string; actions?: string[]; base_role?: string }): Promise<{ ok: boolean }> {
+  const r = await fetch(`/admin/roles/${encodeURIComponent(name)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function deleteRole(name: string): Promise<{ ok: boolean }> {
+  const r = await fetch(`/admin/roles/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export async function setAccountRole(uid: string, role: string): Promise<
+  { ok: boolean; role: string }> {
+  const r = await fetch(`/admin/accounts/${encodeURIComponent(uid)}/set-role`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+export interface MyActions { role: string; actions: string[]
+  is_custom: boolean; base_role: string | null }
+
+export async function fetchMyActions(): Promise<MyActions> {
+  const r = await fetch('/my-actions')
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
+}

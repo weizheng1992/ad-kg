@@ -1,0 +1,149 @@
+"""RBAC 角色门统一收口（spec §18；夜检挂账「角色门散抄」一并清账）。
+
+- ACTIONS：按钮/操作权限词表（单一来源，前后端共享语义）
+- GATES：端点级角色门 → 所需 action 的映射；系统角色的初始 action 集自
+  permissions.yaml 语义播种（SYSTEM_ROLE_ACTIONS），DB 可调（app_role_action）
+- 自定义角色：数据面等同基角色（http.resolve_identity 已映射）；菜单与按钮
+  权限独立配置——role_allows 对自定义角色查 DB（无记录时继承基角色的门行为）
+"""
+from __future__ import annotations
+
+import psycopg
+from psycopg.rows import dict_row
+
+# 按钮权限词表（前端按钮显隐同一份语义）
+ACTIONS: dict[str, str] = {
+    "creator_write": "达人录入 / 导入",
+    "creator_export": "达人导出",
+    "case_stage_change": "案例阶段变更",
+    "settlement_view": "财务结算查看",
+    "review_resolve": "人审处置",
+    "account_manage": "人员管理写操作",
+    "menu_manage": "菜单管理写操作",
+    "admin_view": "管理后台（审计 / 人审 / 权限查看）",
+    "dashboard_view": "数据看板",
+}
+
+# 端点门 → action
+GATES: dict[str, str] = {
+    "dashboard": "dashboard_view",
+    "settlement": "settlement_view",
+    "creator_write": "creator_write",
+    "case_stage": "case_stage_change",
+    "review_resolve": "review_resolve",
+    "account_write": "account_manage",
+    "menu_write": "menu_manage",
+    "admin_view": "admin_view",
+}
+
+# 系统角色初始 action 播种（= 既有散抄集合的语义；permissions.yaml 的数据面
+# actions——update_stage/create_case 等——不在此列，仍由 yaml 把数据面写门）
+SYSTEM_ROLE_ACTIONS: dict[str, list[str]] = {
+    "management": ["dashboard_view", "creator_write", "creator_export",
+                   "admin_view", "settlement_view"],
+    "ae": ["dashboard_view", "creator_write", "creator_export"],
+    "optimizer": ["dashboard_view", "creator_export"],
+    "finance": ["dashboard_view", "settlement_view"],
+    "client": ["dashboard_view"],
+    "creative": [],
+    # 运维：管理与操作类动作全量；业务视图（看板/结算）不放开——与旧散抄集合语义一致
+    "admin": ["creator_write", "creator_export", "case_stage_change", "review_resolve",
+              "account_manage", "menu_manage", "admin_view"],
+}
+
+
+def ensure_seed(env: dict[str, str], yaml_roles: list[str]) -> None:
+    """幂等播种：系统角色行 + 系统 action 集（DB 无记录时才插，不覆盖已调配置）。"""
+    import yaml as _yaml
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[2] / "ontology" / "permissions.yaml"
+    roles_cfg = _yaml.safe_load(base.read_text(encoding="utf-8"))["roles"]  # noqa: F841
+    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+        for name in yaml_roles:
+            cur.execute(
+                "INSERT INTO app_role (name, label, source, base_role, description)"
+                " VALUES (%s, %s, 'system', %s, %s) ON CONFLICT (name) DO NOTHING",
+                (name, name, name, "系统角色（permissions.yaml）"))
+        for name, acts in SYSTEM_ROLE_ACTIONS.items():
+            if name not in yaml_roles:
+                continue
+            cur.execute("SELECT count(*) FROM app_role_action WHERE role = %s", (name,))
+            if cur.fetchone()[0]:
+                continue
+            cur.executemany("INSERT INTO app_role_action (role, action) VALUES (%s, %s)"
+                            " ON CONFLICT DO NOTHING", [(name, a) for a in acts])
+
+
+def roles_of(env: dict[str, str]) -> dict[str, dict]:
+    """name → {label, source, base_role, description, actions[]}（含播种）。"""
+    import yaml as _yaml
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[2] / "ontology" / "permissions.yaml"
+    yaml_roles = list(_yaml.safe_load(base.read_text(encoding="utf-8"))["roles"])
+    ensure_seed(env, yaml_roles)
+    with psycopg.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
+        cur.execute("SELECT name, label, source, base_role, description FROM app_role"
+                    " ORDER BY source DESC, name")          # system 在前
+        roles = {r["name"]: {**r, "actions": []} for r in cur.fetchall()}
+        cur.execute("SELECT role, action FROM app_role_action")
+        for r in cur.fetchall():
+            roles[r["role"]]["actions"].append(r["action"])
+    return roles
+
+
+def custom_base(env: dict[str, str], role: str) -> str | None:
+    """自定义角色 → 基角色（数据面映射用）；系统/未知角色返回 None。"""
+    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+        cur.execute("SELECT base_role FROM app_role WHERE name = %s AND source = 'custom'",
+                    (role,))
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def _yaml_role_names() -> list[str]:
+    import yaml as _yaml
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[2] / "ontology" / "permissions.yaml"
+    return list(_yaml.safe_load(base.read_text(encoding="utf-8"))["roles"])
+
+
+_seeded: set[int] = set()      # 进程内按 env 缓存（幂等播种，避免每请求读 yaml）
+
+
+def _maybe_seed(env: dict[str, str]) -> None:
+    if id(env) in _seeded:
+        return
+    ensure_seed(env, _yaml_role_names())
+    _seeded.add(id(env))
+
+
+def role_allows(env: dict[str, str], role: str, gate: str) -> bool:
+    """统一角色门：gate ∈ GATES。系统角色按 DB 配置（默认=播种集）；
+    自定义角色查自身 DB action，无配置时回落基角色的门行为。"""
+    _maybe_seed(env)
+    action = GATES.get(gate)
+    if action is None:
+        return False
+    with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+        cur.execute("SELECT 1 FROM app_role_action WHERE role = %s AND action = %s",
+                    (role, action))
+        if cur.fetchone():
+            return True
+        base = custom_base(env, role)
+        if base and base != role:
+            cur.execute("SELECT 1 FROM app_role_action WHERE role = %s AND action = %s",
+                        (base, action))
+            return bool(cur.fetchone())
+        return False
+
+
+def display_role(request, authorization, role: str | None, user: str | None) -> str:
+    """原始角色（含自定义）：菜单/按钮权限按它判——数据面映射前的账号角色。"""
+    from adkg.guards.http import resolve_identity
+    from adkg.guards.sessions import SESSION_COOKIE, resolve_session
+    sess = resolve_session(request.app.state.env,
+                           request.cookies.get(SESSION_COOKIE))
+    if sess:
+        return str(sess["role"])
+    r, _u, _p = resolve_identity(request, authorization, role=role, user=user)
+    return r

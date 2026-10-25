@@ -80,8 +80,9 @@ def stats_overview(request: Request, days: int = 90,
                    role: str | None = None, user: str | None = None,
                    authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
-    if role not in DASHBOARD_ROLES:
-        raise HTTPException(403, "数据看板仅 management/ae/optimizer/finance/client 可用（spec §4）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role, "dashboard"):
+        raise HTTPException(403, "当前角色无数据看板权限（spec §18 角色门）")
     plan = planner.plan(role, person=user)
     if plan.deny_all:
         raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")

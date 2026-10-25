@@ -56,19 +56,23 @@ def _items(env: dict[str, str]) -> list[dict]:
 @router.get("/menus")
 def menus(request: Request, role: str | None = None, user: str | None = None,
           authorization: str | None = Header(default=None)) -> dict:
-    """当前角色可见的启用菜单（前端失败时回落静态默认，导航不中断）。"""
+    """当前角色可见的启用菜单（按账号原始角色——自定义角色见自己的菜单；
+    前端失败时回落静态默认，导航不中断）。"""
+    from adkg.guards.rbac import display_role
     role_, _user, _planner = resolve_identity(request, authorization, role=role, user=user)
+    shown = display_role(request, authorization, role, user)
     items = [m for m in _items(request.app.state.env)
-             if m["enabled"] and role_ in m["roles"]]
-    return {"items": items}
+             if m["enabled"] and shown in m["roles"]]
+    return {"items": items, "role": shown}
 
 
 @router.get("/admin/menus")
 def admin_menus(request: Request, role: str | None = None, user: str | None = None,
                 authorization: str | None = Header(default=None)) -> dict:
     role_, _user, _planner = resolve_identity(request, authorization, role=role, user=user)
-    if role_ != "admin":
-        raise HTTPException(403, "菜单管理仅 admin 可用（spec §17）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role_, "menu_write"):
+        raise HTTPException(403, "当前角色无菜单管理权限（spec §18 角色门）")
     return {"items": _items(request.app.state.env)}
 
 
@@ -79,14 +83,15 @@ def save_menus(request: Request, body: dict,
     """整批保存（spec §17）：label/roles/sort/enabled 可改；path/icon 白名单锁定，
     不开放增删；至少保住 /menus 自身对 admin 可见（防自锁）。"""
     role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
-    if role_ != "admin":
-        raise HTTPException(403, "菜单管理仅 admin 可用（spec §17）")
+    from adkg.guards.rbac import role_allows
+    if not role_allows(request.app.state.env, role_, "menu_write"):
+        raise HTTPException(403, "当前角色无菜单管理权限（spec §18 角色门）")
     items = body.get("items")
     if not isinstance(items, list):
         raise HTTPException(422, "items 必填")
     from adkg.guards.audit import audit
-    from adkg.guards.http import get_planner
-    legal_roles = set(get_planner(request).roles)
+    from adkg.guards.rbac import roles_of
+    legal_roles = set(roles_of(request.app.state.env))   # RBAC 全集（系统+自定义）
     cleaned = []
     for m in items:
         path, icon = str(m.get("path") or ""), str(m.get("icon") or "")
