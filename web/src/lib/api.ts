@@ -480,6 +480,35 @@ export async function resolveReviewQueue(id: string, decision: 'approved' | 'rej
   return r.json()
 }
 
+// ---------- 侧边栏菜单（spec §17 菜单管理：数据驱动，失败回落静态默认） ----------
+
+export interface MenuDef {
+  path: string
+  label: string
+  icon: string
+  roles: string[]
+  sort: number
+  enabled: boolean
+}
+
+export async function getMenus(): Promise<{ items: MenuDef[] }> {
+  const r = await fetch('/menus')
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
+}
+
+export const getAdminMenus = () => _get<{ items: MenuDef[] }>('/admin/menus')
+
+export async function saveMenus(items: MenuDef[]): Promise<{ ok: boolean; count: number }> {
+  const r = await fetch('/admin/menus', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  })
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
 
 export interface AgentTraceStep { tool: string; args: Record<string, unknown>; result: string }

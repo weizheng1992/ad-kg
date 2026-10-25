@@ -1,8 +1,8 @@
-// 侧边导航矩阵（spec §4）：菜单项随登录角色显隐——「权限不同看到的不同」的导航面
-// ready=false 的入口置灰占位，展示系统全貌与施工进度
+// 导航（spec §17 菜单管理）：菜单真源在服务端（GET /menus，DB 数据驱动），
+// 本文件保留静态默认（/menus 不可用时的回落）与图标名映射、角色标签
 import {
-  BarChart3, Briefcase, Building2, LayoutDashboard, Network, ShieldCheck,
-  UserCog, Users, Wallet, type LucideIcon,
+  BarChart3, Bot, Briefcase, Building2, KeyRound, LayoutDashboard, Menu, Network,
+  ShieldCheck, UserCog, Users, Wallet, type LucideIcon,
 } from 'lucide-react'
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -10,38 +10,47 @@ export const ROLE_LABEL: Record<string, string> = {
   client: '客户方(外部)', finance: '财务', admin: '运维',
 }
 
+/** 图标名（后端白名单同源）→ 组件 */
+export const ICONS: Record<string, LucideIcon> = {
+  LayoutDashboard, Users, Briefcase, BarChart3, Building2, Wallet, Network,
+  ShieldCheck, UserCog, KeyRound, Menu, Bot,
+}
+
+export const ICON_NAMES = Object.keys(ICONS)
+
 /** 星图·模拟（compose 起 mock-douyin 服务，spec §3）；同主机名 8100 端口 */
 export const platformUrl = () => `http://${window.location.hostname}:8100`
 
 export interface NavItem {
   to: string
   label: string
-  icon: LucideIcon
+  icon: string                  // ICONS 键名（数据驱动）
   roles: string[]
-  /** 页面尚未交付：置灰展示 */
   ready?: boolean
-  /** 外链（如模拟平台，M2 起生效） */
   external?: string
 }
 
-// Agent 助手不在导航里：全局悬浮窗（AppLayout 挂 AgentDock，所有角色可唤起，spec §6）
-export const NAV: NavItem[] = [
-  { to: '/', label: '数据看板', icon: LayoutDashboard,
+/** 静态回落默认 = 后端 DEFAULT_MENUS（§4 矩阵 + §16/§17 管理入口） */
+export const DEFAULT_NAV: NavItem[] = [
+  { to: '/', label: '数据看板', icon: 'LayoutDashboard',
     roles: ['management', 'ae', 'optimizer', 'finance', 'client'] },
-  { to: '/creators', label: '达人库', icon: Users,
+  { to: '/creators', label: '达人库', icon: 'Users',
     roles: ['management', 'ae', 'optimizer', 'finance'] },
-  { to: '/platform', label: '数据平台(模拟)', icon: BarChart3,
-    roles: ['management', 'ae', 'optimizer'], external: platformUrl() },
-  { to: '/cases', label: '案例', icon: Briefcase,
+  { to: '/cases', label: '案例', icon: 'Briefcase',
     roles: ['management', 'ae', 'optimizer', 'client'] },
-  { to: '/brands', label: '客户', icon: Building2,
+  { to: '/platform', label: '数据平台(模拟)', icon: 'BarChart3',
+    roles: ['management', 'ae', 'optimizer'], external: platformUrl() },
+  { to: '/brands', label: '客户', icon: 'Building2',
     roles: ['management', 'ae', 'client'] },
-  { to: '/settlements', label: '财务结算', icon: Wallet,
+  { to: '/settlements', label: '财务结算', icon: 'Wallet',
     roles: ['management', 'finance'] },
-  { to: '/graph', label: '图谱', icon: Network,
+  { to: '/graph', label: '图谱', icon: 'Network',
     roles: ['management', 'ae', 'optimizer', 'creative'] },
-  { to: '/admin', label: '管理后台', icon: ShieldCheck,
+  { to: '/admin', label: '管理后台', icon: 'ShieldCheck',
     roles: ['management', 'admin'] },
-  { to: '/people', label: '人员管理', icon: UserCog,
+  { to: '/people', label: '人员管理', icon: 'UserCog',
     roles: ['management', 'admin'] },
+  { to: '/permissions', label: '权限管理', icon: 'KeyRound',
+    roles: ['management', 'admin'] },
+  { to: '/menus', label: '菜单管理', icon: 'Menu', roles: ['admin'] },
 ]

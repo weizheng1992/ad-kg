@@ -14,6 +14,8 @@ import { BrandDetailPage } from '@/pages/brands/BrandDetailPage'
 import { SettlementsPage } from '@/pages/settlements/SettlementsPage'
 import { AdminPage } from '@/pages/admin/AdminPage'
 import { PeoplePage } from '@/pages/admin/PeoplePage'
+import { PermissionsPage } from '@/pages/admin/PermissionsPage'
+import { MenuPage } from '@/pages/admin/MenuPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -32,6 +34,8 @@ export const router = createBrowserRouter([
       { path: 'graph', element: <GraphPage /> },
       { path: 'admin', element: <AdminPage /> },
       { path: 'people', element: <PeoplePage /> },
+      { path: 'permissions', element: <PermissionsPage /> },
+      { path: 'menus', element: <MenuPage /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

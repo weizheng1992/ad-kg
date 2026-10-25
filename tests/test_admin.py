@@ -197,3 +197,58 @@ class TestAccountAdmin:
         assert client.post("/auth/login",
                            json={"username": self.U, "password": "pw-2"}).status_code == 200
         self._cleanup()
+
+
+@pytest.mark.skipif(not _pg_up(), reason="Postgres 不在线")
+class TestMenus:
+    """菜单管理（spec §17）：懒播种默认 + 角色过滤 + admin 保存 + 防自锁。"""
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        return TestClient(create_app({**os.environ, "ADKG_DEV_AUTH": "off"}))
+
+    def test_播种与角色过滤(self):
+        client = self._client()
+        r = client.get("/menus", params={"role": "finance", "user": "Person:zhou"})
+        assert r.status_code == 200
+        labels = [m["path"] for m in r.json()["items"]]
+        assert "/settlements" in labels and "/creators" in labels
+        assert "/menus" not in labels and "/people" not in labels   # finance 不可见管理入口
+        r = client.get("/menus", params={"role": "admin"})
+        assert "/menus" in [m["path"] for m in r.json()["items"]]
+
+    def test_保存与防自锁(self):
+        import psycopg
+        client = self._client()
+        assert client.get("/admin/menus", params={"role": "management"}).status_code == 403
+        items = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
+        # 改：财务结算对 optimizer 也可见；「案例」改名；图谱停用
+        for m in items:
+            if m["path"] == "/settlements":
+                m["roles"] = ["management", "finance", "optimizer"]
+            if m["path"] == "/cases":
+                m["label"] = "案例库"
+            if m["path"] == "/graph":
+                m["enabled"] = False
+        r = client.put("/admin/menus", params={"role": "admin"}, json={"items": items})
+        assert r.status_code == 200
+        got = client.get("/menus", params={"role": "optimizer"}).json()["items"]
+        assert "/settlements" in [m["path"] for m in got]           # 新增可见生效
+        assert "/graph" not in [m["path"] for m in got]              # 停用生效
+        assert next(m for m in got if m["path"] == "/cases")["label"] == "案例库"
+        # 防自锁：把 /menus 从 admin 摘除 → 422
+        for m in items:
+            if m["path"] == "/menus":
+                m["roles"] = ["management"]
+        assert client.put("/admin/menus", params={"role": "admin"},
+                          json={"items": items}).status_code == 422
+        # 还原默认（重播种语义：直接整批 PUT 回默认 roles/enabled）
+        items = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
+        default = client.get("/menus", params={"role": "finance"}).json()  # noqa: F841
+        import json as j
+        from adkg.api.routes.menus import DEFAULT_MENUS
+        restored = [{"path": p, "label": l, "icon": i, "roles": r.split(","),
+                     "sort": s, "enabled": True} for p, l, i, r, s in DEFAULT_MENUS]
+        assert client.put("/admin/menus", params={"role": "admin"},
+                          json={"items": restored}).status_code == 200
