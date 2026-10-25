@@ -28,8 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2                        # web 在 runner 构建（服务器不上构建负荷）
+        with:
+          bun-version: 1.4.0                               # 钉本地同版：bun.lock 1.4 格式旧版读不懂
       - name: 构建 web（bun）
         run: |
+          bun --version
           cd web && bun install --frozen-lockfile && bun run build
           tar -C web/dist -czf /tmp/adkg_web.tgz .
       - name: SSH 部署（代码 + 数据库迁移）
