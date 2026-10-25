@@ -21,12 +21,18 @@ jobs:
       - run: uv run pytest -q
 
   deploy:
-    name: 部署 A 机（pull + init_db + systemd 重启）
+    name: 部署 A 机（pull + init_db + 重启 + web + nginx）
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: SSH 部署
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2                        # web 在 runner 构建（服务器不上构建负荷）
+      - name: 构建 web（bun）
+        run: |
+          cd web && bun install --frozen-lockfile && bun run build
+          tar -C web/dist -czf /tmp/adkg_web.tgz .
+      - name: SSH 部署（代码 + 数据库迁移）
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -37,12 +43,46 @@ jobs:
           ssh -i ~/deploy_key -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
           set -euo pipefail
           cd ~/ad-kg
+          # uv.lock 自愈：服务器裸 uv sync 会改写 lock 使下次 pull 被拒（2026-10-25 实测）；
+          # repo 的 lock 是唯一真源，服务器侧改动一律丢弃
+          git checkout -- uv.lock 2>/dev/null || true
           git pull --ff-only
           # uv 用全路径：非交互 SSH 不走 .bashrc，~/.local/bin 不在 PATH（首次部署实测踩坑）
           "$HOME/.local/bin/uv" sync --frozen
           "$HOME/.local/bin/uv" run python scripts/init_db.py   # 幂等：建表/账号/Neo4j 约束，重复执行无副作用
           sudo systemctl restart adkg-api
           REMOTE
+          rm -f ~/deploy_key
+      - name: 发布 web 静态（/var/www/adkg）
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 600 /dev/null ~/deploy_key
+          echo "$SSH_KEY" > ~/deploy_key
+          scp -i ~/deploy_key /tmp/adkg_web.tgz "$SSH_USER@$SSH_HOST":/tmp/
+          # root 一次性 chown deploy /var/www/adkg 后此步自动生效；未授权前跳过不阻塞
+          ssh -i ~/deploy_key "$SSH_USER@$SSH_HOST" 'set -e; rm -rf /var/www/adkg.new \
+            && mkdir /var/www/adkg.new && tar -C /var/www/adkg.new -xzf /tmp/adkg_web.tgz \
+            && rm -rf /var/www/adkg.old && { [ -d /var/www/adkg ] && mv /var/www/adkg /var/www/adkg.old || true; } \
+            && mv /var/www/adkg.new /var/www/adkg && echo "web 静态已发布" \
+            || echo "SKIP: /var/www/adkg 尚未 chown deploy（一次性授权见 docs/deployment.md 五）"'
+          rm -f ~/deploy_key
+      - name: 同步 nginx 配置（真源 deploy/nginx/adkg-demo.conf）
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          install -m 600 /dev/null ~/deploy_key
+          echo "$SSH_KEY" > ~/deploy_key
+          # root 一次性加两条窄 sudoers（cp 指定文件 + nginx -t/reload）后此步自动生效
+          ssh -i ~/deploy_key "$SSH_USER@$SSH_HOST" 'set -e; cd ~/ad-kg \
+            && sudo -n cp deploy/nginx/adkg-demo.conf /etc/nginx/sites-available/adkg \
+            && sudo -n nginx -t && sudo -n systemctl reload nginx \
+            && echo "nginx 配置已同步并重载" \
+            || echo "SKIP: sudoers 尚未授权（一次性授权见 docs/deployment.md 五）"'
           rm -f ~/deploy_key
       - name: 健康断言（/docs 无凭据探活）
         env:
@@ -55,7 +95,7 @@ jobs:
           ssh -i ~/deploy_key -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
           for i in $(seq 1 18); do
             if curl -fsS -m 5 http://127.0.0.1:8000/docs >/dev/null 2>&1; then
-              echo "adkg-api 健康 ✓"; exit 0
+              echo "adkg-api 健康"; exit 0
             fi
             sleep 10
           done
