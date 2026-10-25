@@ -84,6 +84,28 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
   8000 本体仍不对公网，nginx 是唯一入口。web/dist 更新走 rsync（CI 自动化留待加厚时）。
   **nginx 配置真源：`deploy/nginx/adkg-demo.conf`（2026-10-23 落位、2026-10-24 改会话制；
   含探测路径 404，SPA fallback 不再对扫描器回 200）**
+
+- **CI 全自动发布（2026-10-25 起）**：push main → runner 构建 web（bun）→ SSH 部署五步
+  （代码 pull + uv.lock 自愈 → init_db → 重启 → web 静态发布 → nginx 配置同步重载 → 健康断言）。
+  其中 web/nginx 两步需要 root **一次性授权**（之后 CI 全自动，无需再登 root）：
+
+  ```bash
+  ssh root@152.136.165.95   # 一次性（约 6 行）
+  # 1) web 静态目录交 deploy（CI 用 adkg.new/adkg.old 原子轮换发布）
+  chown -R deploy:deploy /var/www/adkg
+  # 2) nginx 配置同步 + 校验/重载三条窄 sudoers（写 /etc/sudoers.d/adkg-ci）
+  cat >/etc/sudoers.d/adkg-ci <<'EOF'
+  deploy ALL=(root) NOPASSWD: /usr/bin/cp /home/deploy/ad-kg/deploy/nginx/adkg-demo.conf /etc/nginx/sites-available/adkg
+  deploy ALL=(root) NOPASSWD: /usr/sbin/nginx -t
+  deploy ALL=(root) NOPASSWD: /usr/sbin/systemctl reload nginx
+  EOF
+  chmod 440 /etc/sudoers.d/adkg-ci
+  # 3) 首次手动应用一次（此后 CI 接管）
+  cp /home/deploy/ad-kg/deploy/nginx/adkg-demo.conf /etc/nginx/sites-available/adkg
+  nginx -t && systemctl reload nginx
+  ```
+
+  未授权前 CI 的这两步打 `SKIP:` 日志继续跑（不阻塞代码发布）；授权后自动生效。
 - 凭据分层：`.env` 永不入库（两仓都是）；LLM key 只存服务器与本地，GitHub 只有 SSH 部署钥匙
 
 ## 五、边界约定（沿用 README §五 / §9.8 的精神）
