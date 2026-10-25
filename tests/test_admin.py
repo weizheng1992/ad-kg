@@ -253,6 +253,51 @@ class TestMenus:
         assert client.put("/admin/menus", params={"role": "admin"},
                           json={"items": restored}).status_code == 200
 
+    def test_icon白名单内可换_外拒400(self):
+        """icon 放开白名单内更换（spec §19）；白名单外 400，path 仍锁定 422。"""
+        client = self._client()
+        items = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
+        for m in items:
+            if m["path"] == "/brands":
+                m["icon"] = "Bot"                    # 白名单内更换（nav.tsx 图标集）
+        r = client.put("/admin/menus", params={"role": "admin"}, json={"items": items})
+        assert r.status_code == 200, r.text
+        got = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
+        assert next(m for m in got if m["path"] == "/brands")["icon"] == "Bot"
+        # 白名单外 → 400（spec §19：icon 仅白名单内可换）
+        for m in got:
+            if m["path"] == "/brands":
+                m["icon"] = "NotAnIcon"
+        assert client.put("/admin/menus", params={"role": "admin"},
+                          json={"items": got}).status_code == 400
+        # path 仍锁定：白名单外路径 → 422，不可增删
+        for m in got:
+            if m["path"] == "/brands":
+                m["icon"] = "Building2"
+        got.append({"path": "/nonexistent", "label": "x", "icon": "Menu",
+                    "roles": ["admin"], "sort": 999, "enabled": True})
+        assert client.put("/admin/menus", params={"role": "admin"},
+                          json={"items": got}).status_code == 422
+        got.pop()                                    # 还原
+        assert client.put("/admin/menus", params={"role": "admin"},
+                          json={"items": got}).status_code == 200
+
+    def test_按钮条播种保留中文label与存量回填(self):
+        """spec §19 缺陷清偿②：播种用 DEFAULT_BUTTONS 的中文 label；存量
+        「按钮」字面量行幂等回填（label≠'按钮' 的用户改名行不命中 WHERE）。"""
+        import psycopg
+        from adkg.api.routes.menus import DEFAULT_BUTTONS
+        client = self._client()
+        with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c, c.cursor() as cur:
+            cur.execute("UPDATE app_menu SET label = '按钮' WHERE type = 'button'")  # 造缺陷态
+        client.get("/menus", params={"role": "admin"})     # 触发懒播种 + 回填
+        items = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
+        btns = {m["path"]: m["label"] for m in items if m["type"] == "button"}
+        assert btns                                        # 按钮条在
+        for page, action, label, _sort in DEFAULT_BUTTONS:
+            assert label != "按钮"                         # 默认值本身非字面量
+            assert btns[f"{page}#{action}"] == label       # 播种/回填后的期望值
+
 
 @pytest.mark.skipif(not _pg_up(), reason="Postgres 不在线")
 class TestRBAC:
@@ -361,3 +406,63 @@ class TestMenuTree:
         finally:
             with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c, c.cursor() as cur:
                 cur.execute("UPDATE app_menu SET enabled=true WHERE path='/creators#creator_export'")
+
+
+@pytest.mark.skipif(not _pg_up(), reason="Postgres 不在线")
+class TestAdminViewGate:
+    """读门收口（spec §19）：/admin/* 读端点统一 role_allows('admin_view')——
+    初始语义等价 management/admin 可读；自定义角色授 admin_view 后同读；
+    写门不动（仍 admin 专属）。"""
+
+    R = "pytest_viewer"
+    U = "pytest_viewer"
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        return TestClient(create_app({**os.environ, "ADKG_DEV_AUTH": "off"}))
+
+    def _cleanup(self):
+        import psycopg
+        with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c, c.cursor() as cur:
+            cur.execute("DELETE FROM app_session WHERE user_id = 'u_pytest_viewer'")
+            cur.execute("DELETE FROM app_user WHERE username = %s", (self.U,))
+            cur.execute("DELETE FROM app_role WHERE name = %s", (self.R,))
+
+    def test_初始语义保持(self):
+        # ① management 可读（行为保持）；② 无 admin_view 的角色一律 403
+        client = self._client()
+        assert client.get("/admin/accounts",
+                          params={"role": "management"}).status_code == 200
+        assert client.get("/admin/audit", params={"role": "ae"}).status_code == 403
+        assert client.get("/admin/review-queue",
+                          params={"role": "finance", "user": "Person:zhou"}
+                          ).status_code == 403
+        assert client.get("/admin/roles", params={"role": "optimizer"}).status_code == 403
+        # 写门不动：management 开户仍 403（admin 专属）
+        assert client.post("/admin/accounts", params={"role": "management"},
+                           json={"username": "x", "password": "y", "role": "ae"}
+                           ).status_code == 403
+
+    def test_自定义角色授admin_view可读(self):
+        # ③ 核心证明：自定义角色插 (role,'admin_view') → 登录后读门放行
+        client = self._client()
+        self._cleanup()
+        r = client.post("/admin/roles", params={"role": "admin"},
+                        json={"name": self.R, "label": "管理只读(测试)",
+                              "base_role": "ae", "actions": ["admin_view"]})
+        assert r.status_code == 200, r.text
+        assert client.post("/admin/accounts", params={"role": "admin"},
+                           json={"username": self.U, "password": "pw-1",
+                                 "role": self.R}).status_code == 200
+        assert client.post("/auth/login",
+                           json={"username": self.U, "password": "pw-1"}).status_code == 200
+        # cookie 路：门判取原始角色（display_role）→ 自定义角色的 admin_view 生效
+        assert client.get("/admin/accounts").status_code == 200
+        assert client.get("/admin/audit").status_code == 200
+        assert client.get("/admin/roles").status_code == 200
+        # 写门不动：该角色无 account_manage → 开户 403（读放行 ≠ 写放行）
+        assert client.post("/admin/accounts",
+                           json={"username": "x2", "password": "y", "role": "ae"}
+                           ).status_code == 403
+        self._cleanup()

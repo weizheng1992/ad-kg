@@ -1,7 +1,8 @@
 """侧边栏菜单（spec §17 菜单管理）：数据驱动——admin 可调可见角色/排序/改名/启停。
 
-- path 与 icon 白名单锁定（对应真实路由与前端图标集），不开放增删——凭空造
-  菜单项只会指向 404；可见性是导航体验层，真正的权限闸在各后端端点。
+- path 白名单锁定（对应真实路由），不开放增删——凭空造菜单项只会指向 404；
+  icon 白名单内可换（spec §19，图标由前端 nav.tsx 渲染，未收录即无法显示）；
+  可见性是导航体验层，真正的权限闸在各后端端点。
 - 首访懒播种默认（DEFAULT_MENUS = §4 导航矩阵）；GET /menus 按当前角色过滤。
 """
 from __future__ import annotations
@@ -44,7 +45,10 @@ DEFAULT_BUTTONS: list[tuple[str, str, str, int]] = [
     ("/menus", "menu_manage", "菜单写操作", 10),
 ]
 _PATHS = {m[0] for m in DEFAULT_MENUS} | {b[0] + "#" + b[1] for b in DEFAULT_BUTTONS}
-_ICONS = {m[2] for m in DEFAULT_MENUS} | {b[0] + "#" + b[1] for b in DEFAULT_BUTTONS}
+# 图标白名单（spec §19）：与 web/src/lib/nav.tsx 的 ICONS 键集同源——图标由前端
+# 渲染，未收录的键名无法显示；两侧增删需同步（本表以后端校验为准）
+_ICONS = {"LayoutDashboard", "Users", "Briefcase", "BarChart3", "Building2", "Wallet",
+          "Network", "ShieldCheck", "UserCog", "KeyRound", "Menu", "Bot"}
 
 
 def _ensure_seed(env: dict[str, str]) -> None:
@@ -57,9 +61,16 @@ def _ensure_seed(env: dict[str, str]) -> None:
                 " ON CONFLICT (path) DO NOTHING", DEFAULT_MENUS)
         cur.executemany(
             "INSERT INTO app_menu (path, label, icon, roles, sort, type, parent,"
-            " action_key) VALUES (%s, '按钮', 'Menu', '', %s + 1, 'button', %s, %s)"
+            " action_key) VALUES (%s, %s, 'Menu', '', %s + 1, 'button', %s, %s)"
             " ON CONFLICT (path) DO NOTHING",
-            [(f"{page}#{action}", sort, page, action)
+            [(f"{page}#{action}", label, sort, page, action)
+             for page, action, label, sort in DEFAULT_BUTTONS])
+        # 存量回填（spec §19 缺陷清偿②）：早期播种把按钮条 label 写死「按钮」、
+        # 丢了 DEFAULT_BUTTONS 自带中文 label——只修仍是字面量「按钮」的行，
+        # 用户改过名的（label≠「按钮」）不动；小表每次跑一遍可接受
+        cur.executemany(
+            "UPDATE app_menu SET label = %s WHERE path = %s AND label = '按钮'",
+            [(label, f"{page}#{action}")
              for page, action, label, sort in DEFAULT_BUTTONS])
 
 
@@ -112,8 +123,9 @@ def admin_menus(request: Request, role: str | None = None, user: str | None = No
 def save_menus(request: Request, body: dict,
                role: str | None = None, user: str | None = None,
                authorization: str | None = Header(default=None)) -> dict:
-    """整批保存（spec §17）：label/roles/sort/enabled 可改；path/icon 白名单锁定，
-    不开放增删；至少保住 /menus 自身对 admin 可见（防自锁）。"""
+    """整批保存（spec §17/§19）：label/icon/roles/sort/enabled 可改（icon 白名单内，
+    键集同 nav.tsx ICONS）；path 白名单锁定不可增删不可改；至少保住 /menus 自身
+    对 admin 可见（防自锁）。"""
     role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
     from adkg.guards.rbac import role_allows
     if not role_allows(request.app.state.env, role_, "menu_write"):
@@ -127,8 +139,11 @@ def save_menus(request: Request, body: dict,
     cleaned = []
     for m in items:
         path, icon = str(m.get("path") or ""), str(m.get("icon") or "")
-        if path not in _PATHS or icon not in _ICONS:
-            raise HTTPException(422, f"非法菜单项：{path}（path/icon 白名单锁定）")
+        if path not in _PATHS:
+            raise HTTPException(422, f"非法菜单项：{path}（path 白名单锁定，不可增删改）")
+        if icon not in _ICONS:
+            raise HTTPException(400, f"非法图标：{icon}（icon 仅白名单内可换，"
+                                     "键集见 web/src/lib/nav.tsx ICONS）")
         is_button = "#" in path
         if is_button:                           # 按钮条：可见性=action 门，不存 roles
             cleaned.append((str(m.get("label") or path).strip()[:20] or path, path, icon,
@@ -146,9 +161,9 @@ def save_menus(request: Request, body: dict,
     env = request.app.state.env
     with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         for label, path, icon, roles, sort, enabled in cleaned:
-            cur.execute("UPDATE app_menu SET label=%s, roles=%s, sort=%s,"
+            cur.execute("UPDATE app_menu SET label=%s, icon=%s, roles=%s, sort=%s,"
                         " enabled=%s, updated_at=now() WHERE path=%s",
-                        (label, roles, sort, enabled, path))
+                        (label, icon, roles, sort, enabled, path))
     audit(env, role_, person, "save_menus", "app_menu", "allow",
           f"{len(cleaned)} 项整批更新")
     return {"ok": True, "count": len(cleaned)}
