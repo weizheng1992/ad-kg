@@ -74,7 +74,7 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
 - 一律不对公网开放：**5433（PG）/ 8000（API）/ 7687（bolt）/ 7474（Neo4j 浏览器）**——
   PG 只经隧道到 B 机；adkg API 将来被 smartServe 消费时填隧道地址 `10.10.0.1:8000`（现未接线）
 - **唯一公网面例外：web（2026-10-20 拍板；2026-10-24 真实系统化改会话制，spec §2）**——80/TCP 经宿主机
-  nginx 开放：静态 `web/dist` + 反代 API 路径（auth/ask/graph/actions/guideline/ingest/agent/creative
+  nginx 开放：静态 `web/dist` + 反代 API 路径（auth/ask/graph/actions/guideline/ingest/cases/agent/creative
   及 creators/brands/settlements/stats/admin）到 `127.0.0.1:8000`。把门三层：① 服务端会话登录
   （`/auth/login` 校验 `app_user` scrypt 哈希 → `app_session` HttpOnly cookie，7 天滑动可吊销；
   账号由 `scripts/init_users.py` 开通，README §9.7「最小账号面」）② `resolve_identity` 优先级

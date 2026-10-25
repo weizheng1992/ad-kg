@@ -113,8 +113,9 @@ def brand_detail(request: Request, bid: str,
             "c.lost_reason AS lost_reason, c.settlement_status AS settlement_status "
             "ORDER BY c.id", id=bid).data()
         cases = [c for c in cases if not visible or c["id"] in visible]
-        if external:
-            cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"]} for c in cases]
+        if external:       # client 保留 lost_reason（spec §5；2026-10-25 审查勘误）
+            cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"],
+                      "lost_reason": c["lost_reason"]} for c in cases]
         # 对接人（spec §14）：内部角色可见（姓名经关系边，同案例 owners 口径）；外部掩码
         owners = [] if external else [
             dict(r) for r in s.run(

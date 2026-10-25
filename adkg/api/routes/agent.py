@@ -119,7 +119,7 @@ _TOOLS: dict[str, tuple[str, object]] = {
     "get_guidelines": ('{} → 创意规范与机判阈值', _t_get_guidelines),
     "list_synced_docs": ('{"q"} → 已同步飞书文档（生成案例的素材源）', _t_list_synced_docs),
     "fetch_creator_from_platform": (
-        '{"query"|"creator_no"} → 星图·模拟数据平台连接器：无头浏览器真实搜索/点击达人页，'
+        '{"query"|"creator_id"} → 星图·模拟数据平台连接器：无头浏览器真实搜索/点击达人页，'
         '抓档案（粉丝/报价/GMV/视频方向）并幂等入图（platform_api 口径）——查达人现价用它',
         _t_fetch_creator_from_platform),
 }
@@ -131,7 +131,7 @@ _AGENT_SYSTEM = (
     '信息足够：{"final": {"answer": "给用户的说明", '
     '"case_seed": {"brand_name", "product_names": [], "case_name"?, "stage"?, "doc_id"?, "person_ids": []} 或 null, '
     '"creative_drafts": [{"title","format","platform","hook_3s","script","copy"}] 或 null}}。'
-    "工具（全部只读）：" + "；".join(f"{n} {d}" for n, (d, _) in _TOOLS.items()) + "。"
+    "工具（只读为主；平台抓取入库工具需 create_creator 动作门，§12.4）：" + "；".join(f"{n} {d}" for n, (d, _) in _TOOLS.items()) + "。"
     "规矩：think 必填且不超过 40 字（用户会看到你的思考轨迹）；"
     "事实/排名/归因类问题直接调 ask_knowledge，一次调用即完整转述答案（保留数字与结论），"
     "不要重复调用；不知道就先调工具查，禁止编造实体、卖点与数据；"

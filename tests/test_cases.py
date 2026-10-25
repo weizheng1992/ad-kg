@@ -50,8 +50,8 @@ class TestCasesAPI:
         d = client.get("/cases", params={"role": "client", "user": "Person:client_a"}).json()
         assert d["total"] > 0
         assert {i["brand_id"] for i in d["items"]} == {"Brand:B04"}
-        assert all(set(i) == {"id", "name", "stage", "brand_id", "brand_name",
-                              "owners", "stats"} for i in d["items"])
+        assert all(set(i) == {"id", "name", "stage", "lost_reason", "brand_id",
+                              "brand_name", "owners", "stats"} for i in d["items"])
         det = client.get("/cases/Case:C-2025-011",
                          params={"role": "client", "user": "Person:client_a"}).json()
         assert det["brand"]["id"] == "Brand:B04"                  # 类白名单无 Brand，锚点豁免

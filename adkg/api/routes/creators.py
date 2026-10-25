@@ -138,6 +138,28 @@ def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                     id=creator_id).single()
     existing = rec["auth"] if rec else None
     if existing is not None and existing > (prov.authority or 0):
+        # 字段级仲裁（spec §10 勘误，2026-10-25 审查收口）：不覆盖已有字段，
+        # 空缺字段仍 MERGE 补齐；真正字段冲突才进 review_queue
+        with graph.session() as s2:
+            node_props = (s2.run("MATCH (n:Entity {id: $id}) RETURN properties(n) AS p",
+                                 id=creator_id).single() or {"p": {}})["p"]
+        business = {k: v for k, v in props.items()
+                    if not k.startswith("prov_") and k != "authority"}
+        filled = {k: v for k, v in business.items()
+                  if v is not None and node_props.get(k) is None}
+        if filled:
+            with graph.session() as s2:
+                s2.run("MATCH (n:Entity {id: $id}) SET n += $f",
+                       id=creator_id, f=filled)
+        field_diff = {k: {"existing": node_props.get(k), "incoming": v}
+                      for k, v in business.items()
+                      if v is not None and node_props.get(k) is not None
+                      and node_props.get(k) != v}
+        if not field_diff:                    # 只有空缺补齐，无字段冲突——静默合并
+            audit(env, role, person, "create_creator", creator_id, "allow",
+                  f"更高权威（{existing}）在场，仅补空缺字段 {sorted(filled)}（§10 字段级仲裁）")
+            return {"outcome": "merged", "creator_id": creator_id,
+                    "filled": sorted(filled)}
         with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
             cur.execute(
                 "INSERT INTO review_queue (kind, payload)"
@@ -151,11 +173,14 @@ def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                      "incoming_source_type": source_type,
                      "incoming_authority": prov.authority,
                      "existing_authority": existing,
-                     "incoming_props": props}, ensure_ascii=False),
+                     "field_diff": field_diff,
+                     "filled": sorted(filled)}, ensure_ascii=False),
                  "entity": creator_id, "source": prov.source_id})
         audit(env, role, person, "create_creator", creator_id, "deny",
-              f"更高权威（{existing}）在场未覆盖，冲突进 review_queue（§12.2）")
-        return {"outcome": "conflict", "creator_id": creator_id}
+              f"更高权威（{existing}）在场不覆盖；空缺已补 {sorted(filled)}，"
+              f"字段冲突进 review_queue（§10/§12.2）")
+        return {"outcome": "conflict", "creator_id": creator_id,
+                "field_diff": field_diff, "filled": sorted(filled)}
     graph.upsert_entities([Entity(entity_class="Creator", entity_id=creator_id,
                                   props=props, provenance=prov)])
     record_quote_history(env, creator_id, props.get("quote_20s"),
@@ -216,6 +241,7 @@ async def import_creators(request: Request, file: UploadFile,
     env = request.app.state.env
     created = merged = conflicts = 0
     errors: list[dict] = []
+    conflict_rows: list[dict] = []
     line_start = 2
     for line_no, row in enumerate(records, start=line_start):
         try:
@@ -229,8 +255,13 @@ async def import_creators(request: Request, file: UploadFile,
             continue
         created += out["outcome"] == "created"
         merged += out["outcome"] == "merged"
-        conflicts += out["outcome"] == "conflict"
-    return {"created": created, "merged": merged, "conflicts": conflicts,
+        if out["outcome"] == "conflict":
+            conflicts += 1
+            conflict_rows.append({"line": line_no, "creator_id": out["creator_id"],
+                                  "detail": out.get("field_diff", "更高权威记录在场")})
+    # 行级统计 + 冲突清单（spec §13.1 契约；键名 updated 对齐 spec，2026-10-25 勘误）
+    return {"created": created, "updated": merged, "conflicts": conflicts,
+            "conflict_rows": conflict_rows[:20],
             "errors": errors[:20], "total": created + merged + conflicts + len(errors)}
 
 

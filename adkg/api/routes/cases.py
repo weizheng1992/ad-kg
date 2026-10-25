@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import psycopg
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
@@ -93,15 +95,16 @@ def list_cases(request: Request, q: str = "", stage: str = "", brand: str = "",
         r["stats"] = stats.get(r["id"])
         if external:                                        # client：姓名掩码 + 只留 stage
             r["owners"] = []
+            # client 保留 lost_reason（spec §5「为什么没成」；2026-10-25 审查勘误）
             for k in ("bd_budget", "gross_margin", "settlement_status",
-                      "lost_reason", "terminate_reason"):
+                      "terminate_reason"):
                 r.pop(k, None)
         else:
             denied = {d.split(".", 1)[1] for d in plan.deny_properties
                       if d.startswith("Case.")}
             for k in denied:
                 r.pop(k, None)
-    return {"items": items, "total": len(items), "page": page, "size": size}
+    return {"items": items, "total": total, "page": page, "size": size}
 
 
 @router.get("/cases/{cid}")
@@ -201,6 +204,15 @@ def case_detail(request: Request, cid: str,
     except psycopg.Error:
         timeline = []
 
+    if plan.mask_rules:            # 外部角色出口脱敏（§12.6）：chunk 文本掩人名、
+        with get_graph(request).session() as _s:  # timeline 剥 role/reason（内部身份与人名）
+            _names = [r["n"] for r in _s.run(
+                "MATCH (p:Entity) WHERE p.class='Person' AND p.name IS NOT NULL"
+                " RETURN p.name AS n").data()]
+        for d in docs:
+            for n in _names:
+                d["text"] = d["text"].replace(n, "＊＊")
+        timeline = [{k: t[k] for k in ("ts", "action", "verdict")} for t in timeline]
     props = _mask_case_props(plan, {k: rec[k] for k in
                                     ("stage", "bd_budget", "gross_margin",
                                      "settlement_status", "lost_reason",
@@ -226,7 +238,6 @@ def case_detail(request: Request, cid: str,
 
 
 # 状态机合法目标（schema.yaml#constraints 的展示形态，与 ActionChecker 同源语义）
-_NEXT_STAGES = {"proposal": ["live", "lost"], "live": ["closed", "terminated"]}
 
 
 @router.post("/cases/{cid}/stage")
@@ -263,11 +274,15 @@ def update_case_stage(request: Request, cid: str, body: dict,
         audit(request.app.state.env, role, person, "update_stage", cid,
               "deny", verdict.get("reason", ""))
         raise HTTPException(409, verdict.get("reason", "状态机拒绝该迁移"))
-    with graph.session() as s:
-        s.run("MATCH (c:Entity {id: $id}) SET c.stage = $to"
+    audit_id = audit(request.app.state.env, role, person, "update_stage", cid, "allow",
+                     f"{rec['stage']} -> {to_stage}" + (f"（{reason}）" if reason else ""))
+    with graph.session() as s:   # 写图带 provenance（§六/§12.1：audit_id 可溯源；Neo4j 属性须原子值）
+        s.run("MATCH (c:Entity {id: $id}) SET c.stage = $to,"
+              " c.stage_prov_source_id = $psrc, c.stage_prov_actor = $pactor,"
+              " c.stage_prov_ts = $pts"
               + (", c.lost_reason = $r" if to_stage == "lost" else "")
               + (", c.terminate_reason = $r" if to_stage == "terminated" else ""),
-              id=cid, to=to_stage, r=reason or None)
-    audit(request.app.state.env, role, person, "update_stage", cid, "allow",
-          f"{rec['stage']} -> {to_stage}" + (f"（{reason}）" if reason else ""))
+              id=cid, to=to_stage, r=reason or None,
+              psrc=f"audit:{audit_id}", pactor=person or role,
+              pts=datetime.now(timezone.utc).isoformat())
     return {"ok": True, "case_id": cid, "stage": to_stage}

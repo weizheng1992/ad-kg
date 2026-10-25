@@ -614,7 +614,7 @@ optimizer:                          # 内部角色：类白名单 + 属性黑名
 
 client:                             # 外部角色：一律白名单
   classes: [Case, Campaign, Creative, Metric]
-  allow_properties: [Case.stage, Campaign.status]
+  allow_properties: [Case.stage, Case.lost_reason, Campaign.status]
   metrics_allow: [cost, ctr, cvr, conversions]
   actions: [read]
   row_filter: Person(external_for)->Brand<-for_brand-Case<-belongs_to-Campaign

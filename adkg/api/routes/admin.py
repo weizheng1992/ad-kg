@@ -217,15 +217,20 @@ def resolve_review(request: Request, qid: str, body: dict,
     payload = row["payload"] or {}
     from adkg.guards.audit import audit
     applied = False
-    if decision == "approved" and row["kind"] == "conflict" and payload.get("incoming_props"):
-        # 采纳进源数据（人审背书）：incoming 来源 provenance 原样落图
+    if decision == "approved" and row["kind"] == "conflict" and (
+            payload.get("incoming_props") or payload.get("field_diff")):
+        # 采纳进源数据（人审背书）：incoming 来源 provenance 原样落图——
+        # 字段级仲裁载荷（2026-10-25）：空缺 filled + 冲突 field_diff 的 incoming 值
         from datetime import datetime, timezone
 
         from adkg.models import Entity, Provenance
         src_id = str(payload.get("incoming_source") or "review:resolve")
         src_type = str(payload.get("incoming_source_type") or
                        ("platform_api" if src_id.startswith("mock-douyin") else "conversation"))
-        props = dict(payload["incoming_props"])
+        props = dict(payload.get("incoming_props") or {})
+        props.update(payload.get("filled") or {})
+        props.update({k: v["incoming"] for k, v in
+                      (payload.get("field_diff") or {}).items()})
         get_graph(request).upsert_entities([Entity(
             entity_class=str(payload.get("entity", "")).split(":", 1)[0] or "Creator",
             entity_id=str(payload["entity"]),

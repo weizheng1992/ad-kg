@@ -53,7 +53,7 @@ class TestBrandsAPI:
         d = client.get("/brands/Brand:B04",
                        params={"role": "client", "user": "Person:client_a"}).json()
         # 外部属性白名单：案例只回 id/name/stage；商品段无 Product 类不返回
-        assert all(set(c) == {"id", "name", "stage"} for c in d["cases"])
+        assert all(set(c) == {"id", "name", "stage", "lost_reason"} for c in d["cases"])
         assert d["products"] == []
         # 指标白名单：cost 可见、cpa 不可见（§12.4 metrics_allow）
         assert d["stats"] and "cost" in d["stats"] and "cpa" not in d["stats"]

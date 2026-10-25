@@ -45,7 +45,7 @@ roles:
   client:                        # 外部角色：一律白名单，与 README §12.4 逐字一致
     external: true
     classes: [Case, Campaign, Creative, Metric]
-    allow_properties: [Case.stage, Campaign.status]
+    allow_properties: [Case.stage, Case.lost_reason, Campaign.status]
     metrics_allow: [cost, ctr, cvr, conversions]
     actions: [read]
     row_filter: Person(external_for)->Brand<-for_brand-Case<-belongs_to-Campaign
