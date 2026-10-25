@@ -33,8 +33,16 @@ jobs:
       - name: 构建 web（bun）
         run: |
           bun --version
-          cd web && bun install --frozen-lockfile && bun run build
+          cd web
+          set -o pipefail
+          (bun install --frozen-lockfile && bun run build) 2>&1 | tee /tmp/web-build.log
           tar -C web/dist -czf /tmp/adkg_web.tgz .
+      - name: 构建日志 artifact（失败时可下载诊断）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build-log
+          path: /tmp/web-build.log
       - name: SSH 部署（代码 + 数据库迁移）
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
