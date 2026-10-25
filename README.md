@@ -492,10 +492,15 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 | Agent 助手（全局悬浮窗，SSE 流式） | 所有人（证据与草稿随角色过滤） | `/agent/chat/stream`（事件契约：thought / tool_start / tool_step 浏览子步含截图 / tool_result / reply / draft / done；ReAct 循环生成器化，`/agent/chat` 聚合同流保旧契约；工具面新增 `fetch_creator_from_platform`——Playwright 无头真实点击星图·模拟、逐步截图、幂等入图，spec §6） |
 | 图谱展开 `/graph` | management/ae/optimizer/creative | `/graph/entity`（Case/Product/Creative 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数；Creative 投放未对齐时不出卡——§7.4 对齐漏斗的诚实边界） |
 | 规范检查 | 创意 / AIGC | `/guideline/check` |
-| 管理后台 `/admin`（只读） | management/admin | 权限矩阵 + 账号一览 + 审计流水（M7）；review_queue 人审界面后置 |
+| 管理后台 `/admin` | management/admin（读门 `admin_view`） | 审计流水（action/verdict/role/关键词筛选）+ 人审队列（只读 + approve/reject 处置，门 review_resolve）+ 账号一览（写操作在人员管理页）；矩阵视图已迁权限管理页 |
 | 数据平台（模拟） 外链 | management/ae/optimizer | mock-douyin 服务（M2，星图·模拟） |
 
-后台管理 = 知识运营台 + **人员管理（spec §16，2026-10-24 第三轮修订：用户拍板要 UI）**：账号在库（`app_user`，scrypt 哈希），**admin 专属写操作**——web 开户 / 改密（吊销既有会话）/ 停用启用，角色过 `permissions.yaml` 合法集，一切落审计；management 仍只读账号一览。角色与 token 仍在 `permissions.yaml` + `.env`（配置文件即权限真源），身份生命周期管理收在 admin 账号面。
+后台管理 = 知识运营台 + **三大管理页**（spec §16–§19，2026-10-25 table-tree 重构）：
+
+- **人员管理 `/people`**：账号在库（`app_user`，scrypt 哈希）；admin 专属写——开户 / 改密（吊销既有会话）/ 停用启用 / 改绑角色（换绑即吊销会话），一切落审计；搜索（账号/姓名）+ 角色筛选，开户改密走 Dialog。
+- **权限管理 `/permissions`**：左角色列表、右「页面→按钮」树形授权（真 Checkbox：页面勾写 `app_menu.roles`、按钮勾写 `app_role_action`，整批保存双写）；自定义角色 CRUD（`app_role`，数据面等同基角色）；底部「数据面权限矩阵」折叠区 = `permissions.yaml` 只读投影（两平面分离的可视证据）。
+- **菜单管理 `/menus`**：页面→按钮两级 table-tree（自研组件，菜单/权限两页复用）——label / 图标（白名单内）/ 排序 / 启停；path 与 action 词表白名单锁定不开放增删（菜单 = 前端路由镜像，凭空造菜单只会指向 404）。
+- **门与显隐**：`/admin/*` 读门统一 `role_allows('admin_view')`（management 只读、admin 全权），写权 admin 独占；前端按钮显隐统一 `useCan(action)`（`/my-actions`，与后端 role_allows 同一门）。数据面（类白名单/指标/行过滤）真源仍是 `permissions.yaml` + `.env`——**两平面分离**：数据面配置即真源，界面权限（菜单/按钮/自定义角色）真源在 DB。
 
 **认证与角色头**：web 走**服务端会话**（spec §2）——`POST /auth/login` 校验 `app_user`（stdlib scrypt + 等时哑校验防用户名探测），签发 `app_session` 表支撑的 HttpOnly cookie（7 天滑动续期、可吊销）；`resolve_identity` 解析优先级 **token > cookie > dev**，登录成败均落审计。~~X-Adkg-Role 换 token~~ **已撤**（2026-10-24）：nginx 不再按头注入 Authorization，web 全靠会话 cookie；`Authorization: Bearer` 直连路保留给 smartServe / eval。每账号绑定唯一 role + Person，**演示期的管理员自由切换身份已移除**（真系统不留后门）；本地开发 `ADKG_DEV_AUTH=off` 不变。
 
