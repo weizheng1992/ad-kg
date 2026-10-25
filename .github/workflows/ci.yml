@@ -37,7 +37,7 @@ jobs:
           set -o pipefail
           (bun install --frozen-lockfile && bun run build) 2>&1 | tee /tmp/web-build.log
           echo '```' >> "$GITHUB_STEP_SUMMARY"; cat /tmp/web-build.log >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
-          tar -C web/dist -czf /tmp/adkg_web.tgz .
+          tar -C dist -czf /tmp/adkg_web.tgz .   # 已在 web/ 内，路径勿再带 web/ 前缀
       - name: 构建日志 artifact（失败时可下载诊断）
         if: always()
         uses: actions/upload-artifact@v4
