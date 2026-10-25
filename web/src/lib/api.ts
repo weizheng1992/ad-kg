@@ -489,6 +489,10 @@ export interface MenuDef {
   roles: string[]
   sort: number
   enabled: boolean
+  /** spec §18.5：page=页面条（roles 控可见）；button=按钮条（action 门控可见） */
+  type?: 'page' | 'button'
+  parent?: string | null
+  action_key?: string | null
 }
 
 export async function getMenus(): Promise<{ items: MenuDef[] }> {

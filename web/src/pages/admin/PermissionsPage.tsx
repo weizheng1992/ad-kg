@@ -34,7 +34,6 @@ export function PermissionsPage() {
 
   if (!roles) return <div className="p-6 text-sm text-muted-foreground">加载中…</div>
   const role = roles.find((r) => r.name === sel)
-  const actionsAll = roles.find((r) => r.actions_all)?.actions_all ?? {}
   const isCustom = role?.source === 'custom'
 
   /** 角色菜单勾选：写 app_menu.roles（菜单管理同源数据，转置视图） */
@@ -167,33 +166,52 @@ export function PermissionsPage() {
 
             <Card>
               <CardHeader className="pb-1">
-                <CardTitle className="text-sm">按钮 / 操作权限（{role.actions.length}/{Object.keys(actionsAll).length}）</CardTitle>
+                <CardTitle className="text-sm">
+                  权限树（页面 → 按钮；页面写菜单可见，按钮写操作权限——保存一次落两库）
+                </CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-wrap gap-1.5">
-                {Object.entries(actionsAll).map(([a, label]) => (
-                  <button key={a} onClick={() => toggleAction(a)}
-                          className={`rounded-md px-2.5 py-1 text-xs ${role.actions.includes(a)
-                            ? 'bg-primary text-primary-foreground' : 'border text-muted-foreground'}`}>
-                    {label}
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-1">
-                <CardTitle className="text-sm">可见菜单（勾选后该角色侧边栏可见）</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                {menus.map((m) => (
-                  <button key={m.path} onClick={() => toggleMenu(m.path)}
-                          className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs ${
-                            m.roles.includes(sel) ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}`}>
-                    <span className={`size-2 rounded-full ${m.roles.includes(sel) ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
-                    {m.label}
-                    <span className="ml-auto font-mono text-[10px] opacity-60">{m.path}</span>
-                  </button>
-                ))}
+              <CardContent className="space-y-1.5">
+                {menus.filter((m) => m.type !== 'button')
+                      .sort((a, b) => a.sort - b.sort).map((m) => {
+                  const btns = menus.filter((x) => x.type === 'button' && x.parent === m.path)
+                  const pageOn = m.roles.includes(sel)
+                  return (
+                    <div key={m.path}>
+                      <button onClick={() => toggleMenu(m.path)}
+                              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm ${
+                                pageOn ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50'}`}>
+                        <span className={`flex size-4 items-center justify-center rounded border text-[10px] ${
+                          pageOn ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'}`}>
+                          {pageOn && '✓'}
+                        </span>
+                        <b className="font-medium">{m.label}</b>
+                        <span className="ml-auto font-mono text-[10px] opacity-60">{m.path}</span>
+                      </button>
+                      {btns.length > 0 && (
+                        <div className="ml-8 space-y-1 border-l py-1 pl-4">
+                          {btns.map((b) => {
+                            const on = role.actions.includes(b.action_key ?? '')
+                            return (
+                              <button key={b.path} onClick={() => b.action_key && toggleAction(b.action_key)}
+                                      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-xs ${
+                                        on ? 'text-primary' : 'text-muted-foreground hover:bg-muted/50'}`}>
+                                <span className={`flex size-3.5 items-center justify-center rounded border text-[9px] ${
+                                  on ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'}`}>
+                                  {on && '✓'}
+                                </span>
+                                {b.label}
+                                <span className="ml-auto font-mono text-[10px] opacity-50">{b.action_key}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                <p className="pt-1 text-[11px] text-muted-foreground">
+                  页面可见 = 侧边栏显示该入口；按钮可见 = 页面内该操作对角色可用（后端角色门同一套判定）
+                </p>
               </CardContent>
             </Card>
           </div>

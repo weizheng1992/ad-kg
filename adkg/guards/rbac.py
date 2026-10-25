@@ -118,12 +118,11 @@ def _maybe_seed(env: dict[str, str]) -> None:
 
 
 def role_allows(env: dict[str, str], role: str, gate: str) -> bool:
-    """统一角色门：gate ∈ GATES。系统角色按 DB 配置（默认=播种集）；
+    """统一角色门：gate ∈ GATES（端点门）或直接是 action 词表键（按钮条，
+    spec §18.5——action_key 即 gate）。系统角色按 DB 配置（默认=播种集）；
     自定义角色查自身 DB action，无配置时回落基角色的门行为。"""
     _maybe_seed(env)
-    action = GATES.get(gate)
-    if action is None:
-        return False
+    action = GATES.get(gate, gate)      # 端点门映射；纯按钮键原样即 action
     with psycopg.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         cur.execute("SELECT 1 FROM app_role_action WHERE role = %s AND action = %s",
                     (role, action))

@@ -328,3 +328,36 @@ class TestRBAC:
                            json={"role": "finance"}).status_code == 200
         assert client.delete(f"/admin/roles/{self.R}", params={"role": "admin"}).status_code == 200
         self._cleanup()
+
+
+@pytest.mark.skipif(not _pg_up(), reason="Postgres 不在线")
+class TestMenuTree:
+    """菜单树（spec §18.5）：页面→按钮两级下发，按钮可见=action 门。"""
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from adkg.api.main import create_app
+        return TestClient(create_app({**os.environ, "ADKG_DEV_AUTH": "off"}))
+
+    def test_按钮条按action门下发(self):
+        client = self._client()
+        # admin 全量 action → 按钮条齐；finance 只有 dashboard/settlement/export
+        d = client.get("/menus", params={"role": "admin"}).json()
+        btns = [m for m in d["items"] if m["type"] == "button"]
+        assert any(b["action_key"] == "creator_write" for b in btns)
+        assert any(b["action_key"] == "menu_manage" for b in btns)
+        d = client.get("/menus", params={"role": "finance", "user": "Person:zhou"}).json()
+        btns = [m["action_key"] for m in d["items"] if m["type"] == "button"]
+        assert btns == ["settlement_view"]          # finance 播种集：仅结算查看
+        # 按钮条 enabled=false 时不下发
+        import psycopg
+        with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c, c.cursor() as cur:
+            cur.execute("UPDATE app_menu SET enabled=false WHERE path='/creators#creator_export'")
+        try:
+            btns = [m["action_key"] for m in client.get(
+                "/menus", params={"role": "finance", "user": "Person:zhou"}
+            ).json()["items"] if m["type"] == "button"]
+            assert "creator_export" not in btns
+        finally:
+            with psycopg.connect(os.environ["ADKG_PG_DSN"], autocommit=True) as c, c.cursor() as cur:
+                cur.execute("UPDATE app_menu SET enabled=true WHERE path='/creators#creator_export'")
