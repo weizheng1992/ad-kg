@@ -96,6 +96,14 @@ jobs:
             && echo "nginx 配置已同步并重载" \
             || echo "SKIP: sudoers 尚未授权（一次性授权见 docs/deployment.md 五）"'
           rm -f ~/deploy_key
+      - name: 飞书报警（部署失败时通知）
+        if: failure()
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: |
+          [ -n "$FEISHU_WEBHOOK" ] || { echo "SKIP: 未配置 secrets.FEISHU_WEBHOOK"; exit 0; }
+          curl -sS -m 10 -X POST "$FEISHU_WEBHOOK" -H 'Content-Type: application/json' \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"🚨 [ad-kg] CI 部署失败\\ncommit: ${GITHUB_SHA:0:7}\\n${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}}"
       - name: 健康断言（/docs 无凭据探活）
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}

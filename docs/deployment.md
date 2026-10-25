@@ -106,6 +106,12 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
   ```
 
   未授权前 CI 的这两步打 `SKIP:` 日志继续跑（不阻塞代码发布）；授权后自动生效。
+
+- **飞书服务器报警（2026-10-25 起）**：两层——
+  ① A 机 `deploy/alerts/health_alert.sh` 每 5 分钟（deploy 用户 crontab）巡检 API 探活/服务状态/
+  磁盘>85%/内存>90%/负载>4，异常进群、30 分钟节流、恢复发恢复通知；webhook 存
+  `~/ad-kg/.feishu_alert_url`（600 权限，永不入库）。
+  ② CI 部署失败进群（`secrets.FEISHU_WEBHOOK`，repo Settings → Secrets → Actions 配置一次）。
 - 凭据分层：`.env` 永不入库（两仓都是）；LLM key 只存服务器与本地，GitHub 只有 SSH 部署钥匙
 
 ## 五、边界约定（沿用 README §五 / §9.8 的精神）
