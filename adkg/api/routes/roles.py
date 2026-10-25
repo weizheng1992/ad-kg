@@ -13,7 +13,7 @@ from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from adkg.guards.http import resolve_identity
-from adkg.guards.rbac import ACTIONS, ensure_seed, roles_of
+from adkg.guards.rbac import ACTIONS, ensure_seed, require_admin_view, roles_of
 
 router = APIRouter()
 
@@ -24,23 +24,13 @@ def _require(env, role: str, gate: str) -> None:
         raise HTTPException(403, "当前角色无此管理权限（spec §18）")
 
 
-def _require_admin_view(request: Request, authorization: str | None,
-                        role: str | None, user: str | None = None) -> None:
-    """读门收口（spec §19）：role_allows('admin_view') 统一门——初始语义等价
-    management/admin 可读，自定义角色授 admin_view 后同读。门判用原始角色
-    （display_role，自定义角色的授权才生效）；写端点随后仍有 admin 专属收紧。"""
-    from adkg.guards.rbac import display_role
-    _require(request.app.state.env,
-             display_role(request, authorization, role, user), "admin_view")
-
-
 @router.get("/admin/roles")
 def list_roles(request: Request,
                role: str | None = None, user: str | None = None,
                authorization: str | None = Header(default=None)) -> dict:
     """角色全集（系统 + 自定义）+ 各自按钮权限 + 占用账号数。"""
     role_, user_, _planner = resolve_identity(request, authorization, role=role, user=user)
-    _require_admin_view(request, authorization, role)
+    require_admin_view(request, authorization, role, user)
     env = request.app.state.env
     roles = roles_of(env)
     with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
@@ -59,7 +49,7 @@ def create_role(request: Request, body: dict,
                 authorization: str | None = Header(default=None)) -> dict:
     """创建自定义角色（spec §18）：name 唯一；base ∈ 系统角色（数据面继承）。"""
     role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
-    _require_admin_view(request, authorization, role)
+    require_admin_view(request, authorization, role, user)
     if role_ != "admin":
         # 写门收紧到 admin：防越权造角色给自己放行
         raise HTTPException(403, "角色创建仅 admin 可用（spec §18）")
@@ -94,7 +84,7 @@ def update_role(request: Request, name: str, body: dict,
                 authorization: str | None = Header(default=None)) -> dict:
     """更新角色：label/description/按钮权限；系统角色 base 不可改、不可摘 admin 自留权。"""
     role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
-    _require_admin_view(request, authorization, role)
+    require_admin_view(request, authorization, role, user)
     env = request.app.state.env
     existing = roles_of(env)
     if name not in existing:

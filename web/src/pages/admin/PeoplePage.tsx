@@ -37,6 +37,9 @@ export function PeoplePage() {
                                      role: 'ae', person: '' })
   const [resetTarget, setResetTarget] = useState<AdminAccount | null>(null)
   const [newPw, setNewPw] = useState('')
+  // 弹窗内错误（审查修复）：出错时 Dialog 不关，错误文案须在遮罩内可见——
+  // 页顶 msg 会被模态盖住
+  const [dlgErr, setDlgErr] = useState('')
 
   const load = useCallback(() => {
     getAdminAccounts().then((r) => setItems(r.items)).catch((e) => setError(`${e}`))
@@ -57,7 +60,7 @@ export function PeoplePage() {
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
 
   const submitCreate = async () => {
-    setBusy(true); setMsg('')
+    setBusy(true); setMsg(''); setDlgErr('')
     try {
       await createAccount(form)
       setMsg(`✅ 已开户 ${form.username}（角色 ${ROLE_LABEL[form.role] ?? form.role}）`)
@@ -65,20 +68,20 @@ export function PeoplePage() {
       setForm({ username: '', password: '', display_name: '', role: form.role, person: '' })
       load()
     } catch (e) {
-      setMsg(`❌ ${e}`)
+      setDlgErr(`${e}`); setMsg(`❌ ${e}`)
     } finally {
       setBusy(false)
     }
   }
   const submitReset = async () => {
     if (!resetTarget || !newPw) return
-    setBusy(true); setMsg('')
+    setBusy(true); setMsg(''); setDlgErr('')
     try {
       await resetAccountPassword(resetTarget.id, newPw)
       setMsg(`✅ ${resetTarget.username} 已改密（既有会话已吊销）`)
       setResetTarget(null); setNewPw('')
     } catch (e) {
-      setMsg(`❌ ${e}`)
+      setDlgErr(`${e}`); setMsg(`❌ ${e}`)
     } finally {
       setBusy(false)
     }
@@ -106,7 +109,7 @@ export function PeoplePage() {
           账号 · 角色 · Person 绑定——开户/改密/停启用为 admin 专属（改密与停用即吊销会话），management 只读
         </span>
         {canWrite && (
-          <Button size="sm" className="ml-auto" onClick={() => setCreateOpen(true)}>
+          <Button size="sm" className="ml-auto" onClick={() => { setDlgErr(''); setCreateOpen(true) }}>
             <UserPlus className="size-3.5" />开户
           </Button>
         )}
@@ -167,7 +170,7 @@ export function PeoplePage() {
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]"
-                                onClick={() => { setResetTarget(a); setNewPw('') }}>改密</Button>
+                                onClick={() => { setResetTarget(a); setNewPw(''); setDlgErr('') }}>改密</Button>
                         <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]"
                                 onClick={() => void toggle(a)}>{a.disabled ? '启用' : '停用'}</Button>
                       </div>
@@ -189,7 +192,7 @@ export function PeoplePage() {
       </Card>
 
       {/* 开户 Dialog（spec §19：表单卡改弹窗） */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (o) setDlgErr('') }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>开户</DialogTitle>
@@ -228,6 +231,7 @@ export function PeoplePage() {
                      onChange={(e) => setForm({ ...form, person: e.target.value })} />
             </div>
           </div>
+          {dlgErr && <div className="rounded-md bg-destructive/10 p-2 text-xs text-red-600">{dlgErr}</div>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
             <Button disabled={busy || !form.username || !form.password}
@@ -237,7 +241,9 @@ export function PeoplePage() {
       </Dialog>
 
       {/* 改密 Dialog（spec §19：废 window.prompt） */}
-      <Dialog open={!!resetTarget} onOpenChange={(o) => { if (!o) { setResetTarget(null); setNewPw('') } }}>
+      <Dialog open={!!resetTarget} onOpenChange={(o) => {
+        if (o) setDlgErr(''); else { setResetTarget(null); setNewPw('') }
+      }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -252,6 +258,7 @@ export function PeoplePage() {
             <Input id="np" type="password" value={newPw}
                    onChange={(e) => setNewPw(e.target.value)} />
           </div>
+          {dlgErr && <div className="rounded-md bg-destructive/10 p-2 text-xs text-red-600">{dlgErr}</div>}
           <DialogFooter>
             <Button variant="outline" onClick={() => { setResetTarget(null); setNewPw('') }}>取消</Button>
             <Button disabled={busy || !newPw} onClick={() => void submitReset()}>

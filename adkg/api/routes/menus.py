@@ -112,10 +112,11 @@ def menus(request: Request, role: str | None = None, user: str | None = None,
 @router.get("/admin/menus")
 def admin_menus(request: Request, role: str | None = None, user: str | None = None,
                 authorization: str | None = Header(default=None)) -> dict:
+    """全量菜单树（读门 spec §19 收口：admin_view——management 只读可见，
+    权限管理页的树不再空白；写门仍 menu_write，见 PUT /admin/menus）。"""
     role_, _user, _planner = resolve_identity(request, authorization, role=role, user=user)
-    from adkg.guards.rbac import role_allows
-    if not role_allows(request.app.state.env, role_, "menu_write"):
-        raise HTTPException(403, "当前角色无菜单管理权限（spec §18 角色门）")
+    from adkg.guards.rbac import require_admin_view
+    require_admin_view(request, authorization, role, user)
     return {"items": _items(request.app.state.env)}
 
 

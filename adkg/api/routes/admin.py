@@ -13,6 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
 from adkg.guards.http import get_graph, get_planner, resolve_identity
+from adkg.guards.rbac import require_admin_view   # 读门唯一实现（spec §19 收口）
 
 router = APIRouter()
 ADMIN_ROLES = {"management", "admin"}   # 写端点预检用（读门已收口 admin_view）
@@ -24,23 +25,12 @@ def _require_admin(role: str) -> None:
         raise HTTPException(403, "管理后台仅 management / admin 可用（spec §7）")
 
 
-def _require_admin_view(request: Request, authorization: str | None,
-                        role: str | None) -> None:
-    """读门（spec §19 收口）：role_allows('admin_view') 统一门。门判用原始角色
-    （含自定义，display_role——与 GET /menus 按钮门同一来源；resolve_identity
-    返回的是数据面映射后的基角色，会吃掉自定义角色的 admin_view 授权）。"""
-    from adkg.guards.rbac import display_role, role_allows
-    shown = display_role(request, authorization, role, None)
-    if not role_allows(request.app.state.env, shown, "admin_view"):
-        raise HTTPException(403, "无管理后台查看权限（spec §19 admin_view 门）")
-
-
 @router.get("/admin/permission-matrix")
 def permission_matrix(request: Request,
                       role: str | None = None, user: str | None = None,
                       authorization: str | None = Header(default=None)) -> dict:
-    role, user, planner = resolve_identity(request, authorization, role=role, user=user)
-    _require_admin_view(request, authorization, role)
+    role_, _u, planner = resolve_identity(request, authorization, role=role, user=user)
+    require_admin_view(request, authorization, role, user)
     roles = {}
     for name, cfg in planner.perms.get("roles", {}).items():
         roles[name] = {k: cfg.get(k, []) for k in
@@ -57,7 +47,7 @@ def accounts(request: Request,
              role: str | None = None, user: str | None = None,
              authorization: str | None = Header(default=None)) -> dict:
     role_, user_, _planner = resolve_identity(request, authorization, role=role, user=user)
-    _require_admin_view(request, authorization, role)
+    require_admin_view(request, authorization, role, user)
     with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
                          row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT id, username, display_name, role, person, disabled, "
@@ -158,7 +148,7 @@ def audit_log(request: Request, page: int = 1, size: int = 30,
               authorization: str | None = Header(default=None)) -> dict:
     """审计流水（spec §14 增筛选）：action / verdict / by_role / 对象包含。"""
     role_, user, _planner = resolve_identity(request, authorization, role=role, user=user)
-    _require_admin_view(request, authorization, role)
+    require_admin_view(request, authorization, role, user)
     size = max(1, min(size, 100))
     page = max(1, page)
     conds, args = [], {"size": size, "offset": (page - 1) * size}
@@ -191,7 +181,7 @@ def review_queue(request: Request, status: str = "open", kind: str = "",
     附同状态各 kind 计数（low_confidence/reconcile/unmatched/conflict 各有来源）；
     处置 approve/reject 留后置（§9.7 人审操作台）。"""
     role_, user, _planner = resolve_identity(request, authorization, role=role, user=user)
-    _require_admin_view(request, authorization, role)
+    require_admin_view(request, authorization, role, user)
     status = status if status in ("open", "approved", "rejected") else "open"
     conds, args = ["status = %(status)s"], {"status": status}
     if kind.strip():

@@ -11,6 +11,7 @@ import { TableCell } from '@/components/ui/table'
 import { MenuTreeTable } from './components/MenuTreeTable'
 import { getAdminMenus, saveMenus, type MenuDef } from '@/lib/api'
 import { ICONS } from '@/lib/nav'
+import { useCan } from '@/lib/session'
 
 /** 图标可选集 = nav.tsx ICONS 键（与后端 _ICONS 白名单同源，spec §19：白名单内可换） */
 const ICON_OPTIONS = Object.keys(ICONS)
@@ -24,6 +25,7 @@ const EnabledBadge = ({ on, onToggle }: { on: boolean; onToggle: () => void }) =
 )
 
 export function MenuPage() {
+  const canWrite = useCan('menu_manage')   // 写门（spec §19 清偿③）：与后端 menu_write 同词表
   const [items, setItems] = useState<MenuDef[] | null>(null)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
@@ -76,7 +78,8 @@ export function MenuPage() {
           给角色分配菜单与按钮在
           <a href="/permissions" className="mx-1 text-primary hover:underline">权限管理</a>
         </span>
-        <Button size="sm" className="ml-auto" disabled={busy} onClick={save}>
+        {!canWrite && <span className="ml-auto text-xs text-muted-foreground">只读（无 menu_manage）</span>}
+        <Button size="sm" className={canWrite ? 'ml-auto' : ''} disabled={busy || !canWrite} onClick={save}>
           {busy ? '保存中…' : '保存'}
         </Button>
       </div>

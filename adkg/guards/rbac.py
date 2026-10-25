@@ -148,3 +148,15 @@ def display_role(request, authorization, role: str | None, user: str | None) -> 
         return str(sess["role"])
     r, _u, _p = resolve_identity(request, authorization, role=role, user=user)
     return r
+
+
+def require_admin_view(request, authorization, role: str | None,
+                       user: str | None = None) -> None:
+    """管理区读门（spec §19 收口）：role_allows('admin_view') 统一门——初始语义
+    等价 management/admin 可读，自定义角色授 admin_view 后同读。门判用原始角色
+    （display_role——resolve_identity 返回数据面映射后的基角色，会吃掉自定义
+    角色的授权）。唯一实现：admin / roles / menus 三路由的 /admin/* 读端点共用。"""
+    from fastapi import HTTPException
+    shown = display_role(request, authorization, role, user)
+    if not role_allows(request.app.state.env, shown, "admin_view"):
+        raise HTTPException(403, "无管理后台查看权限（spec §19 admin_view 门）")

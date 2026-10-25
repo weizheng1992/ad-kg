@@ -221,7 +221,9 @@ class TestMenus:
     def test_保存与防自锁(self):
         import psycopg
         client = self._client()
-        assert client.get("/admin/menus", params={"role": "management"}).status_code == 403
+        # 读门收口后（spec §19）：management 只读放行、ae 拒；写门见下方 PUT
+        assert client.get("/admin/menus", params={"role": "management"}).status_code == 200
+        assert client.get("/admin/menus", params={"role": "ae"}).status_code == 403
         items = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
         # 改：财务结算对 optimizer 也可见；「案例」改名；图谱停用
         for m in items:
@@ -439,6 +441,12 @@ class TestAdminViewGate:
                           params={"role": "finance", "user": "Person:zhou"}
                           ).status_code == 403
         assert client.get("/admin/roles", params={"role": "optimizer"}).status_code == 403
+        # GET /admin/menus 读门同收口（spec §19）：management 可读（权限管理页树）；
+        # ae 不可读；写门不动：management PUT 仍 403（menu_write 未授）
+        assert client.get("/admin/menus", params={"role": "management"}).status_code == 200
+        assert client.get("/admin/menus", params={"role": "ae"}).status_code == 403
+        assert client.put("/admin/menus", params={"role": "management"},
+                          json={"items": []}).status_code == 403
         # 写门不动：management 开户仍 403（admin 专属）
         assert client.post("/admin/accounts", params={"role": "management"},
                            json={"username": "x", "password": "y", "role": "ae"}

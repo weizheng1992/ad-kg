@@ -17,6 +17,7 @@ import { createRole, deleteRole, getAdminMenus, getPermissionMatrix, listRoles,
          saveMenus, updateRole,
          type MenuDef, type PermissionMatrix, type RoleDef } from '@/lib/api'
 import { ROLE_LABEL } from '@/lib/nav'
+import { useCan } from '@/lib/session'
 
 const roleLabel = (r: RoleDef) => ROLE_LABEL[r.name] ?? r.label
 
@@ -64,6 +65,7 @@ function MatrixView({ m }: { m: PermissionMatrix | null }) {
 }
 
 export function PermissionsPage() {
+  const canWrite = useCan('menu_manage')   // 写门（spec §19 清偿③）：本页写操作 admin 专属，词表取 menu_manage
   const [roles, setRoles] = useState<RoleDef[] | null>(null)
   const [menus, setMenus] = useState<MenuDef[]>([])
   const [sel, setSel] = useState<string>('')
@@ -148,7 +150,9 @@ export function PermissionsPage() {
           自定义角色数据面继承基角色；账号分配角色去
           <Link to="/people" className="mx-1 text-primary hover:underline">人员管理</Link>
         </span>
-        <Button size="sm" className="ml-auto" disabled={busy || !role} onClick={save}>
+        {!canWrite && <span className="ml-auto text-xs text-muted-foreground">只读（无 menu_manage）</span>}
+        <Button size="sm" className={canWrite ? 'ml-auto' : ''} disabled={busy || !role || !canWrite}
+                onClick={save}>
           {busy ? '保存中…' : '保存当前角色'}
         </Button>
       </div>
@@ -158,8 +162,10 @@ export function PermissionsPage() {
         <Card className="h-fit">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm">角色（{roles.length}）</CardTitle>
-            <Button size="sm" variant="outline" className="h-7"
-                    onClick={() => setCreating(!creating)}>新建</Button>
+            {canWrite && (
+              <Button size="sm" variant="outline" className="h-7"
+                      onClick={() => setCreating(!creating)}>新建</Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-1">
             {creating && (
@@ -211,7 +217,7 @@ export function PermissionsPage() {
                   <Input className="h-8 min-w-40 flex-1 text-sm" value={role.description}
                          onChange={(e) => setRoles((p) => (p ?? []).map((r) =>
                            r.name === sel ? { ...r, description: e.target.value } : r))} />
-                  {isCustom && <Button size="sm" variant="destructive" onClick={doDelete}>删除角色</Button>}
+                  {isCustom && canWrite && <Button size="sm" variant="destructive" onClick={doDelete}>删除角色</Button>}
                 </div>
               </CardContent>
             </Card>
