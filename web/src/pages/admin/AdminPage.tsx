@@ -62,7 +62,7 @@ function MatrixTab({ m }: { m: PermissionMatrix | null }) {
 }
 
 /** 人员管理（spec §16）：账号一览 + admin 专属写操作（开户/改密/启停） */
-function AccountsTab({ items, roles, canWrite, onChanged }: {
+export function AccountsTab({ items, roles, canWrite, onChanged }: {
   items: AdminAccount[] | null; roles: string[]; canWrite: boolean; onChanged: () => void
 }) {
   const [form, setForm] = useState({ username: '', password: '', display_name: '',
