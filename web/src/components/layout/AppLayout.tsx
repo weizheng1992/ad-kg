@@ -16,7 +16,9 @@ export function AppLayout() {
 
   useEffect(() => {
     if (!session) return
-    getMenus().then((r) => setMenus(r.items)).catch(() => setMenus(null))
+    // §19 缺陷清偿①：按钮条（type=button）只进权限树与显隐判定，不混进侧边栏
+    getMenus().then((r) => setMenus(r.items.filter((m) => m.type !== 'button')))
+      .catch(() => setMenus(null))
   }, [session?.role, session])      // 角色变化即重取（菜单随角色/管理端调整实时变）
 
   if (!session) return null

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent } from '@/components/ui/card'
 import { createCreator, importCreators, listCreators,
          type CreatorItem, type CreatorListQuery } from '@/lib/api'
-import { useSession } from '@/lib/session'
+import { useCan } from '@/lib/session'
 
 const wan = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)}万` : `${n}`
 const PLATFORM_OPT = { all: '全部平台', douyin: '抖音', xhs: '小红书' } as const
@@ -66,7 +66,8 @@ function CreatorForm({ onDone }: { onDone: () => void }) {
 }
 
 export function CreatorsPage() {
-  const { actions } = useSession()
+  const canCreate = useCan('creator_write')
+  const canExport = useCan('creator_export')
   const [q, setQ] = useState('')
   const [platform, setPlatform] = useState<string>('all')
   const [niche, setNiche] = useState('')
@@ -189,7 +190,7 @@ export function CreatorsPage() {
         <div className="ml-auto flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".csv,.xlsx" className="hidden"
                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void doImport(f); e.target.value = '' }} />
-          {actions.has('creator_write') && (
+          {canCreate && (
             <>
               <input ref={fileRef} type="file" accept=".csv,.xlsx" className="hidden"
                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void doImport(f); e.target.value = '' }} />
@@ -197,7 +198,7 @@ export function CreatorsPage() {
               <Button size="sm" onClick={() => setShowForm(!showForm)}>{showForm ? '收起录入' : '录入达人'}</Button>
             </>
           )}
-          {actions.has('creator_export') && (
+          {canExport && (
             <Button variant="outline" size="sm" onClick={() => void exportCsv()}>导出</Button>
           )}
           <span className="text-xs text-muted-foreground">共 {total} 位</span>

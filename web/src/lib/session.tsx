@@ -45,3 +45,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 export function useSession(): SessionCtx {
   return useContext(Ctx)
 }
+
+/** 按钮显隐统一入口（spec §19 缺陷清偿③）：action 词表与后端 role_allows 同源；
+ * 全应用按钮一律 useCan(action) 判定，不再散抄 session.role === 'admin' */
+export function useCan(action: string): boolean {
+  const { actions } = useSession()
+  return actions.has(action)
+}

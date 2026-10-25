@@ -1,20 +1,33 @@
-// 菜单管理（spec §18.5）：页面→按钮两级树——页面节点排序/改名/启停，
-// 按钮节点（挂其页面下）改名/启停；给角色分配在「权限管理」（同源数据转置）
+// 菜单管理（spec §18.5/§19 table-tree）：页面行（改名/图标白名单内更换/排序/启停）+
+// 按钮子行（改名/启停）；给角色分配菜单与按钮在「权限管理」（同源数据转置）
 import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MousePointerClick } from 'lucide-react'
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TableCell } from '@/components/ui/table'
+import { MenuTreeTable } from './components/MenuTreeTable'
 import { getAdminMenus, saveMenus, type MenuDef } from '@/lib/api'
 import { ICONS } from '@/lib/nav'
+
+/** 图标可选集 = nav.tsx ICONS 键（与后端 _ICONS 白名单同源，spec §19：白名单内可换） */
+const ICON_OPTIONS = Object.keys(ICONS)
+
+const EnabledBadge = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
+  <button onClick={onToggle}>
+    <Badge variant={on ? 'secondary' : 'destructive'} className="cursor-pointer">
+      {on ? '启用' : '停用'}
+    </Badge>
+  </button>
+)
 
 export function MenuPage() {
   const [items, setItems] = useState<MenuDef[] | null>(null)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const load = () => getAdminMenus().then((r) => setItems(r.items)).catch((e) => setError(`${e}`))
   useEffect(() => { void load() }, [])
@@ -22,15 +35,8 @@ export function MenuPage() {
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
   if (!items) return <div className="p-6 text-sm text-muted-foreground">加载中…</div>
 
-  const pages = items.filter((m) => m.type !== 'button')
-  const buttonsOf = (path: string) =>
-    items.filter((m) => m.type === 'button' && m.parent === path)
-         .sort((a, b) => a.sort - b.sort)
-
   const patch = (path: string, fn: (m: MenuDef) => MenuDef) =>
     setItems((prev) => (prev ?? []).map((m) => (m.path === path ? fn(m) : m)))
-  const toggleCollapse = (path: string) =>
-    setCollapsed((s) => { const n = new Set(s); n.has(path) ? n.delete(path) : n.add(path); return n })
 
   /** 页面节点上移/下移：交换相邻页面条 sort，按钮条随 parent 走（保存时同步写回） */
   const move = (path: string, delta: number) => {
@@ -66,7 +72,7 @@ export function MenuPage() {
       <div className="flex flex-wrap items-baseline gap-3">
         <h2 className="text-base font-bold">菜单管理</h2>
         <span className="text-xs text-muted-foreground">
-          页面 → 按钮两级树：页面排序 / 改名 / 启停，按钮（页面内操作）改名 / 启停；
+          页面 → 按钮两级树表：页面排序 / 改名 / 图标 / 启停，按钮（页面内操作）改名 / 启停；
           给角色分配菜单与按钮在
           <a href="/permissions" className="mx-1 text-primary hover:underline">权限管理</a>
         </span>
@@ -78,61 +84,69 @@ export function MenuPage() {
 
       <Card>
         <CardContent className="p-0">
-          <div className="divide-y">
-            {pages.sort((a, b) => a.sort - b.sort).map((m) => {
-              const Icon = ICONS[m.icon] ?? ICONS.Menu
-              const btns = buttonsOf(m.path)
-              const open = !collapsed.has(m.path)
-              return (
-                <div key={m.path}>
-                  <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-                    <button className="text-muted-foreground" aria-label="展开/收起"
-                            onClick={() => toggleCollapse(m.path)}>
-                      {btns.length ? (open ? <ChevronDown className="size-4" />
-                        : <ChevronRight className="size-4" />) : <span className="inline-block size-4" />}
-                    </button>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                              onClick={() => move(m.path, -1)}><ArrowUp className="size-3.5" /></Button>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                              onClick={() => move(m.path, 1)}><ArrowDown className="size-3.5" /></Button>
-                    </div>
-                    <Icon className="size-4 text-muted-foreground" />
-                    <Input className="h-8 w-32 text-sm" value={m.label}
+          <MenuTreeTable
+            menus={items}
+            columns={['菜单名', '类型', '图标', '排序', '路径 / action_key', '启停']}
+            renderPage={(m) => (
+              <>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Input className="h-8 w-40 text-sm" value={m.label}
                            onChange={(e) => patch(m.path, (x) => ({ ...x, label: e.target.value }))} />
-                    <span className="font-mono text-[11px] text-muted-foreground">{m.path}</span>
-                    <button className="ml-auto" onClick={() => patch(m.path, (x) => ({ ...x, enabled: !x.enabled }))}>
-                      <Badge variant={m.enabled ? 'secondary' : 'destructive'} className="cursor-pointer">
-                        {m.enabled ? '启用' : '停用'}
-                      </Badge>
-                    </button>
                   </div>
-                  {open && btns.length > 0 && (
-                    <div className="ml-14 space-y-1.5 border-l pb-3 pl-4">
-                      {btns.map((b) => (
-                        <div key={b.path} className="flex items-center gap-2">
-                          <MousePointerClick className="size-3.5 text-muted-foreground/70" />
-                          <Input className="h-7 w-28 text-xs" value={b.label}
-                                 onChange={(e) => patch(b.path, (x) => ({ ...x, label: e.target.value }))} />
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            {b.action_key}
-                          </span>
-                          <button className="ml-auto" onClick={() => patch(b.path, (x) => ({ ...x, enabled: !x.enabled }))}>
-                            <Badge variant={b.enabled ? 'secondary' : 'destructive'} className="cursor-pointer text-[10px]">
-                              {b.enabled ? '启用' : '停用'}
-                            </Badge>
-                          </button>
-                        </div>
-                      ))}
-                      <p className="text-[10px] text-muted-foreground">
-                        按钮可见性 = 角色是否持有对应操作权限（在「权限管理」按角色勾选）
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                </TableCell>
+                <TableCell><Badge variant="outline" className="font-normal">页面</Badge></TableCell>
+                <TableCell>
+                  <Select value={m.icon}
+                          onValueChange={(v) => patch(m.path, (x) => ({ ...x, icon: v }))}>
+                    <SelectTrigger size="sm" className="w-44">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ICON_OPTIONS.map((name) => {
+                        const Icon = ICONS[name] ?? ICONS.Menu
+                        return (
+                          <SelectItem key={name} value={name}>
+                            <Icon className="size-3.5" />{name}
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon-xs" aria-label="上移"
+                            onClick={() => move(m.path, -1)}><ArrowUp className="size-3.5" /></Button>
+                    <Button variant="ghost" size="icon-xs" aria-label="下移"
+                            onClick={() => move(m.path, 1)}><ArrowDown className="size-3.5" /></Button>
+                  </div>
+                </TableCell>
+                <TableCell className="font-mono text-[11px] text-muted-foreground">{m.path}</TableCell>
+                <TableCell>
+                  <EnabledBadge on={m.enabled}
+                                onToggle={() => patch(m.path, (x) => ({ ...x, enabled: !x.enabled }))} />
+                </TableCell>
+              </>
+            )}
+            renderButton={(b) => (
+              <>
+                <TableCell>
+                  <Input className="h-7 w-40 text-xs" value={b.label}
+                         onChange={(e) => patch(b.path, (x) => ({ ...x, label: e.target.value }))} />
+                </TableCell>
+                <TableCell><Badge variant="secondary" className="font-normal">按钮</Badge></TableCell>
+                <TableCell><span className="text-xs text-muted-foreground">—</span></TableCell>
+                <TableCell><span className="text-xs text-muted-foreground">—</span></TableCell>
+                <TableCell className="font-mono text-[11px] text-muted-foreground">{b.action_key}</TableCell>
+                <TableCell>
+                  <EnabledBadge on={b.enabled}
+                                onToggle={() => patch(b.path, (x) => ({ ...x, enabled: !x.enabled }))} />
+                </TableCell>
+              </>
+            )}
+            hint={<>按钮可见性 = 角色是否持有对应操作权限（在「权限管理」按角色勾选）；图标白名单内可换，其余列后端强校验</>}
+          />
         </CardContent>
       </Card>
       <p className="text-[11px] text-muted-foreground">

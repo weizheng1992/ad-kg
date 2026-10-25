@@ -1,18 +1,67 @@
-// 权限管理（spec §18 RBAC 角色工作台）：左角色列表（系统+自定义+新建），
-// 右选中角色——基本信息 / 可见菜单勾选（写 app_menu.roles）/ 按钮权限勾选
-// （写 app_role_action）/ 占用账号。数据面（类/指标/行过滤）真源 permissions.yaml，
-// 自定义角色数据面继承基角色（页内明示）。
+// 权限管理（spec §18 RBAC 角色工作台 + §19 table-tree）：左角色列表（系统+自定义+新建），
+// 右选中角色——基本信息 / 权限树（真 Checkbox：页面勾写 app_menu.roles、按钮勾写
+// app_role_action，一次保存两处落库）；页底折叠「数据面权限矩阵」只读投影。
+// 界面权限（菜单/按钮/自定义角色）真源在 DB；数据面真源 permissions.yaml——两平面分离。
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createRole, deleteRole, getAdminMenus, listRoles, saveMenus, updateRole,
-         type MenuDef, type RoleDef } from '@/lib/api'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { TableCell } from '@/components/ui/table'
+import { ChevronDown } from 'lucide-react'
+import { MenuTreeTable } from './components/MenuTreeTable'
+import { createRole, deleteRole, getAdminMenus, getPermissionMatrix, listRoles,
+         saveMenus, updateRole,
+         type MenuDef, type PermissionMatrix, type RoleDef } from '@/lib/api'
 import { ROLE_LABEL } from '@/lib/nav'
 
 const roleLabel = (r: RoleDef) => ROLE_LABEL[r.name] ?? r.label
+
+/** 数据面权限矩阵（spec §19 自 AdminPage 迁入）：permissions.yaml 的只读投影 */
+function MatrixView({ m }: { m: PermissionMatrix | null }) {
+  if (!m) return <div className="p-4 text-sm text-muted-foreground">加载中…</div>
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b bg-muted/40 text-left">
+            {['角色', '类白名单', '属性 deny / allow', '指标 deny / allow', '动作', '行过滤'].map((h) => (
+              <th key={h} className="px-3 py-2 font-medium">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(m.roles).map(([name, r]) => (
+            <tr key={name} className="border-b align-top last:border-0">
+              <td className="px-3 py-2.5 whitespace-nowrap">
+                <b>{ROLE_LABEL[name] ?? name}</b>
+                {r.external && <Badge variant="destructive" className="ml-1">外部</Badge>}
+              </td>
+              <td className="px-3 py-2.5">
+                {r.classes.map((c) => <Badge key={c} variant="outline" className="m-0.5 font-normal">{c}</Badge>)}
+              </td>
+              <td className="px-3 py-2.5 font-mono">
+                {r.deny_properties.length > 0 && <div className="text-red-600">deny: {r.deny_properties.join(', ')}</div>}
+                {r.allow_properties.length > 0 && <div className="text-emerald-700">allow: {r.allow_properties.join(', ')}</div>}
+                {!r.deny_properties.length && !r.allow_properties.length && <span className="text-muted-foreground">—</span>}
+              </td>
+              <td className="px-3 py-2.5 font-mono">
+                {r.metrics_deny.length > 0 && <div className="text-red-600">deny: {r.metrics_deny.join(', ')}</div>}
+                {r.metrics_allow.length > 0 && <div className="text-emerald-700">allow: {r.metrics_allow.join(', ')}</div>}
+                {!r.metrics_deny.length && !r.metrics_allow.length && <span className="text-muted-foreground">全部</span>}
+              </td>
+              <td className="px-3 py-2.5 font-mono">{r.actions.join(', ')}</td>
+              <td className="px-3 py-2.5 font-mono text-muted-foreground">{r.row_filter || '无（全量）'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 export function PermissionsPage() {
   const [roles, setRoles] = useState<RoleDef[] | null>(null)
@@ -22,6 +71,9 @@ export function PermissionsPage() {
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState({ name: '', label: '', base_role: 'ae', description: '' })
+  const [matrixOpen, setMatrixOpen] = useState(false)
+  const [matrix, setMatrix] = useState<PermissionMatrix | null>(null)
+  const [matrixError, setMatrixError] = useState('')
 
   const load = useCallback(() => {
     listRoles().then((r) => {
@@ -167,56 +219,74 @@ export function PermissionsPage() {
             <Card>
               <CardHeader className="pb-1">
                 <CardTitle className="text-sm">
-                  权限树（页面 → 按钮；页面写菜单可见，按钮写操作权限——保存一次落两库）
+                  权限树（页面 → 按钮；页面勾写菜单可见，按钮勾写操作权限——保存一次落两库）
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1.5">
-                {menus.filter((m) => m.type !== 'button')
-                      .sort((a, b) => a.sort - b.sort).map((m) => {
-                  const btns = menus.filter((x) => x.type === 'button' && x.parent === m.path)
-                  const pageOn = m.roles.includes(sel)
-                  return (
-                    <div key={m.path}>
-                      <button onClick={() => toggleMenu(m.path)}
-                              className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm ${
-                                pageOn ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50'}`}>
-                        <span className={`flex size-4 items-center justify-center rounded border text-[10px] ${
-                          pageOn ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'}`}>
-                          {pageOn && '✓'}
-                        </span>
-                        <b className="font-medium">{m.label}</b>
-                        <span className="ml-auto font-mono text-[10px] opacity-60">{m.path}</span>
-                      </button>
-                      {btns.length > 0 && (
-                        <div className="ml-8 space-y-1 border-l py-1 pl-4">
-                          {btns.map((b) => {
-                            const on = role.actions.includes(b.action_key ?? '')
-                            return (
-                              <button key={b.path} onClick={() => b.action_key && toggleAction(b.action_key)}
-                                      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-xs ${
-                                        on ? 'text-primary' : 'text-muted-foreground hover:bg-muted/50'}`}>
-                                <span className={`flex size-3.5 items-center justify-center rounded border text-[9px] ${
-                                  on ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'}`}>
-                                  {on && '✓'}
-                                </span>
-                                {b.label}
-                                <span className="ml-auto font-mono text-[10px] opacity-50">{b.action_key}</span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-                <p className="pt-1 text-[11px] text-muted-foreground">
-                  页面可见 = 侧边栏显示该入口；按钮可见 = 页面内该操作对角色可用（后端角色门同一套判定）
-                </p>
+              <CardContent className="p-0">
+                <MenuTreeTable
+                  menus={menus}
+                  columns={['菜单 / 按钮', '路径 / 操作权限']}
+                  renderPage={(m) => (
+                    <>
+                      <TableCell>
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <Checkbox checked={m.roles.includes(sel)} onCheckedChange={() => toggleMenu(m.path)} />
+                          <span className="text-sm font-medium">{m.label}</span>
+                        </label>
+                      </TableCell>
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">{m.path}</TableCell>
+                    </>
+                  )}
+                  renderButton={(b) => (
+                    <>
+                      <TableCell>
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <Checkbox checked={!!b.action_key && role.actions.includes(b.action_key)}
+                                    disabled={!b.action_key}
+                                    onCheckedChange={() => b.action_key && toggleAction(b.action_key)} />
+                          <span className="text-xs">{b.label}</span>
+                        </label>
+                      </TableCell>
+                      <TableCell className="font-mono text-[11px] text-muted-foreground">{b.action_key}</TableCell>
+                    </>
+                  )}
+                  hint={<>页面勾 = 侧边栏显示该入口（写菜单可见集）；按钮勾 = 该操作对角色可用（写按钮权限，后端角色门同一套判定）</>}
+                />
               </CardContent>
             </Card>
           </div>
         )}
       </div>
+
+      <Collapsible open={matrixOpen}
+                   onOpenChange={(o) => {
+                     setMatrixOpen(o)
+                     if (o && matrix === null) {
+                       getPermissionMatrix().then(setMatrix)
+                         .catch((e) => setMatrixError(`${e}`))
+                     }
+                   }}>
+        <div className="flex items-center gap-2">
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" size="sm">
+              数据面权限矩阵
+              <ChevronDown className={`size-3.5 transition-transform ${matrixOpen ? 'rotate-180' : ''}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <span className="text-xs text-muted-foreground">
+            数据面真源 permissions.yaml，此处只读投影——界面权限在 DB、数据面在 yaml，两平面分离（spec §19）
+          </span>
+        </div>
+        <CollapsibleContent>
+          <Card className="mt-3">
+            <CardContent className="p-0">
+              {matrixError
+                ? <div className="p-4 text-sm text-red-600">{matrixError}</div>
+                : <MatrixView m={matrix} />}
+            </CardContent>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }

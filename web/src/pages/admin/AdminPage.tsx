@@ -1,4 +1,5 @@
-// 管理后台（spec §7 + §14）：权限矩阵 / 账号一览 / 审计流水（筛选）/ 人审队列——只读
+// 管理后台（spec §7 + §14 + §19）：审计流水（筛选）/ 人审队列——只读；
+// 权限矩阵已迁「权限管理」页折叠区（spec §19 两平面分离）
 import { useCallback, useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,56 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ROLE_LABEL } from '@/lib/nav'
 import { getAuditLog, getReviewQueue, resolveReviewQueue,
-         type AuditRow, type PermissionMatrix,
-         type ReviewQueueItem } from '@/lib/api'
+         type AuditRow, type ReviewQueueItem } from '@/lib/api'
 
 const VERDICT_COLOR: Record<string, string> = {
   allow: 'bg-emerald-100 text-emerald-700', deny: 'bg-red-100 text-red-700',
   filtered: 'bg-amber-100 text-amber-700', info: 'bg-muted text-muted-foreground',
-}
-
-export function MatrixTab({ m }: { m: PermissionMatrix | null }) {
-  if (!m) return <div className="p-4 text-sm text-muted-foreground">加载中…</div>
-  return (
-    <Card>
-      <CardContent className="overflow-x-auto p-0">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b bg-muted/40 text-left">
-              {['角色', '类白名单', '属性 deny / allow', '指标 deny / allow', '动作', '行过滤'].map((h) => (
-                <th key={h} className="px-3 py-2 font-medium">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(m.roles).map(([name, r]) => (
-              <tr key={name} className="border-b align-top last:border-0">
-                <td className="px-3 py-2.5 whitespace-nowrap">
-                  <b>{ROLE_LABEL[name] ?? name}</b>
-                  {r.external && <Badge variant="destructive" className="ml-1">外部</Badge>}
-                </td>
-                <td className="px-3 py-2.5">
-                  {r.classes.map((c) => <Badge key={c} variant="outline" className="m-0.5 font-normal">{c}</Badge>)}
-                </td>
-                <td className="px-3 py-2.5 font-mono">
-                  {r.deny_properties.length > 0 && <div className="text-red-600">deny: {r.deny_properties.join(', ')}</div>}
-                  {r.allow_properties.length > 0 && <div className="text-emerald-700">allow: {r.allow_properties.join(', ')}</div>}
-                  {!r.deny_properties.length && !r.allow_properties.length && <span className="text-muted-foreground">—</span>}
-                </td>
-                <td className="px-3 py-2.5 font-mono">
-                  {r.metrics_deny.length > 0 && <div className="text-red-600">deny: {r.metrics_deny.join(', ')}</div>}
-                  {r.metrics_allow.length > 0 && <div className="text-emerald-700">allow: {r.metrics_allow.join(', ')}</div>}
-                  {!r.metrics_deny.length && !r.metrics_allow.length && <span className="text-muted-foreground">全部</span>}
-                </td>
-                <td className="px-3 py-2.5 font-mono">{r.actions.join(', ')}</td>
-                <td className="px-3 py-2.5 font-mono text-muted-foreground">{r.row_filter || '无（全量）'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </CardContent>
-    </Card>
-  )
 }
 
 function AuditTab({ rows, total, page, size, onPage, filters, setFilters, reload }: {
@@ -253,7 +209,9 @@ export function AdminPage() {
       <div className="flex items-baseline gap-3">
         <h2 className="text-base font-bold">管理后台</h2>
         <span className="text-xs text-muted-foreground">
-          权限矩阵 + 账号 + 审计（可筛）+ 人审队列（只读；处置动作后置）
+          审计流水（可筛）+ 人审队列（只读）；权限矩阵在
+          <a href="/permissions" className="mx-1 text-primary hover:underline">权限管理</a>
+          页折叠区（spec §19 迁出）
         </span>
       </div>
       <Tabs defaultValue="audit">
