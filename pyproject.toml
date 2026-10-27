@@ -19,6 +19,7 @@ dependencies = [
     "playwright>=1.49",
     "python-multipart>=0.0.20",
     "openpyxl>=3.1",
+    "jieba>=0.42.1",
 ]
 
 [dependency-groups]

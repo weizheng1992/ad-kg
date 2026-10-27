@@ -14,6 +14,28 @@ def _vec_literal(v: list[float]) -> str:
     return "[" + ",".join(f"{x:.6f}" for x in v) + "]"
 
 
+_STOP_CHARS = "的了吗呢吧啊是有在和与及对从被把"
+_STOP_WORDS = {"什么", "怎么", "如何", "哪些", "为什么", "这个", "那个", "就是", "还是"}
+
+
+def _extract_keywords(question: str, k: int = 4) -> list[str]:
+    """关键词兜底提词：jieba 分词取内容词，长词优先（更具体、ILIKE 误配少）。
+    旧版按 [一-龥]{2,8} 字符窗口切片——中文无空格，长问句切出的
+    是任意 8 字窗口而非词，ILIKE 几乎必 miss（2026-10-27 修，缺陷备忘②）；
+    jieba 缺席的环境回落窗口切片（聊胜于无，行为同旧版）。"""
+    try:
+        import jieba
+        words = [w.strip(_STOP_CHARS) for w in jieba.lcut(question)]
+    except ImportError:
+        import re as _re
+        words = [w.strip(_STOP_CHARS)
+                 for w in _re.findall(r"[一-龥]{2,8}", question)]
+    words = [w for w in words if len(w) >= 2 and w not in _STOP_WORDS]
+    # 保序去重（dict.fromkeys）+ 长词优先稳定排序：同长词按问句出现序取，
+    # 兜底路求召回不求排序语义
+    return sorted(dict.fromkeys(words), key=len, reverse=True)[:k]
+
+
 def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> dict:
     if getattr(plan, "deny_all", False):
         return {"evidence": [], "degraded": False}      # fail-closed：无有效身份零证据（§12.4）
@@ -37,14 +59,7 @@ def search(question: str, plan, dsn: str, embed_fn=None, *, limit: int = 10) -> 
     # 必须先于 embed 调用定义——2026-10-22 验证：定义在 try 之后时 embed 一抛异常，
     # 兜底引用未定义局部名，UnboundLocalError 直接把 /ask 打成 500
     def _keyword_fallback():
-        import re as _re
-        stop = "的了吗呢吧啊是有在和与及对从被把"
-        kws = []
-        for w in _re.findall(r"[\u4e00-\u9fa5]{2,8}", question):
-            w = w.strip(stop)                           # 剥首尾虚词，防"信息流视频的"式 miss
-            if len(w) >= 2 and w not in kws:
-                kws.append(w)
-        kws = kws[:4]
+        kws = _extract_keywords(question)              # jieba 分词（§7.2 降级路，2026-10-27 修）
         if not kws:
             return {"evidence": [], "degraded": False}
         like = " OR ".join("text ILIKE %s" for _ in kws)

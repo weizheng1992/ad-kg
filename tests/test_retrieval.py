@@ -507,3 +507,41 @@ class Test语义不变量注入:
         assert enforce_semantics(
             "SELECT 1 FROM unified_metrics WHERE NOT unmatched") == \
             "SELECT 1 FROM unified_metrics WHERE NOT unmatched"
+
+
+class Test关键词兜底分词:
+    """_extract_keywords（§7.2 降级路）：jieba 分词替代字符窗口切片——
+    旧版 [一-龥]{2,8} 把长问句切成任意 8 字窗口（非词），ILIKE 几乎必 miss
+    （缺陷备忘②，2026-10-27 修）"""
+
+    def test_长问句切出的是词不是窗口(self):
+        from adkg.retrieval.vector_search import _extract_keywords
+        kws = _extract_keywords("信息流视频的开头三秒要注意什么规范要求")
+        assert "信息流" in kws and "视频" in kws          # jieba 实词
+        assert all(2 <= len(k) <= 8 for k in kws)
+        assert len(kws) <= 4
+
+    def test_纯虚词剥完为空(self):
+        from adkg.retrieval.vector_search import _extract_keywords
+        assert _extract_keywords("的了吗呢") == []
+
+    def test_去重与长词优先(self):
+        from adkg.retrieval.vector_search import _extract_keywords
+        assert _extract_keywords("信息流 信息流 信息流") == ["信息流"]   # 去重
+        kws = _extract_keywords("信息流视频的开头三秒")
+        assert kws[0] == "信息流" and len(kws) <= 4                     # 长词优先
+
+
+@pytest.mark.skipif(not _dbs_up(), reason="数据库不在线")
+class TestKeyword兜底集成:
+    def test_嵌入缺失走分词兜底(self):
+        import os
+        from types import SimpleNamespace
+        from adkg.retrieval.vector_search import search
+        plan = SimpleNamespace(deny_all=False, metadata_filter={},
+                               visible_entity_ids=[])
+        r = search("信息流视频开头三秒的规范要求", plan,
+                   os.environ["ADKG_PG_DSN"], embed_fn=None)
+        assert r["degraded"] is False                     # 缺席不如降级检索（§7.2）
+        if r["evidence"]:                                 # 库里有规范文档则应命中
+            assert r["evidence"][0]["fallback"] == "keyword"
