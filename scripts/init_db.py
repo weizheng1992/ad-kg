@@ -59,7 +59,8 @@ def init_postgres() -> None:
 
     GRANT USAGE ON SCHEMA public TO adkg_rw, adkg_ro;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO adkg_rw;
-    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO adkg_rw;
+    -- UPDATE 含 setval：009 达人号序列需运行时对齐分子（缺陷清单⑦b）
+    GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO adkg_rw;
     -- audit_log 只追加（§八）：对应用账号收回 UPDATE / DELETE
     REVOKE UPDATE, DELETE ON audit_log FROM adkg_rw;
     -- adkg_ro：只读事实与检索面，不含 audit_log（仅 admin 可读，§八）

@@ -57,13 +57,7 @@ export interface GraphResponse {
 export interface Me { username: string; display_name: string; role: string; person: string | null }
 
 export async function login(username: string, password: string): Promise<Me> {
-  const r = await fetch('/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send<Me>('/auth/login', 'POST', { username, password })
 }
 
 export async function fetchMe(): Promise<Me | null> {
@@ -85,14 +79,29 @@ async function errorDetail(r: Response): Promise<string> {
   }
 }
 
-export async function ask(question: string): Promise<AskResponse> {
-  const r = await fetch('/ask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+async function _get<T>(url: string): Promise<T> {
+  const r = await fetch(url)
+  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
+  return r.json()
+}
+
+/** POST/PUT/DELETE JSON 统一封装（_get 的对偶，2026-10-26 夜检：手抄样板 8+ 处
+ *  且 getMenus/fetchMyActions 抛错不带 errorDetail 契约不一）；body 缺省时不带
+ *  JSON 头（DELETE 等）。错误统一 `${status} ${errorDetail}` */
+async function _send<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const r = await fetch(url, {
+    method,
+    ...(body === undefined ? {} : {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   })
   if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
   return r.json()
+}
+
+export async function ask(question: string): Promise<AskResponse> {
+  return _send<AskResponse>('/ask', 'POST', { question })
 }
 
 export async function graphEntity(id: string): Promise<GraphResponse> {
@@ -132,13 +141,7 @@ export interface CommitResult {
 }
 
 export async function caseCommit(draft: CaseDraft): Promise<CommitResult> {
-  const r = await fetch('/ingest/case-commit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ draft }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send<CommitResult>('/ingest/case-commit', 'POST', { draft })
 }
 
 // ---------- 素材草稿（agent 产出物形态，README §9.4） ----------
@@ -214,13 +217,7 @@ export async function getCreator(id: string): Promise<CreatorDetail> {
 /** 达人录入（spec §13.1：conversation/20 低权威，平台抓取可覆盖） */
 export async function createCreator(payload: Record<string, unknown>): Promise<
   { outcome: 'created' | 'merged' | 'conflict'; creator_id: string }> {
-  const r = await fetch('/creators', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send('/creators', 'POST', payload)
 }
 
 /** CSV 批量导入（spec §13.1：official_doc/60；列同 creators.csv 模板） */
@@ -298,13 +295,8 @@ export async function getCase(id: string): Promise<CaseDetail> {
 /** 状态变更（spec §15）：走 ActionChecker 状态机裁决，拒绝 409 */
 export async function updateCaseStage(id: string, toStage: string, reason: string): Promise<
   { ok: boolean; case_id: string; stage: string }> {
-  const r = await fetch(`/cases/${encodeURIComponent(id)}/stage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to_stage: toStage, reason }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send(`/cases/${encodeURIComponent(id)}/stage`, 'POST',
+               { to_stage: toStage, reason })
 }
 
 // ---------- 客户页（spec §5）：品牌列表 + 子图详情；client 锚点豁免类闸只见自己 ----------
@@ -411,43 +403,23 @@ export interface AuditRow {
   verdict: string | null; reason: string | null
 }
 
-async function _get<T>(url: string): Promise<T> {
-  const r = await fetch(url)
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
-}
-
 export const getPermissionMatrix = () => _get<PermissionMatrix>('/admin/permission-matrix')
 export const getAdminAccounts = () => _get<{ items: AdminAccount[] }>('/admin/accounts')
 
 /** 人员管理写操作（spec §16）：仅 admin——开户 / 改密（吊销会话）/ 启停 */
 export async function createAccount(payload: { username: string; password: string
   display_name?: string; role: string; person?: string }): Promise<{ ok: boolean }> {
-  const r = await fetch('/admin/accounts', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send('/admin/accounts', 'POST', payload)
 }
 
 export async function resetAccountPassword(uid: string, password: string): Promise<{ ok: boolean }> {
-  const r = await fetch(`/admin/accounts/${encodeURIComponent(uid)}/reset-password`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send(`/admin/accounts/${encodeURIComponent(uid)}/reset-password`, 'POST',
+               { password })
 }
 
 export async function toggleAccount(uid: string, disabled: boolean): Promise<
   { ok: boolean; disabled: boolean }> {
-  const r = await fetch(`/admin/accounts/${encodeURIComponent(uid)}/toggle`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ disabled }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send(`/admin/accounts/${encodeURIComponent(uid)}/toggle`, 'POST', { disabled })
 }
 export const getAuditLog = (page = 1, size = 30, filters: {
   action?: string; verdict?: string; by_role?: string; q?: string } = {}) => {
@@ -471,13 +443,8 @@ export const getReviewQueue = (status = 'open', kind = '') => {
 export async function resolveReviewQueue(id: string, decision: 'approved' | 'rejected',
                                          note = ''): Promise<
   { ok: boolean; decision: string; applied: boolean }> {
-  const r = await fetch(`/admin/review-queue/${id}/resolve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision, note }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send(`/admin/review-queue/${encodeURIComponent(id)}/resolve`, 'POST',
+               { decision, note })
 }
 
 // ---------- 侧边栏菜单（spec §17 菜单管理：数据驱动，失败回落静态默认） ----------
@@ -496,21 +463,23 @@ export interface MenuDef {
 }
 
 export async function getMenus(): Promise<{ items: MenuDef[] }> {
-  const r = await fetch('/menus')
-  if (!r.ok) throw new Error(`${r.status}`)
-  return r.json()
+  return _get('/menus')               // 契约统一：错误带 errorDetail（2026-10-26）
 }
 
 export const getAdminMenus = () => _get<{ items: MenuDef[] }>('/admin/menus')
 
 export async function saveMenus(items: MenuDef[]): Promise<{ ok: boolean; count: number }> {
-  const r = await fetch('/admin/menus', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send('/admin/menus', 'PUT', { items })
+}
+
+/** 权限树整批保存（2026-10-26 事务化）：角色配置 + 菜单可见集单请求单事务落库，
+ *  半途失败整体回滚——双请求双写曾致两库不一致 */
+export async function savePermissions(payload: {
+  role?: { name: string; label?: string; description?: string; actions?: string[]
+           base_role?: string }
+  menus?: { items: MenuDef[] }
+}): Promise<{ ok: boolean; role: boolean; menus: number }> {
+  return _send('/admin/permissions', 'PUT', payload)
 }
 
 // ---------- Agent 对话（/agent/chat，README §9.7） ----------
@@ -567,13 +536,7 @@ export async function agentChatStream(
 export async function agentChat(
   messages: { role: string; content: string }[],
 ): Promise<AgentChatResult> {
-  const r = await fetch('/agent/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send<AgentChatResult>('/agent/chat', 'POST', { messages })
 }
 
 // ---------- RBAC 角色管理（spec §18） ----------
@@ -585,52 +548,31 @@ export interface RoleDef {
 }
 
 export async function listRoles(): Promise<{ items: RoleDef[] }> {
-  const r = await fetch('/admin/roles')
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _get('/admin/roles')
 }
 
 export async function createRole(payload: { name: string; label?: string
   base_role: string; description?: string; actions?: string[] }): Promise<{ ok: boolean }> {
-  const r = await fetch('/admin/roles', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send('/admin/roles', 'POST', payload)
 }
 
 export async function updateRole(name: string, payload: { label?: string
   description?: string; actions?: string[]; base_role?: string }): Promise<{ ok: boolean }> {
-  const r = await fetch(`/admin/roles/${encodeURIComponent(name)}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send(`/admin/roles/${encodeURIComponent(name)}`, 'PUT', payload)
 }
 
 export async function deleteRole(name: string): Promise<{ ok: boolean }> {
-  const r = await fetch(`/admin/roles/${encodeURIComponent(name)}`, { method: 'DELETE' })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send(`/admin/roles/${encodeURIComponent(name)}`, 'DELETE')
 }
 
 export async function setAccountRole(uid: string, role: string): Promise<
   { ok: boolean; role: string }> {
-  const r = await fetch(`/admin/accounts/${encodeURIComponent(uid)}/set-role`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role }),
-  })
-  if (!r.ok) throw new Error(`${r.status} ${await errorDetail(r)}`)
-  return r.json()
+  return _send(`/admin/accounts/${encodeURIComponent(uid)}/set-role`, 'POST', { role })
 }
 
 export interface MyActions { role: string; actions: string[]
   is_custom: boolean; base_role: string | null }
 
 export async function fetchMyActions(): Promise<MyActions> {
-  const r = await fetch('/my-actions')
-  if (!r.ok) throw new Error(`${r.status}`)
-  return r.json()
+  return _get('/my-actions')          // 契约统一：错误带 errorDetail（2026-10-26）
 }

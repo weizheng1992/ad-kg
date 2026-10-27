@@ -8,7 +8,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from adkg.guards.http import get_graph, resolve_identity
-from adkg.retrieval.metrics import STAT_FAMILY, TRADE_SELECT, agg_expr, uc_clicks_sql
+from adkg.retrieval.metrics import TRADE_SELECT, uc_clicks_sql
+from adkg.retrieval.stats import invest_stats
 
 router = APIRouter()
 
@@ -77,47 +78,16 @@ def _entity_stats(env: dict, plan, graph, cls: str | None, entity_id: str) -> di
     if cls == "Case":
         if plan.visible_entity_ids and entity_id not in plan.visible_entity_ids:
             return None                                      # fail-closed：不可见即无统计
-        return _invest_stats(env, plan, "case_id", entity_id)
+        return invest_stats(env, plan, "case_id", entity_id)
     if cls == "Product":
-        st = _invest_stats(env, plan, "product_id", entity_id)
+        st = invest_stats(env, plan, "product_id", entity_id)
         if st is None:
             return None
         st.update(_trade_stats(env, plan, graph, entity_id))
         return st
     if cls == "Creative":
-        return _invest_stats(env, plan, "creative_id", entity_id)
+        return invest_stats(env, plan, "creative_id", entity_id)
     return None
-
-
-def _invest_stats(env: dict, plan, dim_col: str, entity_id: str) -> dict | None:
-    """投放侧统计：unified_metrics 按 case/product 维度汇总比聚合。"""
-    import psycopg
-    from adkg.store import pg_pool
-    from psycopg.rows import dict_row
-
-    predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
-    try:
-        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
-                             row_factory=dict_row) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT {proj},"
-                    " string_agg(DISTINCT platform::text, ',') AS platforms,"
-                    " count(DISTINCT date) AS days,"
-                    " min(date)::text AS first_day, max(date)::text AS last_day"
-                    " FROM unified_metrics WHERE NOT unmatched AND "
-                    f"{dim_col} = %(id)s" + predicate,
-                    {"id": entity_id})
-                row = cur.fetchone()
-    except psycopg.Error:
-        return None                                          # 统计失败不阻塞图谱（§7.2 降级）
-    if not row or row["days"] == 0:
-        return None
-    # 指标列出口过白名单（§12.4）：统计卡不得绕过 metrics 权限——client 不见 cpa、
-    # creative 不见 cost/cpa（deny 派生联动已在 PermissionPlanner 展开，这里只做成员过滤）
-    return {k: v for k, v in row.items()
-            if k not in STAT_FAMILY or k in plan.allowed_columns}
 
 
 def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
@@ -141,7 +111,7 @@ def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
             with conn.cursor() as cur:
                 # 投放 clicks 预聚合 + 聚合表达式收在 metrics.py（uc_clicks_sql/
                 # TRADE_SELECT）——与 text2sql 交易模板同一形状（2026-10-24 收敛）；
-                # 行谓词同注入（与 _invest_stats 同一道闸）——购买率分母只计权限内案例
+                # 行谓词同注入（与 invest_stats 同一道闸）——购买率分母只计权限内案例
                 pred = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
                 cur.execute(
                     f"SELECT {TRADE_SELECT}"

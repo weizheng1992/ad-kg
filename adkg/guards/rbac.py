@@ -56,10 +56,6 @@ SYSTEM_ROLE_ACTIONS: dict[str, list[str]] = {
 
 def ensure_seed(env: dict[str, str], yaml_roles: list[str]) -> None:
     """幂等播种：系统角色行 + 系统 action 集（DB 无记录时才插，不覆盖已调配置）。"""
-    import yaml as _yaml
-    from pathlib import Path
-    base = Path(__file__).resolve().parents[2] / "ontology" / "permissions.yaml"
-    roles_cfg = _yaml.safe_load(base.read_text(encoding="utf-8"))["roles"]  # noqa: F841
     with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
         for name in yaml_roles:
             cur.execute(
@@ -78,10 +74,7 @@ def ensure_seed(env: dict[str, str], yaml_roles: list[str]) -> None:
 
 def roles_of(env: dict[str, str]) -> dict[str, dict]:
     """name → {label, source, base_role, description, actions[]}（含播种）。"""
-    import yaml as _yaml
-    from pathlib import Path
-    base = Path(__file__).resolve().parents[2] / "ontology" / "permissions.yaml"
-    yaml_roles = list(_yaml.safe_load(base.read_text(encoding="utf-8"))["roles"])
+    yaml_roles = _yaml_role_names()
     ensure_seed(env, yaml_roles)
     with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
         cur.execute("SELECT name, label, source, base_role, description FROM app_role"
@@ -119,23 +112,29 @@ def _maybe_seed(env: dict[str, str]) -> None:
     _seeded.add(id(env))
 
 
+def effective_actions(env: dict[str, str], role: str) -> set[str]:
+    """角色有效 action 集（role_allows 与按钮条显隐共同实现，单一来源）：
+    自身 app_role_action 记录；自定义角色**零记录**时整体回落基角色（§18 字面
+    「无记录回落」= 角色级，非逐 action——逐 action 回落使权限树取消勾选收不回
+    权，2026-10-26 夜检修复）。"""
+    _maybe_seed(env)
+    with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as c, c.cursor() as cur:
+        cur.execute("SELECT action FROM app_role_action WHERE role = %s", (role,))
+        own = {r["action"] for r in cur.fetchall()}
+        if own:
+            return own
+        base = custom_base(env, role)
+        if base and base != role:
+            cur.execute("SELECT action FROM app_role_action WHERE role = %s", (base,))
+            return {r["action"] for r in cur.fetchall()}
+    return own
+
+
 def role_allows(env: dict[str, str], role: str, gate: str) -> bool:
     """统一角色门：gate ∈ GATES（端点门）或直接是 action 词表键（按钮条，
     spec §18.5——action_key 即 gate）。系统角色按 DB 配置（默认=播种集）；
-    自定义角色查自身 DB action，无配置时回落基角色的门行为。"""
-    _maybe_seed(env)
-    action = GATES.get(gate, gate)      # 端点门映射；纯按钮键原样即 action
-    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
-        cur.execute("SELECT 1 FROM app_role_action WHERE role = %s AND action = %s",
-                    (role, action))
-        if cur.fetchone():
-            return True
-        base = custom_base(env, role)
-        if base and base != role:
-            cur.execute("SELECT 1 FROM app_role_action WHERE role = %s AND action = %s",
-                        (base, action))
-            return bool(cur.fetchone())
-        return False
+    自定义角色按 effective_actions（零记录回落基角色）。"""
+    return GATES.get(gate, gate) in effective_actions(env, role)
 
 
 def display_role(request, authorization, role: str | None, user: str | None) -> str:
@@ -150,13 +149,39 @@ def display_role(request, authorization, role: str | None, user: str | None) -> 
     return r
 
 
+def require(request, authorization, *, gate: str, role: str | None = None,
+            user: str | None = None, message: str | None = None) -> str:
+    """端点动作门统一入口（读/写同一实现）：以**原始角色**（display_role，含
+    自定义）判 role_allows，不过抛 403，通过返回 display_role 供审计落账。
+
+    必须用 display_role 而非 resolve_identity 返回的 role——后者是数据面映射
+    后的基角色，直接拿它判门会让 base=admin 的自定义角色绕过自身 action 配置
+    获得全部写权（2026-10-26 夜检，require_admin_view 注释自认的坑在此收口）。
+    """
+    from fastapi import HTTPException
+    shown = display_role(request, authorization, role, user)
+    if not role_allows(request.app.state.env, shown, gate):
+        raise HTTPException(403, message or
+                            f"当前角色无「{ACTIONS.get(gate, gate)}」权限（spec §18 角色门）")
+    return shown
+
+
+def require_system_admin(request, authorization, *, role: str | None = None,
+                         user: str | None = None) -> str:
+    """角色配置写门（§18「写仅 admin」/§19「写权 admin 独占不变」）：系统 admin
+    本尊独占——按 display_role 判，自定义角色即便 base=admin 也不得管理角色
+    （映射后 role_=='admin' 的旧判法是绕过通道，2026-10-26 夜检修复）。"""
+    from fastapi import HTTPException
+    shown = display_role(request, authorization, role, user)
+    if shown != "admin":
+        raise HTTPException(403, "角色配置写操作仅 admin 可用（spec §18/§19）")
+    return shown
+
+
 def require_admin_view(request, authorization, role: str | None,
                        user: str | None = None) -> None:
     """管理区读门（spec §19 收口）：role_allows('admin_view') 统一门——初始语义
-    等价 management/admin 可读，自定义角色授 admin_view 后同读。门判用原始角色
-    （display_role——resolve_identity 返回数据面映射后的基角色，会吃掉自定义
-    角色的授权）。唯一实现：admin / roles / menus 三路由的 /admin/* 读端点共用。"""
-    from fastapi import HTTPException
-    shown = display_role(request, authorization, role, user)
-    if not role_allows(request.app.state.env, shown, "admin_view"):
-        raise HTTPException(403, "无管理后台查看权限（spec §19 admin_view 门）")
+    等价 management/admin 可读，自定义角色授 admin_view 后同读。唯一实现委托
+    require（display_role 门判）；require 的收口注释同样适用本门。"""
+    require(request, authorization, gate="admin_view", role=role, user=user,
+            message="无管理后台查看权限（spec §19 admin_view 门）")

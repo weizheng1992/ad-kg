@@ -17,9 +17,10 @@ import { createAccount, getAdminAccounts, listRoles, resetAccountPassword,
          type AdminAccount, type RoleDef } from '@/lib/api'
 import { ROLE_LABEL } from '@/lib/nav'
 import { useCan } from '@/lib/session'
+import { roleLabel } from '@/lib/labels'
 
 const roleText = (r: RoleDef) =>
-  `${ROLE_LABEL[r.name] ?? r.label}${r.source === 'custom' ? '（自定义）' : ''}`
+  `${roleLabel(r)}${r.source === 'custom' ? '（自定义）' : ''}`
 
 export function PeoplePage() {
   const canWrite = useCan('account_manage')

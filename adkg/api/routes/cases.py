@@ -16,7 +16,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
 from adkg.guards.http import get_graph, resolve_identity
-from adkg.retrieval.metrics import STAT_FAMILY, agg_expr
+from adkg.retrieval.stats import case_stats_batch, creative_stats_by_case
 
 router = APIRouter()
 
@@ -25,28 +25,6 @@ STAGE_LABEL = {"proposal": "提案中", "live": "投放中", "closed": "已结�
 # 状态机主线 + 分支（schema.yaml#constraints 的展示形态）
 STAGE_FLOW = ["proposal", "live", "closed"]
 STAGE_BRANCH = {"lost": "proposal", "terminated": "live"}
-
-
-def _case_stats_batch(env: dict, plan, case_ids: list[str]) -> dict[str, dict]:
-    """案例维度批量汇总比（一条 SQL）：与 /graph stats、/brands 同口径同闸。"""
-    if not case_ids:
-        return {}
-    predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
-    try:
-        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=4000",
-                             row_factory=dict_row) as conn, conn.cursor() as cur:
-            cur.execute(
-                f"SELECT case_id, {proj}, string_agg(DISTINCT platform::text, ',') AS platforms,"
-                " count(DISTINCT date) AS days FROM unified_metrics"
-                " WHERE NOT unmatched AND case_id = ANY(%(ids)s)" + predicate +
-                " GROUP BY case_id", {"ids": case_ids})
-            rows = cur.fetchall()
-    except psycopg.Error:
-        return {}                                            # 统计失败不阻塞列表（§7.2 降级）
-    return {r["case_id"]: {k: v for k, v in r.items()
-                           if k not in STAT_FAMILY or k in plan.allowed_columns}
-            for r in rows}
 
 
 def _mask_case_props(plan, props: dict) -> dict:
@@ -91,7 +69,7 @@ def list_cases(request: Request, q: str = "", stage: str = "", brand: str = "",
     rows = [r for r in rows if not visible or r["id"] in visible]
     total = len(rows)
     items = rows[(page - 1) * size:page * size]
-    stats = _case_stats_batch(request.app.state.env, plan, [r["id"] for r in items])
+    stats = case_stats_batch(request.app.state.env, plan, [r["id"] for r in items])
     external = bool(plan.allow_properties)
     for r in items:
         r["stats"] = stats.get(r["id"])
@@ -166,22 +144,7 @@ def case_detail(request: Request, cid: str,
                 id=cid).data()]
 
     # 素材指标明细（汇总比 + 指标白名单 + 行谓词同闸）
-    predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
-    creative_rows: list[dict] = []
-    try:
-        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
-                             row_factory=dict_row) as conn, conn.cursor() as cur:
-            cur.execute(
-                f"SELECT creative_id, string_agg(DISTINCT platform::text, ',') AS platforms,"
-                f" {proj} FROM unified_metrics WHERE NOT unmatched"
-                f" AND case_id = %(id)s{predicate} GROUP BY creative_id"
-                " HAVING count(DISTINCT date) >= 1 ORDER BY cost DESC", {"id": cid})
-            creative_rows = [{k: v for k, v in r.items()
-                              if k not in STAT_FAMILY or k in plan.allowed_columns}
-                             for r in cur.fetchall()]
-    except psycopg.Error:
-        creative_rows = []                                   # 统计失败不阻塞详情（§7.2）
+    creative_rows = creative_stats_by_case(env, plan, cid)
 
     # 内容：案例文档 chunks（gen_seed 模板即真源，chunk#0 首行为标题）
     docs: list[dict] = []
@@ -219,10 +182,12 @@ def case_detail(request: Request, cid: str,
                                     ("stage", "bd_budget", "gross_margin",
                                      "settlement_status", "lost_reason",
                                      "terminate_reason")})
-    stats = _case_stats_batch(env, plan, [cid]).get(cid)
-    # 状态变更权限（spec §15）：按 permissions.yaml actions 动态判定，不硬抄角色表
-    from adkg.guards.rbac import role_allows
-    can_stage = role_allows(env, role, "case_stage")
+    stats = case_stats_batch(env, plan, [cid]).get(cid)
+    # 状态变更权限（spec §15）：rbac 统一门判原始角色（display_role）——映射基角色
+    # 会吃掉自定义角色的按钮授权（2026-10-26 收口）
+    from adkg.guards.rbac import display_role, role_allows
+    can_stage = role_allows(env, display_role(request, authorization, role, user),
+                            "case_stage")
     return {"case": {"id": rec["id"], "name": rec["name"], **props},
             "brand": brand, "product": product, "owners": owners,
             "campaigns": campaigns,
@@ -251,9 +216,9 @@ def update_case_stage(request: Request, cid: str, body: dict,
     迁移合法性走 ActionChecker 状态机（terminated 必填原因）——拒绝 409 + 审计 deny，
     通过则写图（stage + 拒因）+ 审计 allow。"""
     role, person, planner = resolve_identity(request, authorization, role=role, user=user)
-    from adkg.guards.rbac import role_allows
-    if not role_allows(request.app.state.env, role, "case_stage"):
-        raise HTTPException(403, "当前角色无案例阶段变更权限（spec §18 角色门）")
+    from adkg.guards.rbac import require
+    require(request, authorization, gate="case_stage", role=role, user=user,
+            message="当前角色无案例阶段变更权限（spec §18 角色门）")
     plan = planner.plan(role, person=person)
     to_stage = str(body.get("to_stage") or "")
     reason = str(body.get("reason") or "").strip()

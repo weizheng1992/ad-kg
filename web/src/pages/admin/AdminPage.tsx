@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ROLE_LABEL } from '@/lib/nav'
+import { useCan } from '@/lib/session'
 import { getAuditLog, getReviewQueue, resolveReviewQueue,
          type AuditRow, type ReviewQueueItem } from '@/lib/api'
 
@@ -94,6 +95,7 @@ function ReviewTab({ data, kind, setKind, reload }: {
 }) {
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
+  const canResolve = useCan('review_resolve')   // 按钮显隐与后端 review_resolve 门同源（§18.5）
   const KIND_LABEL: Record<string, string> = {
     conflict: '权威冲突', low_confidence: '低置信', unmatched: '对齐失败', reconcile: '对账差异',
   }
@@ -154,14 +156,18 @@ function ReviewTab({ data, kind, setKind, reload }: {
                   </td>
                   <td className="px-3 py-2"><Badge variant="secondary">{r.status}</Badge></td>
                   <td className="px-3 py-2">
-                    <div className="flex gap-1">
-                      <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]"
-                              disabled={busy === r.id}
-                              onClick={() => void resolve(r.id, 'approved')}>通过</Button>
-                      <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]"
-                              disabled={busy === r.id}
-                              onClick={() => void resolve(r.id, 'rejected')}>驳回</Button>
-                    </div>
+                    {canResolve ? (
+                      <div className="flex gap-1">
+                        <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                                disabled={busy === r.id}
+                                onClick={() => void resolve(r.id, 'approved')}>通过</Button>
+                        <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]"
+                                disabled={busy === r.id}
+                                onClick={() => void resolve(r.id, 'rejected')}>驳回</Button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground">无处置权</span>
+                    )}
                   </td>
                 </tr>
               ))}

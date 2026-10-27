@@ -13,7 +13,6 @@ from __future__ import annotations
 import base64
 import json
 import re
-from datetime import datetime, timezone
 
 
 def _shot(page) -> str | None:
@@ -45,7 +44,7 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
     if not no and not query:
         return "query（达人名/方向，模糊搜）与 creator_id（cr11 形态，直达详情）必填一个"
     from adkg.guards.rbac import role_allows
-    if not role_allows(ctx.env, ctx.role, "creator_write"):
+    if not role_allows(ctx.env, getattr(ctx, "shown", None) or ctx.role, "creator_write"):
         return "当前角色无达人录入权限，不能触发平台抓取入库（spec §18 角色门）"
     try:
         from playwright.sync_api import sync_playwright
@@ -97,8 +96,6 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
                  _shot(page))
 
             creator_id = f"Creator:{no}"
-            from adkg.guards.audit import audit
-            from adkg.models import Entity, Provenance
             # h2 内含平台 tag span：inner_text 按行拼——取首行即纯名字
             props = {"name": page.locator("h2").inner_text().split("\n")[0].strip(),
                      "platform": ("douyin" if "抖音" in platform_txt
@@ -117,53 +114,30 @@ def fetch_creator_from_platform(args: dict, ctx) -> str:
                 props["city"] = m_city.group(1)
             if m_rating:
                 props["rating"] = float(m_rating.group(1))
-            # 权威仲裁（§12.2 / Q11A「冲突仍走 review_queue」）：已有更高权威记录
-            # （如种子 system_of_record/100）在场时不覆盖字段——冲突进 review_queue
-            # 人审，抓取结果仅随工具返回供参考
-            prov = Provenance(source_type="platform_api",
-                              source_id=f"mock-douyin:creator:{no}",
-                              fetched_at=datetime.now(timezone.utc))
-            with ctx.graph.session() as s:
-                rec = s.run("MATCH (n:Entity {id: $id}) RETURN n.authority AS auth",
-                            id=creator_id).single()
-            existing_auth = rec["auth"] if rec else None
-            if existing_auth is not None and existing_auth > prov.authority:
-                import psycopg
-                from adkg.store import pg_pool
-                with pg_pool.connect(ctx.env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
-                    # 去重：同实体+同来源的未决 conflict 只留一条（幂等重抓不刷屏）；
-                    # incoming_source_type 供人审处置回放（spec §15）
-                    cur.execute(
-                        "INSERT INTO review_queue (kind, payload)"
-                        " SELECT 'conflict', %(payload)s"
-                        " WHERE NOT EXISTS (SELECT 1 FROM review_queue"
-                        "  WHERE kind = 'conflict' AND status = 'open'"
-                        "  AND payload->>'entity' = %(entity)s"
-                        "  AND payload->>'incoming_source' = %(source)s)",
-                        {"payload": json.dumps(
-                            {"entity": creator_id,
-                             "incoming_source": prov.source_id,
-                             "incoming_source_type": "platform_api",
-                             "incoming_authority": prov.authority,
-                             "existing_authority": existing_auth,
-                             "incoming_props": props}, ensure_ascii=False),
-                         "entity": creator_id, "source": prov.source_id})
-                audit(ctx.env, ctx.role, ctx.person, "platform_fetch", creator_id, "deny",
-                      f"更高权威（{existing_auth}）在场未覆盖，冲突进 review_queue（§12.2）")
-                emit(5, f"库内已有更高权威记录（{existing_auth}），未覆盖——冲突进人审队列")
+            # 入库 + 权威仲裁走 creators._ingest_creator 单一来源（2026-10-26 收口，
+            # 勘误旧整包 payload：字段级仲裁——空缺补齐、真字段冲突才进 review_queue；
+            # audit_action 保持 platform_fetch 口径）。旧 review_queue 里的整包
+            # incoming_props 载荷仍被人审处置兼容。
+            from adkg.api.routes.creators import _ingest_creator
+            result = _ingest_creator(ctx.env, ctx.graph, creator_id, props,
+                                     "platform_api", f"mock-douyin:creator:{no}",
+                                     ctx.role, ctx.person, audit_action="platform_fetch")
+            outcome = str(result.get("outcome"))
+            if outcome == "conflict":
+                emit(5, f"库内已有更高权威记录（{result.get('existing_authority')}），"
+                        f"未覆盖——空缺已补 {len(result.get('filled') or [])} 项，"
+                        "字段冲突进人审队列")
                 return json.dumps({"creator_id": creator_id, **props, "ingested": False,
-                                   "conflict_queued": True},
+                                   "conflict_queued": True,
+                                   "field_diff": result.get("field_diff")},
                                   ensure_ascii=False, default=str)
-            ctx.graph.upsert_entities([Entity(entity_class="Creator", entity_id=creator_id,
-                                              props=props, provenance=prov)])
-            from adkg.api.routes.creators import record_quote_history
-            record_quote_history(ctx.env, creator_id, props.get("quote_20s"),
-                                 "platform_api", prov.source_id)   # 报价快照（§15）
-            audit(ctx.env, ctx.role, ctx.person, "platform_fetch", creator_id,
-                  "allow", "playwright 抓取星图·模拟并幂等入图（platform_api）")
-            emit(5, f"已入图（幂等 MERGE，provenance=platform_api）：{creator_id}")
-            return json.dumps({"creator_id": creator_id, **props,
-                               "ingested": True}, ensure_ascii=False, default=str)
+            merged_note = (f"，空缺补齐 {len(result['filled'])} 项"
+                           if result.get("filled") else "")
+            emit(5, f"已入图（outcome={outcome}{merged_note}，"
+                    f"provenance=platform_api）：{creator_id}")
+            return json.dumps({"creator_id": creator_id, **props, "ingested": True,
+                               "outcome": outcome},
+                              ensure_ascii=False, default=str)
         except Exception as e:                              # noqa: BLE001 平台故障降级为工具结果
             return f"平台抓取失败：{type(e).__name__}: {e}"
         finally:

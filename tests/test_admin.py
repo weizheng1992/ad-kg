@@ -132,6 +132,14 @@ class TestReviewResolve:
         with psycopg.connect(os.environ["ADKG_PG_DSN"]) as c, c.cursor() as cur:
             cur.execute("SELECT status FROM review_queue WHERE id = %s", (qid2,))
             assert cur.fetchone()[0] == "approved"
+        # ⑤ 重复处置已被采纳条目 → open 守卫 409（读改同连接同事务，无 TOCTOU）
+        r = client.post(f"/admin/review-queue/{qid2}/resolve", params={"role": "admin"},
+                        json={"decision": "rejected"})
+        assert r.status_code == 409 and "已被处置" in r.json()["detail"]
+        with psycopg.connect(os.environ["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+            cur.execute("SELECT status, resolved_by FROM review_queue WHERE id = %s", (qid2,))
+            st, by = cur.fetchone()
+            assert st == "approved" and by == "admin"      # 首次处置结果未被覆盖
         self._cleanup()
 
 

@@ -501,6 +501,10 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 - **权限管理 `/permissions`**：左角色列表、右「页面→按钮」树形授权（真 Checkbox：页面勾写 `app_menu.roles`、按钮勾写 `app_role_action`，整批保存双写）；自定义角色 CRUD（`app_role`，数据面等同基角色）；底部「数据面权限矩阵」折叠区 = `permissions.yaml` 只读投影（两平面分离的可视证据）。
 - **菜单管理 `/menus`**：页面→按钮两级 table-tree（自研组件，菜单/权限两页复用）——label / 图标（白名单内）/ 排序 / 启停；path 与 action 词表白名单锁定不开放增删（菜单 = 前端路由镜像，凭空造菜单只会指向 404）。
 - **门与显隐**：`/admin/*` 读门统一 `role_allows('admin_view')`（management 只读、admin 全权），写权 admin 独占；前端按钮显隐统一 `useCan(action)`（`/my-actions`，与后端 role_allows 同一门）。数据面（类白名单/指标/行过滤）真源仍是 `permissions.yaml` + `.env`——**两平面分离**：数据面配置即真源，界面权限（菜单/按钮/自定义角色）真源在 DB。
+- **角色门判原始角色（2026-10-26 夜检修复）**：action/端点门一律以 `display_role`（账号原始角色，含自定义）判 `role_allows`——`resolve_identity` 返回的是数据面映射后的基角色，直接拿它判门会让 base=admin 的自定义角色绕过自身 action 配置获得全部写权。角色 CRUD（创建/配置/删除角色）例外：`require_system_admin` 硬门，系统 admin 本尊独占（§18「写仅 admin」），自定义角色即便 base=admin 也不得管理角色。
+- **自定义角色回落语义（§18 字面收口）**：**角色级零记录**才整体继承基角色的 action 集；只要有任意一条自身配置即白名单语义，未勾选项不回落——权限树取消勾选真实收权（此前逐 action 回落使取消勾选无效）。
+- **admin 自留权不可摘**：`update_role` 守卫 admin 的播种 action 集（account_manage / menu_manage / admin_view / review_resolve / creator_write / creator_export / case_stage_change）不可移除，防自锁。
+- **权限树整批保存事务化（2026-10-26 勘误 §19「双写」）**：`PUT /admin/permissions` 单请求单事务同落 `app_role`（label/description/actions）与 `app_menu`（可见集），半途失败整体回滚——两请求双写曾致半途失败两库不一致。
 
 **认证与角色头**：web 走**服务端会话**（spec §2）——`POST /auth/login` 校验 `app_user`（stdlib scrypt + 等时哑校验防用户名探测），签发 `app_session` 表支撑的 HttpOnly cookie（7 天滑动续期、可吊销）；`resolve_identity` 解析优先级 **token > cookie > dev**，登录成败均落审计。~~X-Adkg-Role 换 token~~ **已撤**（2026-10-24）：nginx 不再按头注入 Authorization，web 全靠会话 cookie；`Authorization: Bearer` 直连路保留给 smartServe / eval。每账号绑定唯一 role + Person，**演示期的管理员自由切换身份已移除**（真系统不留后门）；本地开发 `ADKG_DEV_AUTH=off` 不变。
 

@@ -32,11 +32,14 @@ MAX_TURNS = 5
 
 class _ToolCtx:                                          # 工具执行上下文（循环内不变量打包）
     def __init__(self, env, graph, plan, llm, request, role, person, authorization,
-                 emit=None):
+                 emit=None, shown=None):
         self.env, self.graph, self.plan, self.llm = env, graph, plan, llm
         self.request, self.role, self.person, self.authorization = \
             request, role, person, authorization
         self.emit = emit                                 # 浏览工具子步回调（SSE 路）
+        # 原始角色（display_role）：写工具动作门判它而非映射后的 role——
+        # base=admin 的自定义角色不得借映射绕过自身 action 配置（2026-10-26）
+        self.shown = shown or role
 
 
 def _t_ask_knowledge(args: dict, ctx: _ToolCtx) -> str:
@@ -155,7 +158,14 @@ def _prepare(request: Request, body: dict, authorization: str | None):
         raise HTTPException(503, "LLM 不可用（稍后重试，§7.2）")
     plan = planner.plan(role, person=person)
     graph = get_graph(request)
-    tool_ctx = _ToolCtx(env, graph, plan, llm, request, role, person, authorization)
+    from adkg.guards.rbac import display_role
+    try:
+        shown = display_role(request, authorization,
+                             body.get("role") if isinstance(body, dict) else None, None)
+    except HTTPException:
+        shown = role                                     # display 解析失败兜底（dev 路等价）
+    tool_ctx = _ToolCtx(env, graph, plan, llm, request, role, person, authorization,
+                        shown=shown)
     return env, role, person, history, last, tool_ctx
 
 

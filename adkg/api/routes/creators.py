@@ -24,41 +24,14 @@ from psycopg.rows import dict_row
 from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
 
 from adkg.guards.http import get_graph, resolve_identity
-from adkg.retrieval.metrics import STAT_FAMILY, agg_expr
+from adkg.retrieval.stats import case_stats_batch, collab_stats
+from adkg.store.creator_quotes import record_quote_history
 
 router = APIRouter()
 
 CREATE_CREATOR_ROLES = {"ae", "management", "admin"}
 SOURCE_LABEL = {"system_of_record": "种子", "platform_api": "平台抓取",
                 "official_doc": "表格导入", "conversation": "手工录入"}
-
-
-def _collab_stats(env: dict, plan, case_ids: list[str]) -> dict | None:
-    """达人合作案例维度的汇总投放统计（spec §3）：unified_metrics 汇总比（§六
-    铁律）+ 指标列白名单——与 /graph stats、/brands 同一口径与同一道闸。"""
-    import psycopg
-    from psycopg.rows import dict_row
-
-    if not case_ids:
-        return None
-    predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
-    try:
-        proj = ", ".join(f"{agg_expr(c)} AS {c}" for c in STAT_FAMILY)
-        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
-                             row_factory=dict_row) as conn, conn.cursor() as cur:
-            cur.execute(
-                f"SELECT {proj}, string_agg(DISTINCT platform::text, ',') AS platforms,"
-                " count(DISTINCT date) AS days, min(date)::text AS first_day,"
-                " max(date)::text AS last_day FROM unified_metrics"
-                " WHERE NOT unmatched AND case_id = ANY(%(ids)s)" + predicate,
-                {"ids": case_ids})
-            row = cur.fetchone()
-    except psycopg.Error:
-        return None                                          # 统计失败不阻塞详情（§7.2 降级）
-    if not row or row["days"] == 0:
-        return None
-    return {k: v for k, v in row.items()
-            if k not in STAT_FAMILY or k in plan.allowed_columns}
 
 
 def _require_creator(plan) -> None:
@@ -69,14 +42,21 @@ def _require_creator(plan) -> None:
         raise HTTPException(403, "类 Creator 不在当前角色白名单")
 
 
-def _next_creator_id(graph) -> str:
-    """新达人号：现有 crNN 序号最大值 +1（Creator:cr61…；种子命名法，§12.5）。"""
+def _next_creator_id(env: dict, graph) -> str:
+    """新达人号（Creator:cr61…；种子命名法，§12.5）。并发安全（缺陷清单⑦b）：
+    Neo4j 现有 crNN 最大序号为基线，PG 序列 creator_num_seq（sql/009）单条
+    setval(greatest(nextval, 基线+1)) 原子分配——并发开户/导入不再 MAX+1 撞号；
+    种子/平台抓取抬高基线时由 GREATEST 对齐，序号只进不退（缺口可接受）。"""
     with graph.session() as s:
         nums = [int(m.group(1)) for m in
                 (re.match(r"Creator:cr(\d+)$", r["id"]) for r in s.run(
                     "MATCH (c:Entity {class: 'Creator'}) RETURN c.id AS id").data())
                 if m]
-    return f"Creator:cr{max(nums, default=0) + 1:02d}"
+    top = max(nums, default=0) + 1
+    with pg_pool.connect(env["ADKG_PG_DSN"], options="-c statement_timeout=3000") as c:
+        n = c.execute("SELECT setval('creator_num_seq',"
+                      " greatest(nextval('creator_num_seq'), %s))", (top,)).fetchone()[0]
+    return f"Creator:cr{n:02d}"
 
 
 def _parse_creator_row(row: dict) -> tuple[str, dict]:
@@ -107,29 +87,15 @@ def _parse_creator_row(row: dict) -> tuple[str, dict]:
     return creator_id, props
 
 
-def record_quote_history(env: dict, creator_id: str, quote_20s, source_type: str,
-                         source_id: str) -> None:
-    """报价快照（spec §15）：三条入库口共用——历史即事实，只追加。"""
-    import psycopg
-
-    if not quote_20s:
-        return
-    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
-        cur.execute(
-            "INSERT INTO creator_quote_history (creator_id, date, quote_20s, source_type,"
-            " source_id) VALUES (%s, current_date, %s, %s, %s)"
-            " ON CONFLICT (creator_id, date, source_type) DO NOTHING",
-            (creator_id, int(quote_20s), source_type, source_id))
-
-
 def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                     source_type: str, source_id: str,
-                    role: str, person: str | None) -> dict:
+                    role: str, person: str | None,
+                    audit_action: str = "create_creator") -> dict:
     """入库 + 权威仲裁（§13.1，与平台抓取同一规则）：更高权威在场不覆盖、
-    冲突去重进 review_queue；返回 {outcome, creator_id}。"""
+    冲突去重进 review_queue；返回 {outcome, creator_id}。audit_action 供平台
+    抓取路保持 platform_fetch 审计口径（仲裁逻辑单一来源，2026-10-26 收口）。"""
     import json as _json
 
-    import psycopg
     from adkg.guards.audit import audit
     from adkg.models import Entity, Provenance
 
@@ -158,7 +124,7 @@ def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                       if v is not None and node_props.get(k) is not None
                       and node_props.get(k) != v}
         if not field_diff:                    # 只有空缺补齐，无字段冲突——静默合并
-            audit(env, role, person, "create_creator", creator_id, "allow",
+            audit(env, role, person, audit_action, creator_id, "allow",
                   f"更高权威（{existing}）在场，仅补空缺字段 {sorted(filled)}（§10 字段级仲裁）")
             return {"outcome": "merged", "creator_id": creator_id,
                     "filled": sorted(filled)}
@@ -178,10 +144,11 @@ def _ingest_creator(env: dict, graph, creator_id: str, props: dict,
                      "field_diff": field_diff,
                      "filled": sorted(filled)}, ensure_ascii=False),
                  "entity": creator_id, "source": prov.source_id})
-        audit(env, role, person, "create_creator", creator_id, "deny",
+        audit(env, role, person, audit_action, creator_id, "deny",
               f"更高权威（{existing}）在场不覆盖；空缺已补 {sorted(filled)}，"
               f"字段冲突进 review_queue（§10/§12.2）")
         return {"outcome": "conflict", "creator_id": creator_id,
+                "existing_authority": existing,
                 "field_diff": field_diff, "filled": sorted(filled)}
     graph.upsert_entities([Entity(entity_class="Creator", entity_id=creator_id,
                                   props=props, provenance=prov)])
@@ -198,15 +165,15 @@ def create_creator(request: Request, body: dict,
                    authorization: str | None = Header(default=None)) -> dict:
     """达人录入（spec §13.1）：conversation/20 低权威——平台抓到更准数据可覆盖。"""
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
-    from adkg.guards.rbac import role_allows
-    if not role_allows(request.app.state.env, role, "creator_write"):
-        raise HTTPException(403, "当前角色无达人录入权限（spec §18 角色门）")
+    from adkg.guards.rbac import require
+    require(request, authorization, gate="creator_write", role=role, user=user,
+            message="当前角色无达人录入权限（spec §18 角色门）")
     try:
         creator_id, props = _parse_creator_row(body)
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
     if not creator_id:
-        creator_id = _next_creator_id(get_graph(request))
+        creator_id = _next_creator_id(request.app.state.env, get_graph(request))
     return _ingest_creator(request.app.state.env, get_graph(request), creator_id, props,
                            "conversation", f"form:{creator_id}:{datetime.now():%Y%m%d}",
                            role, user)
@@ -219,9 +186,9 @@ async def import_creators(request: Request, file: UploadFile,
     """CSV / xlsx 批量导入（spec §13.1 + §15）：official_doc/60；xlsx 经 openpyxl
     转行后走与 CSV 完全相同的校验/仲裁/审计路；行级容错不中断整批。"""
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
-    from adkg.guards.rbac import role_allows
-    if not role_allows(request.app.state.env, role, "creator_write"):
-        raise HTTPException(403, "当前角色无达人导入权限（spec §18 角色门）")
+    from adkg.guards.rbac import require
+    require(request, authorization, gate="creator_write", role=role, user=user,
+            message="当前角色无达人导入权限（spec §18 角色门）")
     raw = await file.read()
     if (file.filename or "").lower().endswith((".xlsx", ".xls")):
         try:
@@ -251,7 +218,7 @@ async def import_creators(request: Request, file: UploadFile,
         try:
             creator_id, props = _parse_creator_row(row)
             if not creator_id:
-                creator_id = _next_creator_id(graph)
+                creator_id = _next_creator_id(env, graph)
             out = _ingest_creator(env, graph, creator_id, props, "official_doc", batch,
                                   role, user)
         except ValueError as e:
@@ -352,7 +319,7 @@ def creator_detail(request: Request, cid: str,
     if plan.allow_properties:                               # 外部角色属性白名单（§12.4）
         visible_cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"]}
                          for c in visible_cases]
-    stats = _collab_stats(request.app.state.env, plan, [c["id"] for c in visible_cases])
+    stats = collab_stats(request.app.state.env, plan, [c["id"] for c in visible_cases])
     # 报价历史（spec §15）：种子轨迹 + 三条入库口的运行时快照
     history: list[dict] = []
     try:
@@ -365,9 +332,8 @@ def creator_detail(request: Request, cid: str,
     except psycopg.Error:
         history = []
     # 合作行指标（spec §14：M10 承诺漏做补上）——与 /cases 列表同源批量统计
-    from adkg.api.routes.cases import _case_stats_batch
-    case_metrics = _case_stats_batch(request.app.state.env, plan,
-                                     [c["id"] for c in visible_cases])
+    case_metrics = case_stats_batch(request.app.state.env, plan,
+                                    [c["id"] for c in visible_cases])
     for c in visible_cases:
         m = case_metrics.get(c["id"]) or {}
         c["cost"] = m.get("cost")

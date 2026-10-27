@@ -1,6 +1,6 @@
 """GET /settlements（spec §5 财务结算中心）：Case 结算视图 + 达人合作成本。
 
-角色门 SETTLE_ROLES = {management, finance}（spec §4 页面矩阵；属性级口径见
+角色门 rbac role_allows("settlement")（display_role 判；spec §4 页面矩阵；属性级口径见
 README §9.2——毛利/结算状态对 finance 可见）。达人成本 = collabs_with 达人
 quote_20s 之和（种子无逐单成交价，按报价上界估计，前端标注「估」）。
 """
@@ -11,17 +11,14 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from adkg.guards.http import get_graph, resolve_identity
 
 router = APIRouter()
-SETTLE_ROLES = {"management", "finance"}
-
-
 @router.get("/settlements")
 def settlements(request: Request, status: str = "", brand: str = "", stage: str = "",
                 role: str | None = None, user: str | None = None,
                 authorization: str | None = Header(default=None)) -> dict:
     role, user, _planner = resolve_identity(request, authorization, role=role, user=user)
-    from adkg.guards.rbac import role_allows
-    if not role_allows(request.app.state.env, role, "settlement"):
-        raise HTTPException(403, "当前角色无财务结算权限（spec §18 角色门）")
+    from adkg.guards.rbac import require
+    require(request, authorization, gate="settlement", role=role, user=user,
+            message="当前角色无财务结算权限（spec §18 角色门）")
     with get_graph(request).session() as s:
         rows = s.run(
             "MATCH (c:Entity {class: 'Case'})-[:for_brand]->(b:Entity) "

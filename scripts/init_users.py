@@ -1,8 +1,9 @@
 """初始化 web 账号（spec §2）：app_user 建号 / 改绑；密码走 env 或随机生成打印一次。
 
 最小账号面（README §9.7 拍板重述）：无管理 UI，本脚本即开户界面。
-账号 ↔ role / Person 绑定与 permissions.yaml bindings 同源对齐；李昂双角色
-（ae / optimizer token 各一枚）在账号面取 AE（org_role 口径）。
+账号 ↔ role / Person 绑定与 permissions.yaml bindings 同源对齐（启动即对账，
+见 _check_role_bindings——两处角色/person 映射不一致显式报错，不再手工双份
+静默漂移）；李昂双角色（ae / optimizer token 各一枚）在账号面取 AE（org_role 口径）。
 
 用法：
   ADKG_USER_PASSWORD=xxx uv run python scripts/init_users.py              # 统一密码
@@ -15,6 +16,7 @@ import sys
 from pathlib import Path
 
 import psycopg
+import yaml
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +39,39 @@ USERS = [
 ]
 
 
+def _check_role_bindings() -> None:
+    """账号面 ↔ permissions.yaml bindings 对账（缺陷清单⑦a）：USERS 与 bindings
+    是同一套 RBAC 的两张脸（web 账号面 / token 面），手工双份必漂移——建号前
+    校验，不一致显式报错退出（先改 yaml 再改本表）：
+      ① 账号角色必须仍在 permissions.yaml roles 中；
+      ② 账号 person 有 token 绑定的，账号角色须落在该 person 的绑定角色集内
+        （李昂双角色账号面取 AE，属合法子集）；
+      ③ bindings 绑定的 person 在账号面必须有承接——无同名 person 账号的，
+        允许由同角色的无 person 运维账号承接（Person:admin ↔ admin 账号）。
+    """
+    data = yaml.safe_load((ROOT / "ontology" / "permissions.yaml")
+                          .read_text(encoding="utf-8"))
+    bound: dict[str, set[str]] = {}
+    for b in (data.get("bindings") or {}).values():
+        bound.setdefault(str(b["person"]), set()).add(str(b["role"]))
+    roles = set(data.get("roles") or {})
+    persons = {p for _, _, _, p in USERS if p}
+    ops = {r for _, _, r, p in USERS if p is None}    # 无 person 运维账号的角色
+    for username, _display, role, person in USERS:
+        if role not in roles:
+            sys.exit(f"账号 {username} 的角色 {role} 不在 permissions.yaml roles——"
+                     "先改 yaml 再改本表（缺陷清单⑦a 对账）")
+        if person in bound and role not in bound[person]:
+            sys.exit(f"账号 {username}（{person}）角色 {role} 与 bindings 绑定角色 "
+                     f"{sorted(bound[person])} 不一致（缺陷清单⑦a 对账）")
+    for person, b_roles in bound.items():
+        if person not in persons and not b_roles & ops:
+            sys.exit(f"bindings 绑定 {person}（角色 {sorted(b_roles)}）在账号面无承接——"
+                     "补账号或改绑定（缺陷清单⑦a 对账）")
+
+
 def main() -> None:
+    _check_role_bindings()
     reset = "--reset-password" in sys.argv
     env_pw = os.environ.get("ADKG_USER_PASSWORD")
     printed: list[str] = []

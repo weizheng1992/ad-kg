@@ -11,11 +11,12 @@
 from __future__ import annotations
 
 import csv
+import html
 import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 SEED = Path(os.environ.get("SEED_DIR", "data/seed"))
 PORT = int(os.environ.get("PORT", "8100"))
@@ -94,6 +95,11 @@ def _fmt_wan(n) -> str:
     return f"{n / 10000:.1f}万" if n >= 10000 else f"{n:.0f}"
 
 
+# 出网转义（缺陷清单⑧）：查询参数 / niches 直插 HTML 的位置一律转义；
+# 进 URL 的查询参数用 quote 编码（属性与查询双重安全），只动转义不动结构
+_e = html.escape
+
+
 def render_list(q: str, platform: str, niche: str, page: int) -> str:
     items = [c for c in CREATORS
              if (not q or q in c["name"] or q in c["niches"])
@@ -105,26 +111,26 @@ def render_list(q: str, platform: str, niche: str, page: int) -> str:
     rows = "".join(
         f"<tr><td><a href='/creator/{c['creator_id'].split(':')[1]}'>{c['name']}</a></td>"
         f"<td>{'抖音' if c['platform'] == 'douyin' else '小红书'}</td>"
-        f"<td>{''.join(f'<span class=tag>{n}</span>' for n in c['niches'].split('|'))}</td>"
+        f"<td>{''.join(f'<span class=tag>{_e(n)}</span>' for n in c['niches'].split('|'))}</td>"
         f"<td>{_fmt_wan(c['followers'])}</td><td>¥{int(c['quote_20s']):,}</td>"
         f"<td>¥{int(c['gmv_30d']):,}</td><td>{c['city']}</td><td>{c['rating']}</td>"
         f"<td>{len(c['case_ids'])}</td></tr>" for c in chunk)
     niches = sorted({n for c in CREATORS for n in c["niches"].split("|")})
     body = f"""
 <div class=card><form method=get action="/">
-<input id=kw name=q value="{q}" placeholder="搜索达人名 / 视频方向">
+<input id=kw name=q value="{_e(q)}" placeholder="搜索达人名 / 视频方向">
 <select name=platform><option value="">全部平台</option>
 <option{' selected' if platform=='douyin' else ''} value=douyin>抖音</option>
 <option{' selected' if platform=='xhs' else ''} value=xhs>小红书</option></select>
 <select name=niche><option value="">全部方向</option>
-{''.join(f"<option{' selected' if niche==n else ''}>{n}</option>" for n in niches)}</select>
+{''.join(f"<option{' selected' if niche==n else ''}>{_e(n)}</option>" for n in niches)}</select>
 <button type=submit>搜索</button></form></div>
 <div class=card><table><thead><tr><th>达人</th><th>平台</th><th>视频方向</th><th>粉丝</th>
 <th>20s视频报价</th><th>30天带货GMV</th><th>城市</th><th>评分</th><th>合作单</th></tr></thead>
 <tbody>{rows or '<tr><td colspan=9 class=muted>没有匹配的达人</td></tr>'}</tbody></table>
 <p class=muted>第 {page} / {pages} 页，共 {len(items)} 位达人
-{'&nbsp;<a href=?q=' + q + '&platform=' + platform + '&niche=' + niche + '&page=' + str(page-1) + '>上一页</a>' if page > 1 else ''}
-{'&nbsp;<a href=?q=' + q + '&platform=' + platform + '&niche=' + niche + '&page=' + str(page+1) + '>下一页</a>' if page < pages else ''}</p></div>"""
+{'&nbsp;<a href=?q=' + quote(q, safe='') + '&platform=' + quote(platform, safe='') + '&niche=' + quote(niche, safe='') + '&page=' + str(page-1) + '>上一页</a>' if page > 1 else ''}
+{'&nbsp;<a href=?q=' + quote(q, safe='') + '&platform=' + quote(platform, safe='') + '&niche=' + quote(niche, safe='') + '&page=' + str(page+1) + '>下一页</a>' if page < pages else ''}</p></div>"""
     return PAGE.format(title="达人广场", css=CSS, body=body)
 
 
@@ -136,7 +142,7 @@ def render_detail(num: str) -> str:
     body = f"""
 <div class=card><h2 style=margin:0 0 6px>{c['name']}
 <span class=tag>{'抖音' if c['platform']=='douyin' else '小红书'}</span></h2>
-<p class=muted>{''.join(f'<span class=tag>{n}</span>' for n in c['niches'].split('|'))} · {c['city']} · 评分 {c['rating']}</p>
+<p class=muted>{''.join(f'<span class=tag>{_e(n)}</span>' for n in c['niches'].split('|'))} · {c['city']} · 评分 {c['rating']}</p>
 <p><span class=kpi><b>{_fmt_wan(c['followers'])}</b><span>粉丝</span></span>
 <span class=kpi><b>¥{int(c['quote_20s']):,}</b><span>20s视频报价</span></span>
 <span class=kpi><b>¥{int(c['quote_image']):,}</b><span>图文报价</span></span>

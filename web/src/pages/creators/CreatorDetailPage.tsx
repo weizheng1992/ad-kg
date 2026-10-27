@@ -1,15 +1,12 @@
 // 达人详情（spec §3/§13/§15）：档案 + 来源卡 + 报价历史折线 + 合作案例（含指标与拒因）+ 带货商品
 import { useEffect, useRef, useState } from 'react'
+import { STAGE_LABEL } from '@/lib/labels'
 import { Link, useParams } from 'react-router'
 import * as echarts from 'echarts'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCreator, type CreatorDetail } from '@/lib/api'
 
-const STAGE_LABEL: Record<string, string> = {
-  proposal: '提案中', live: '投放中', closed: '已结案',
-  lost: '未成单', terminated: '已终止',
-}
 const wan = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)}万` : `${n}`
 
 export function CreatorDetailPage() {

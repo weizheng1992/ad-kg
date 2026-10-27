@@ -1,6 +1,7 @@
 // 案例列表（spec §13.2）：阶段/品牌筛选 + 批量指标（汇总比）——行点击进详情；
 // 支持 ?stage= 进场筛选（看板阶段分布互链，spec §14）
 import { useCallback, useEffect, useState } from 'react'
+import { STAGE_LABEL } from '@/lib/labels'
 import { Link, useSearchParams } from 'react-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,10 +9,6 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { listCases, type CaseListItem } from '@/lib/api'
 
-export const STAGE_LABEL: Record<string, string> = {
-  proposal: '提案中', live: '投放中', closed: '已结案',
-  lost: '未成单', terminated: '已终止',
-}
 const yuan = (v?: string | number | null) =>
   v == null || v === '' ? '—' : `¥${Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
 const pct = (v?: string | null) =>

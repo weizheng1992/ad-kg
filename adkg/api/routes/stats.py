@@ -7,52 +7,14 @@
 """
 from __future__ import annotations
 
-import psycopg
-
-from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
-from psycopg.rows import dict_row
 
 from adkg.guards.http import get_graph, resolve_identity
-from adkg.retrieval.metrics import agg_expr
+from adkg.retrieval.stats import overview_metrics
 
 router = APIRouter()
-# 看板角色门（spec §4 矩阵）：矩阵外角色（creative/admin）服务端拒绝——
-# 导航隐藏只是体验，不是闸（2026-10-24 复审：曾只靠 nav 兑现，直连越权）
-DASHBOARD_ROLES = {"management", "ae", "optimizer", "finance", "client"}
-
-
-def _metrics(env: dict, plan, days: int) -> dict:
-    """unified_metrics 三视图：趋势 / 平台 / 品牌——分子分母各求和，比率不预聚合。"""
-    predicate = f" AND {plan.sql_predicate}" if plan.sql_predicate else ""
-    show_cost = "cost" in plan.allowed_columns
-    show_conv = "conversions" in plan.allowed_columns
-    cost_sel = f"{agg_expr('cost')} AS cost" if show_cost else "NULL::numeric AS cost"
-    conv_sel = "sum(conversions) AS conversions" if show_conv else "NULL::numeric AS conversions"
-    try:
-        with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=4000",
-                             row_factory=dict_row) as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT date::text AS date, " + cost_sel + ", " + conv_sel +
-                " FROM unified_metrics WHERE NOT unmatched"
-                " AND date >= current_date - %(days)s::int" + predicate +
-                " GROUP BY date ORDER BY date", {"days": days})
-            trend = cur.fetchall()
-            cur.execute(
-                "SELECT platform::text AS platform, " + cost_sel + ", " + conv_sel +
-                " FROM unified_metrics WHERE NOT unmatched"
-                " AND date >= current_date - %(days)s::int" + predicate +
-                " GROUP BY platform", {"days": days})
-            platforms = cur.fetchall()
-            cur.execute(
-                "SELECT brand_id, " + cost_sel + ", " + conv_sel + ", count(DISTINCT case_id) AS cases"
-                " FROM unified_metrics WHERE NOT unmatched"
-                " AND date >= current_date - %(days)s::int" + predicate +
-                " GROUP BY brand_id ORDER BY cost DESC NULLS LAST", {"days": days})
-            brands = cur.fetchall()
-    except psycopg.Error:
-        return {"trend": [], "platforms": [], "brands": []}   # 统计失败不阻塞（§7.2 降级）
-    return {"trend": trend, "platforms": platforms, "brands": brands}
+# 看板角色门（spec §4 矩阵）：门判收口 rbac.role_allows("dashboard")（display_role，
+# 原散抄 DASHBOARD_ROLES 常量已废——2026-10-26 夜检死代码清理）
 
 
 def _graph_parts(request: Request, plan) -> dict:
@@ -82,14 +44,14 @@ def stats_overview(request: Request, days: int = 90,
                    role: str | None = None, user: str | None = None,
                    authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
-    from adkg.guards.rbac import role_allows
-    if not role_allows(request.app.state.env, role, "dashboard"):
-        raise HTTPException(403, "当前角色无数据看板权限（spec §18 角色门）")
+    from adkg.guards.rbac import require
+    require(request, authorization, gate="dashboard", role=role, user=user,
+            message="当前角色无数据看板权限（spec §18 角色门）")
     plan = planner.plan(role, person=user)
     if plan.deny_all:
         raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")
     days = max(7, min(days, 365))
-    out = _metrics(request.app.state.env, plan, days)
+    out = overview_metrics(request.app.state.env, plan, days)
     out.update(_graph_parts(request, plan))
     out["role"] = role
     out["days"] = days

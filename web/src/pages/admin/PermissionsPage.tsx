@@ -14,12 +14,11 @@ import { TableCell } from '@/components/ui/table'
 import { ChevronDown } from 'lucide-react'
 import { MenuTreeTable } from './components/MenuTreeTable'
 import { createRole, deleteRole, getAdminMenus, getPermissionMatrix, listRoles,
-         saveMenus, updateRole,
+         savePermissions,
          type MenuDef, type PermissionMatrix, type RoleDef } from '@/lib/api'
+import { roleLabel } from '@/lib/labels'
 import { ROLE_LABEL } from '@/lib/nav'
 import { useCan } from '@/lib/session'
-
-const roleLabel = (r: RoleDef) => ROLE_LABEL[r.name] ?? r.label
 
 /** 数据面权限矩阵（spec §19 自 AdminPage 迁入）：permissions.yaml 的只读投影 */
 function MatrixView({ m }: { m: PermissionMatrix | null }) {
@@ -108,10 +107,12 @@ export function PermissionsPage() {
     if (!role) return
     setBusy(true); setMsg('')
     try {
-      await updateRole(role.name, { label: roleLabel(role), description: role.description,
-                                    actions: role.actions })
-      await saveMenus(menus)
-      setMsg('✅ 已保存（菜单 + 按钮权限；变更落审计）')
+      // 整批保存事务化（2026-10-26）：角色配置 + 菜单可见集单请求单事务落两库，
+      // 半途失败整体回滚——此前两次请求双写曾致两库不一致
+      await savePermissions({ role: { name: role.name, label: roleLabel(role),
+                                      description: role.description, actions: role.actions },
+                              menus: { items: menus } })
+      setMsg('✅ 已保存（菜单 + 按钮权限，单事务落库；变更落审计）')
       load()
     } catch (e) {
       setMsg(`❌ ${e}`)

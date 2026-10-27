@@ -90,11 +90,13 @@ def _items(env: dict[str, str]) -> list[dict]:
 def menus(request: Request, role: str | None = None, user: str | None = None,
           authorization: str | None = Header(default=None)) -> dict:
     """当前角色可见的启用菜单（按账号原始角色——自定义角色见自己的菜单；
-    前端失败时回落静态默认，导航不中断）。"""
-    from adkg.guards.rbac import display_role
+    前端失败时回落静态默认，导航不中断）。按钮条显隐用 effective_actions
+    一次取全（2026-10-26 夜检：逐按钮 role_allows 每条 1-2 查，侧边栏一次
+    ~16 查的 N+1 已收口）。"""
+    from adkg.guards.rbac import display_role, effective_actions
     role_, _user, _planner = resolve_identity(request, authorization, role=role, user=user)
     shown = display_role(request, authorization, role, user)
-    from adkg.guards.rbac import role_allows
+    acts = effective_actions(request.app.state.env, shown)
     items = []
     for m in _items(request.app.state.env):
         if not m["enabled"]:
@@ -103,8 +105,7 @@ def menus(request: Request, role: str | None = None, user: str | None = None,
             if shown in m["roles"]:
                 items.append(m)
         else:                                   # 按钮条：按 action 门
-            if m["action_key"] and role_allows(request.app.state.env, shown,
-                                               m["action_key"]):
+            if m["action_key"] and m["action_key"] in acts:
                 items.append(m)
     return {"items": items, "role": shown}
 
@@ -120,23 +121,11 @@ def admin_menus(request: Request, role: str | None = None, user: str | None = No
     return {"items": _items(request.app.state.env)}
 
 
-@router.put("/admin/menus")
-def save_menus(request: Request, body: dict,
-               role: str | None = None, user: str | None = None,
-               authorization: str | None = Header(default=None)) -> dict:
-    """整批保存（spec §17/§19）：label/icon/roles/sort/enabled 可改（icon 白名单内，
-    键集同 nav.tsx ICONS）；path 白名单锁定不可增删不可改；至少保住 /menus 自身
-    对 admin 可见（防自锁）。"""
-    role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
-    from adkg.guards.rbac import role_allows
-    if not role_allows(request.app.state.env, role_, "menu_write"):
-        raise HTTPException(403, "当前角色无菜单管理权限（spec §18 角色门）")
-    items = body.get("items")
+def _clean_menus(items, legal_roles: set[str]) -> list[tuple]:
+    """整批保存的校验段（PUT /admin/menus 与 PUT /admin/permissions 共用）：
+    path/icon 白名单、按钮条不存 roles、页面条至少一个可见角色、/menus 防自锁。"""
     if not isinstance(items, list):
         raise HTTPException(422, "items 必填")
-    from adkg.guards.audit import audit
-    from adkg.guards.rbac import roles_of
-    legal_roles = set(roles_of(request.app.state.env))   # RBAC 全集（系统+自定义）
     cleaned = []
     for m in items:
         path, icon = str(m.get("path") or ""), str(m.get("icon") or "")
@@ -159,12 +148,71 @@ def save_menus(request: Request, body: dict,
     menus_row = next((c for c in cleaned if c[1] == "/menus"), None)
     if menus_row is None or not menus_row[5] or "admin" not in menus_row[3].split(","):
         raise HTTPException(422, "/menus 自身必须对 admin 可见且启用（防自锁）")
+    return cleaned
+
+
+def _apply_menus(cur, cleaned: list[tuple]) -> None:
+    """整批保存的落库段（游标事务内复用）。"""
+    for label, path, icon, roles, sort, enabled in cleaned:
+        cur.execute("UPDATE app_menu SET label=%s, icon=%s, roles=%s, sort=%s,"
+                    " enabled=%s, updated_at=now() WHERE path=%s",
+                    (label, icon, roles, sort, enabled, path))
+
+
+@router.put("/admin/menus")
+def save_menus(request: Request, body: dict,
+               role: str | None = None, user: str | None = None,
+               authorization: str | None = Header(default=None)) -> dict:
+    """整批保存（spec §17/§19）：label/icon/roles/sort/enabled 可改（icon 白名单内，
+    键集同 nav.tsx ICONS）；path 白名单锁定不可增删不可改；至少保住 /menus 自身
+    对 admin 可见（防自锁）。门判 display_role（2026-10-26 收口）。"""
+    role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
+    from adkg.guards.rbac import require, roles_of
+    shown = require(request, authorization, gate="menu_write", role=role, user=user,
+                    message="当前角色无菜单管理权限（spec §18 角色门）")
+    items = body.get("items")
+    if not isinstance(items, list):
+        raise HTTPException(422, "items 必填")
+    from adkg.guards.audit import audit
+    legal_roles = set(roles_of(request.app.state.env))   # RBAC 全集（系统+自定义）
+    cleaned = _clean_menus(items, legal_roles)
     env = request.app.state.env
     with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
-        for label, path, icon, roles, sort, enabled in cleaned:
-            cur.execute("UPDATE app_menu SET label=%s, icon=%s, roles=%s, sort=%s,"
-                        " enabled=%s, updated_at=now() WHERE path=%s",
-                        (label, icon, roles, sort, enabled, path))
-    audit(env, role_, person, "save_menus", "app_menu", "allow",
+        _apply_menus(cur, cleaned)
+    audit(env, shown, person, "save_menus", "app_menu", "allow",
           f"{len(cleaned)} 项整批更新")
     return {"ok": True, "count": len(cleaned)}
+
+
+@router.put("/admin/permissions")
+def save_permissions(request: Request, body: dict,
+                     role: str | None = None, user: str | None = None,
+                     authorization: str | None = Header(default=None)) -> dict:
+    """权限管理页整批保存（2026-10-26 事务化，勘误 §19「双写」）：一次请求单事务
+    同落 app_role（角色配置，roles._apply_role_update）与 app_menu（可见集）——
+    前端两次请求双写半途失败曾致两库不一致。门判 display_role 的 menu_write。"""
+    role_, person, _planner = resolve_identity(request, authorization, role=role, user=user)
+    from adkg.guards.rbac import require, roles_of
+    shown = require(request, authorization, gate="menu_write", role=role, user=user,
+                    message="当前角色无权限管理写操作（spec §18 角色门）")
+    role_body = body.get("role") or {}
+    menus_body = body.get("menus") or {}
+    if not isinstance(role_body, dict) or not isinstance(menus_body, dict):
+        raise HTTPException(422, "role / menus 须为对象")
+    name = str(role_body.get("name") or "")
+    from adkg.guards.audit import audit
+    from adkg.api.routes.roles import _apply_role_update
+    env = request.app.state.env
+    existing = roles_of(env)
+    if name and name not in existing:
+        raise HTTPException(404, f"角色 {name} 不存在")
+    legal_roles = set(existing)
+    cleaned = _clean_menus(menus_body.get("items"), legal_roles) if menus_body.get("items") else None
+    with pg_pool.connect(env["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+        if name:
+            _apply_role_update(cur, name, role_body, existing)
+        if cleaned:
+            _apply_menus(cur, cleaned)
+    audit(env, shown, person, "save_permissions", name or "app_menu", "allow",
+          f"事务整批：角色{'✓' if name else '—'} 菜单{len(cleaned) if cleaned else '—'}")
+    return {"ok": True, "role": bool(name), "menus": len(cleaned) if cleaned else 0}

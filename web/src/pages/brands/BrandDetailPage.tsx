@@ -1,14 +1,11 @@
 // 客户详情（spec §5 + §13.3 互链）：商品卡 + 案例合作史（含拒因与指标，链接案例详情）+ 汇总统计
 import { useEffect, useState } from 'react'
+import { STAGE_LABEL } from '@/lib/labels'
 import { Link, useParams } from 'react-router'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getBrand, listCases, type BrandDetail, type CaseListItem } from '@/lib/api'
 
-const STAGE_LABEL: Record<string, string> = {
-  proposal: '提案中', live: '投放中', closed: '已结案',
-  lost: '未成单', terminated: '已终止',
-}
 const yuan = (v?: string | null) =>
   v == null ? '—' : `¥${Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
 

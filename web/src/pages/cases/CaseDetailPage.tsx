@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCase, updateCaseStage, type CaseDetail } from '@/lib/api'
-import { STAGE_LABEL } from '@/pages/cases/CasesPage'
+import { STAGE_LABEL } from '@/lib/labels'
 
 // 合法迁移目标（与 ActionChecker 状态机同源，schema.yaml#constraints）
 const NEXT_STAGES: Record<string, string[]> = {

@@ -1,6 +1,7 @@
 // 数据看板（spec §5 + §13.3 互链）：echarts 大盘——趋势/平台/品牌/达人/阶段漏斗，
 // 数据随角色收敛；品牌条/达人条点击跳转对应详情
 import { useEffect, useRef, useState } from 'react'
+import { STAGE_LABEL } from '@/lib/labels'
 import { useNavigate } from 'react-router'
 import * as echarts from 'echarts'
 import { Button } from '@/components/ui/button'
@@ -9,9 +10,6 @@ import { statsOverview, type StatsOverview } from '@/lib/api'
 import { useSession } from '@/lib/session'
 
 const PLATFORM_LABEL: Record<string, string> = { douyin: '抖音', xhs: '小红书' }
-const STAGE_LABEL: Record<string, string> = {
-  proposal: '提案中', live: '投放中', closed: '已结案', lost: '未成单', terminated: '已终止',
-}
 const num = (v: string | number | null | undefined) => Number(v ?? 0)
 const wan = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)}万` : `${Math.round(n)}`
 

@@ -1,5 +1,6 @@
 // 财务结算中心（spec §5）：Case 结算视图 + 达人合作成本（估）——仅 management/finance
 import { useCallback, useEffect, useState } from 'react'
+import { STAGE_LABEL } from '@/lib/labels'
 import { Link } from 'react-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,10 +10,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { listSettlements, type SettlementItem } from '@/lib/api'
 
 const STATUS_OPT = { all: '全部状态', paid: '已结算', unbilled: '未结算' } as const
-const STAGE_LABEL: Record<string, string> = {
-  proposal: '提案中', live: '投放中', closed: '已结案',
-  lost: '未成单', terminated: '已终止',
-}
 const yuan = (n: number | string | null | undefined) =>
   n == null || n === '' ? '—' : `¥${Number(n).toLocaleString('zh-CN')}`
 
