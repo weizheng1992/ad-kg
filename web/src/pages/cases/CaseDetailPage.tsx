@@ -8,15 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCase, updateCaseStage, type CaseDetail } from '@/lib/api'
 import { STAGE_LABEL } from '@/lib/labels'
 
-// 合法迁移目标（与 ActionChecker 状态机同源，schema.yaml#constraints）
-const NEXT_STAGES: Record<string, string[]> = {
-  proposal: ['live', 'lost'], live: ['closed', 'terminated'],
-}
+// 合法迁移目标不手抄——由后端 stage_flow.transitions 下发（schema.yaml#constraints 唯一真源）
 
 /** 状态变更控件（spec §15）：有 update_stage 权限的角色可见；terminated 必填原因 */
-function StageControl({ caseId, stage, onDone }: {
-  caseId: string; stage: string; onDone: () => void }) {
-  const targets = NEXT_STAGES[stage] ?? []
+function StageControl({ caseId, flow, onDone }: {
+  caseId: string; flow: CaseDetail['stage_flow']; onDone: () => void }) {
+  const targets = flow.transitions[flow.current] ?? []
   const [to, setTo] = useState('')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -181,7 +178,7 @@ export function CaseDetailPage() {
         <CardContent className="space-y-3">
           <StageFlow flow={d.stage_flow} reason={reason} />
           {d.can_update_stage && (
-            <StageControl caseId={c.id} stage={d.stage_flow.current}
+            <StageControl caseId={c.id} flow={d.stage_flow}
                           onDone={() => reload(c.id)} />
           )}
           <div className="border-t pt-2">

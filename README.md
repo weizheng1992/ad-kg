@@ -604,7 +604,7 @@ confidence  : 抽取置信度 0–1（事实表恒为 1）；≥0.7 入图、0.4
  "notes": "默认分母：该对接人名下全部 live 案例"}
 ```
 
-`type ∈ {multi_hop, fact, concept, attribution, operation}`，20 题种子按 5 / 4 / 4 / 4 / 3 分布，扩至 50 题（multi_hop ≥15）挂 Phase 6。rubric：正确 = 要点命中 + 数字一致 + 引用可溯源。`data_window` 标明题目依赖的数据窗口——种子为滚动窗口（止于上月），窗口类题（上月/近 N 天）的期望数字随数据重生成联动改写；超出已沉淀窗口的题在 Phase 0 当场改写，不留给评测日爆雷。
+`type ∈ {multi_hop, fact, concept, attribution, operation}`，20 题种子按 5 / 4 / 4 / 4 / 3 分布，扩至 50 题（multi_hop ≥15）挂 Phase 6。rubric：正确 = 要点命中 + 数字一致 + 引用可溯源。`data_window` 标明题目依赖的数据窗口——种子为滚动窗口（止于上月），窗口类题（上月/近 N 天）的期望数字随数据重生成联动改写；超出已沉淀窗口的题在 Phase 0 当场改写，不留给评测日爆雷。**库值锚点重算脚本化（`eval/recalc_golden.py`）**：种子扩容 / 口径调整后按当前库（PG / Neo4j 直查）重算期望里的数值与实体锚——dry-run 出 diff、`--yes` 落盘、幂等；日常回归仍用 `run_eval.py` 对拍不重算。
 
 ### 12.4 权限矩阵（`permissions.yaml`）
 

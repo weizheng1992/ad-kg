@@ -90,6 +90,9 @@ relations:
 constraints:
   case_stage:
     initial: proposal
+    # 目标列表次序即展示约定：首个目标续主线（proposal→live→closed），
+    # 其余目标作分支挂回来源阶段——/cases 详情的流转条与合法目标下拉
+    # 均由此表派生下发（api/routes/cases.py），前后端不再各自手抄
     transitions:
       proposal: [live, lost]
       live: [closed, terminated]

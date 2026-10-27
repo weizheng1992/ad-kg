@@ -15,7 +15,12 @@ export default defineConfig({
       ['/ask', '/graph', '/actions', '/guideline', '/ingest', '/creative', '/agent',
        '/auth', '/creators', '/cases', '/brands', '/settlements', '/stats',
        '/admin', '/menus', '/my-actions']
-        .map((p) => [p, 'http://127.0.0.1:8000']),
+        .map((p) => [p, {
+          target: 'http://127.0.0.1:8000',
+          // 页面直开/刷新（accept 含 text/html）回落 SPA 入口不代理 API——与 nginx 同款分流（缺陷备忘⑪）；
+          // bypass 返回字符串即改写请求路径，undefined 走代理
+          bypass: (req) => (req.headers.accept?.includes('text/html') ? '/index.html' : undefined),
+        }]),
     ),
   },
 })

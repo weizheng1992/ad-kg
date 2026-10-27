@@ -24,7 +24,7 @@ roles:
     classes: [Brand, Product, Case, Campaign, Creative, Metric, Guideline, Creator]
     deny_properties: [Case.bd_budget, Case.gross_margin]
     metrics_deny: [gross_margin]
-    actions: [read, create_case, create_creator]
+    actions: [read, create_case, create_creator, update_stage]   # update_stage：2026-10-27 拍板（与 case_stage_change 按钮面同步开给 management/ae）
     row_filter: Person(belongs_to_brand)->Brand<-for_brand-Case
     # Creator 为平台级主数据（schema 注记）：达人库对 ae 全量可见（选人入口），
     # 合作历史仍随 Case 行过滤收敛——spec 2026-10-24 §3；录入/导入门 spec §13.1
@@ -58,7 +58,7 @@ roles:
   management:                    # 跨品牌聚合视图 + 规范/口径（全局类），无行过滤
     classes: [Brand, Product, Case, Campaign, Creative, Metric, Guideline, Channel, Creator]
     metrics_deny: []
-    actions: [read, create_creator]
+    actions: [read, create_creator, update_stage]   # update_stage：2026-10-27 拍板（同 ae 注记）
 
   admin:                         # 运维与审计读取；不参与业务检索
     classes: [Brand, Product, Case, Campaign, Creative, Channel, LandingPage,

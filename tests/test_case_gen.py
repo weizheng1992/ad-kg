@@ -1,7 +1,8 @@
 """案例生成（case_gen + /ingest/case-*）：草稿抽取/对齐/幂等/仲裁 单元 + 端点校验。
 
 离线：FakeGraph + 假 chat_json——对齐复用、新 id、Person 未对齐丢弃、
-同文档幂等、主数据/同边仲裁不覆盖、commit 只写新实体。
+同文档幂等、主数据/同边仲裁不覆盖、commit 只写新实体、
+物化路与 build_draft 共用 _ensure_node 的两路产物同构。
 端点：TestClient + dev 认证 + 真库（docs 列表 / 404 / 角色门 / 422 / 401）。
 """
 import os
@@ -164,6 +165,57 @@ class TestBuildDraft:
         g.entities["Case:C-2026-007"] = {"class": "Case", "name": "x", "authority": 100}
         d = build_draft("feishu:doc:Y", "正文", g, load_schema(), _chat(_GOOD), now=NOW)
         assert d["case"]["id"] == "Case:C-2026-008"
+
+
+class TestMaterializeDraft:
+    """物化路（agent 种子 → 标准草稿）：_ensure_node 收敛后的独立验证批次。"""
+
+    def _cls(self):
+        from adkg.models import load_schema
+        from adkg.pipeline.case_gen import materialize_draft
+        return load_schema(), materialize_draft
+
+    def test_两路产物结构同构(self):
+        # 同图状态同名输入（不带附加 props/stage/persons）：LLM 路与物化路的
+        # brand/case/products 节点、关系、警告逐字段相等——同构收敛的回归锚
+        load_schema, build_draft = _draft_cls()
+        schema, materialize = self._cls()
+        payload = {"brand": {"name": "途野露营"}, "products": [{"name": "星链Pro"}],
+                   "case": {"name": "星链Pro 冬季投放"}, "persons": []}
+        d1 = build_draft("doc:1", "正文", _graph(), load_schema(), _chat(payload), now=NOW)
+        d2 = materialize("doc:1", {"brand_name": "途野露营", "product_names": ["星链Pro"],
+                                   "case_name": "星链Pro 冬季投放"}, _graph(),
+                         schema, now=NOW)
+        for key in ("brand", "case", "products", "relations", "warnings"):
+            assert d1[key] == d2[key], key
+        for n in [d2["brand"], d2["case"], *d2["products"]]:
+            assert set(n) == {"id", "name", "props", "existing", "same_doc"}
+
+    def test_非法stage静默回proposal(self):
+        # 与 build_draft 的差异保留（对照 test_stage非法回proposal）：物化路种子
+        # 来自 agent，非法 stage 静默回 proposal 不记警告
+        schema, materialize = self._cls()
+        d = materialize("doc:1", {"brand_name": "途野露营", "case_name": "X投放",
+                                  "stage": "上线中"}, _graph(), schema, now=NOW)
+        assert d["case"]["props"]["stage"] == "proposal"
+        assert d["warnings"] == []
+
+    def test_同文档幂等与序号递增(self):
+        schema, materialize = self._cls()
+        g = _graph()
+        g.entities["Case:C-2026-007"] = {"class": "Case", "name": "x", "authority": 100}
+        d = materialize("doc:1", {"case_name": "新案例"}, g, schema, now=NOW)
+        assert d["case"]["id"] == "Case:C-2026-008" and not d["case"]["existing"]
+        g.entities["Case:C-2026-008"] = {"class": "Case", "name": "新案例",
+                                         "authority": 60, "prov_source_id": "doc:1"}
+        d2 = materialize("doc:1", {"case_name": "改名案例"}, g, schema, now=NOW)
+        assert d2["case"]["id"] == "Case:C-2026-008"           # 同文档幂等复用
+        assert d2["case"]["existing"] and d2["case"]["same_doc"]
+
+    def test_全空种子拒绝(self):
+        schema, materialize = self._cls()
+        with pytest.raises(ValueError):
+            materialize("doc:1", {}, _graph(), schema, now=NOW)
 
 
 class TestCommitDraft:

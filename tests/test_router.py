@@ -86,6 +86,13 @@ class TestRuleRoute:
         d = rule_route("删掉 live 案例里的素材")
         assert d.intent == "operation" and d.plan is None
 
+    def test_预算操作族显式deny(self):
+        # 2026-10-27 拍板：预算调整类动宾复合词 → operation（AdKG 只裁决不代执行，
+        # 预算调整请走投放平台）；裸"预算"名词 + 检索标记问句仍走检索路
+        assert intent_of("给这个案例加预算 5 万") == "operation"
+        assert intent_of("把这个案例的预算调高一点") == "operation"
+        assert intent_of("A 品牌本月预算多少") != "operation"
+
     def test_归因混合是串行计划(self):
         plan = rule_route("效果差的素材和创意规范有没有关系？").plan
         assert isinstance(plan, RouterPlan)

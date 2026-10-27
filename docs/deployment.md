@@ -83,7 +83,9 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
   HTTPS 上线时 `.env` 开 `ADKG_COOKIE_SECURE=on`（会话 cookie 加 Secure）。
   8000 本体仍不对公网，nginx 是唯一入口。web/dist 更新走 rsync（CI 自动化留待加厚时）。
   **nginx 配置真源：`deploy/nginx/adkg-demo.conf`（2026-10-23 落位、2026-10-24 改会话制；
-  含探测路径 404，SPA fallback 不再对扫描器回 200）**
+  含探测路径 404，SPA fallback 不再对扫描器回 200；2026-10-27 起同名页面路径的文档请求
+  ——浏览器直开/刷新 Accept 含 text/html——回落 SPA 不进 API，改本文件无需登机：CI 部署步自动
+  同步重载）**
 
 - **CI 全自动发布（2026-10-25 起）**：push main → runner 构建 web（bun）→ SSH 部署五步
   （代码 pull + uv.lock 自愈 → init_db → 重启 → web 静态发布 → nginx 配置同步重载 → 健康断言）。

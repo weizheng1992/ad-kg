@@ -16,15 +16,32 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
 from adkg.guards.http import get_graph, resolve_identity
+from adkg.models import load_schema
 from adkg.retrieval.stats import case_stats_batch, creative_stats_by_case
 
 router = APIRouter()
 
-STAGE_LABEL = {"proposal": "提案中", "live": "投放中", "closed": "已结案",
-               "lost": "未成单", "terminated": "已终止"}
-# 状态机主线 + 分支（schema.yaml#constraints 的展示形态）
-STAGE_FLOW = ["proposal", "live", "closed"]
-STAGE_BRANCH = {"lost": "proposal", "terminated": "live"}
+
+def _derive_stage_display(case_stage: dict) -> tuple[list[str], dict[str, str]]:
+    """迁移表 → 流转条展示形态（schema.yaml#constraints 唯一真源，导入时加载一次）：
+    主线 = initial 起沿各迁移表首个目标前进（无目标即终态收尾），分支 = 非首
+    目标挂回来源阶段。目标列表「首个续主线、其余作分支」的次序约定见 schema 注释。"""
+    transitions: dict[str, list[str]] = case_stage["transitions"]
+    flow: list[str] = []
+    cur: str = case_stage["initial"]
+    while cur not in flow:
+        flow.append(cur)
+        targets = transitions.get(cur, [])
+        if not targets:
+            break                                   # 终态：主线收尾
+        cur = targets[0]
+    branch = {dst: src for src, dsts in transitions.items() for dst in dsts[1:]}
+    return flow, branch
+
+
+_CASE_STAGE = load_schema()["constraints"]["case_stage"]
+STAGE_TRANSITIONS: dict[str, list[str]] = _CASE_STAGE["transitions"]
+STAGE_FLOW, STAGE_BRANCH = _derive_stage_display(_CASE_STAGE)
 
 
 def _mask_case_props(plan, props: dict) -> dict:
@@ -201,11 +218,9 @@ def case_detail(request: Request, cid: str,
                          for c in creators],
             "stats": stats, "docs": docs, "timeline": timeline,
             "stage_flow": {"main": STAGE_FLOW, "branch": STAGE_BRANCH,
+                           "transitions": STAGE_TRANSITIONS,
                            "current": rec["stage"]},
             "can_update_stage": can_stage}
-
-
-# 状态机合法目标（schema.yaml#constraints 的展示形态，与 ActionChecker 同源语义）
 
 
 @router.post("/cases/{cid}/stage")
@@ -231,7 +246,6 @@ def update_case_stage(request: Request, cid: str, body: dict,
     if plan.visible_entity_ids and cid not in plan.visible_entity_ids:
         raise HTTPException(404, "案例不在当前身份可见范围（锚点外）")
     from adkg.guards.action_check import ActionChecker
-    from adkg.models import load_schema
     verdict = ActionChecker(load_schema(), graph).check(
         "update_stage", {"case_id": cid, "from_stage": rec["stage"],
                          "to_stage": to_stage,

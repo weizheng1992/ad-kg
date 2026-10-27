@@ -42,8 +42,8 @@ GATES: dict[str, str] = {
 # actions——update_stage/create_case 等——不在此列，仍由 yaml 把数据面写门）
 SYSTEM_ROLE_ACTIONS: dict[str, list[str]] = {
     "management": ["dashboard_view", "creator_write", "creator_export",
-                   "admin_view", "settlement_view"],
-    "ae": ["dashboard_view", "creator_write", "creator_export"],
+                   "admin_view", "settlement_view", "case_stage_change"],
+    "ae": ["dashboard_view", "creator_write", "creator_export", "case_stage_change"],
     "optimizer": ["dashboard_view", "creator_export"],
     "finance": ["dashboard_view", "settlement_view"],
     "client": ["dashboard_view"],

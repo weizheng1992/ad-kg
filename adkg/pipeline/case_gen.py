@@ -39,33 +39,16 @@ def build_draft(doc_id: str, doc_text: str, graph, schema: dict, chat_json, *,
     if not isinstance(payload, dict):
         raise ValueError("LLM 返回不是 JSON 对象")
     warnings: list[str] = []
-    stages = {s.value for s in CaseStage}
 
     def node(cls: str, raw) -> dict | None:
-        """Brand / Case 的单对象块 → 草稿节点（对齐 → 建号 → 属性白名单）。"""
+        """LLM 单对象块 → 草稿节点；缺名警告是 LLM 路特有（物化路种子由 agent 保证）。"""
         if not isinstance(raw, dict) or not str(raw.get("name") or "").strip():
             if raw is not None:
                 warnings.append(f"{cls} 缺名称，未纳入草稿")
             return None
-        name = str(raw["name"]).strip()
-        eid = _align(graph, cls, name)
-        existing = eid is not None
-        same_doc = False
-        if not existing:
-            if cls == "Case":                            # 案例走编号约定 + 同文档幂等复用
-                eid, same_doc = case_id_for(graph, doc_id, now)
-                existing = same_doc
-            else:
-                eid = f"{cls}:{_collapse(name)}"
-        props = _props_of(schema, cls, name, raw.get("props"))
-        if cls == "Case":
-            stage_raw = str(raw.get("stage") or "").strip().lower()
-            stage = stage_raw if stage_raw in stages else "proposal"
-            if stage_raw and stage_raw not in stages:
-                warnings.append(f"stage {stage_raw!r} 不在状态机，回 proposal")
-            props["stage"] = stage
-        return {"id": eid, "name": name, "props": props, "existing": existing,
-                "same_doc": same_doc}
+        return _ensure_node(graph, schema, cls, str(raw["name"]).strip(), doc_id,
+                            now=now, raw_props=raw.get("props"),
+                            stage_raw=raw.get("stage"), warnings=warnings)
 
     brand = node("Brand", payload.get("brand"))
     case = node("Case", payload.get("case"))
@@ -140,6 +123,36 @@ def _align(graph, cls: str, name: str) -> str | None:
         return row["id"] if row else None
 
 
+_STAGES = {s.value for s in CaseStage}                   # Case 状态机合法值（两路共用）
+
+
+def _ensure_node(graph, schema: dict, cls: str, name: str, doc_id: str, *,
+                 now: datetime, raw_props: dict | None = None,
+                 stage_raw=None, warnings: list[str] | None = None) -> dict:
+    """草稿节点单点实现（build_draft ↔ materialize_draft 原各闭包一份，同构收敛）：
+    L1 对齐 → 建号 → 属性白名单（raw_props=None 即仅 name）→ Case 补 stage（非法回 proposal）。
+    name 非空由调用方保证。差异保留：warnings 传入时非法 stage 记警告（LLM 路要给人看）；
+    物化路不传 → 静默回 proposal（旧行为，种子来自 agent 不必回显）。
+    """
+    eid = _align(graph, cls, name)
+    existing = eid is not None
+    same_doc = False
+    if not existing:
+        if cls == "Case":                                # 案例走编号约定 + 同文档幂等复用
+            eid, same_doc = case_id_for(graph, doc_id, now)
+            existing = same_doc
+        else:
+            eid = f"{cls}:{_collapse(name)}"
+    props = _props_of(schema, cls, name, raw_props)
+    if cls == "Case":
+        stage = str(stage_raw or "").strip().lower()
+        if stage and stage not in _STAGES and warnings is not None:
+            warnings.append(f"stage {stage!r} 不在状态机，回 proposal")
+        props["stage"] = stage if stage in _STAGES else "proposal"
+    return {"id": eid, "name": name, "props": props, "existing": existing,
+            "same_doc": same_doc}
+
+
 def materialize_draft(doc_id: str, seed: dict, graph, schema: dict, *,
                       now: datetime) -> dict:
     """agent 的结构化种子 → 标准草稿（对齐/建号/关系构造与 build_draft 同一套，服务端可信路径）。
@@ -149,32 +162,18 @@ def materialize_draft(doc_id: str, seed: dict, graph, schema: dict, *,
     """
     triples = {(r["source"], r["predicate"], r["target"]) for r in schema["relations"]}
     warnings: list[str] = []
-    stages = {s.value for s in CaseStage}
 
-    def node(cls: str, name: str, stage: str | None = None) -> dict | None:
+    def node(cls: str, name: str) -> dict | None:
         name = str(name or "").strip()
         if not name:
             return None
-        eid = _align(graph, cls, name)
-        existing = eid is not None
-        same_doc = False
-        if not existing:
-            if cls == "Case":                            # 案例走编号约定 + 同文档幂等复用
-                eid, same_doc = case_id_for(graph, doc_id, now)
-                existing = same_doc
-            else:
-                eid = f"{cls}:{_collapse(name)}"
-        props = {"name": name}
-        if cls == "Case":
-            props["stage"] = stage if stage in stages else "proposal"
-        return {"id": eid, "name": name, "props": props, "existing": existing,
-                "same_doc": same_doc}
+        return _ensure_node(graph, schema, cls, name, doc_id, now=now,
+                            stage_raw=seed.get("stage"))
 
     brand = node("Brand", seed.get("brand_name"))
     products = [p for p in (node("Product", n)
                             for n in seed.get("product_names") or []) if p]
-    case = node("Case", seed.get("case_name"),
-                str(seed.get("stage") or "").strip().lower() or None)
+    case = node("Case", seed.get("case_name"))
     if not any([brand, products, case]):
         raise ValueError("种子没有任何可入图实体（brand / products / case 全空）")
 

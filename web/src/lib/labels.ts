@@ -3,7 +3,7 @@
 import { ROLE_LABEL } from './nav'
 import type { RoleDef } from './api'
 
-/** 案例/品牌阶段 → 中文（与后端 STAGE_FLOW 同域词表） */
+/** 案例/品牌阶段 → 中文（键集与 schema.yaml#constraints 状态机锚定，见 tests/test_stage_flow.py） */
 export const STAGE_LABEL: Record<string, string> = {
   proposal: '提案中', live: '投放中', closed: '已结案',
   lost: '未成单', terminated: '已终止',

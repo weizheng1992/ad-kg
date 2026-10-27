@@ -270,7 +270,9 @@ export interface CaseDetail {
   docs: { doc_id: string; chunk_index: number; text: string }[]
   timeline: { ts: string; role: string; action: string; verdict: string | null
               reason: string | null }[]
-  stage_flow: { main: string[]; branch: Record<string, string>; current: string }
+  /** 状态机展示（schema.yaml#constraints 唯一真源下发）：主线/分支/合法迁移表 */
+  stage_flow: { main: string[]; branch: Record<string, string>
+                transitions: Record<string, string[]>; current: string }
   /** 状态变更权限（spec §15）：按 permissions.yaml update_stage 动态下发 */
   can_update_stage?: boolean
 }
