@@ -6,9 +6,10 @@
 
 - 业务域：App 引流效果广告（抖音 / 小红书投放），主线实体是**案例**（proposal → live → closed）
 - 定位：知识与管控层。它不是 Agent 引擎，而是 Agent 引擎（如 smartServe）"查什么、能动什么"的依据
-- 状态：**设计阶段**。本 README 是目录结构与框架的稳定基线，代码按路线图（7.1）逐步实现
+- 状态：**已建成上线**——八步路线（7.1）2026-10-19 收官；真实系统化升级（spec M1–M12）2026-10-24 交付；A 机单机运行，push main 自动发布（docs/deployment.md）
+- 新读者导览见 `docs/introduction.md`（项目详细介绍，可独立阅读）；本 README 是设计与约定的唯一规范
 
-目录：[一、为什么使用](#一为什么使用) · [二、核心设计思想](#二核心设计思想) · [三、架构总览](#三架构总览) · [四、目录结构（稳定基线）](#四目录结构稳定基线) · [五、技术栈与规模假设](#五技术栈与规模假设) · [六、本体概览](#六本体概览) · [七、数据流程](#七数据流程) · [八、五层存储](#八五层存储) · [九、如何使用](#九如何使用) · [十、快速开始（规划，代码就绪后生效）](#十快速开始规划代码就绪后生效) · [十一、使用达到的效果](#十一使用达到的效果) · [十二、约定](#十二约定) · [十三、与 smartServe 的关系](#十三与-smartserve-的关系)
+目录：[一、为什么使用](#一为什么使用) · [二、核心设计思想](#二核心设计思想) · [三、架构总览](#三架构总览) · [四、目录结构](#四目录结构) · [五、技术栈与规模假设](#五技术栈与规模假设) · [六、本体概览](#六本体概览) · [七、数据流程](#七数据流程) · [八、五层存储](#八五层存储) · [九、如何使用](#九如何使用) · [十、快速开始](#十快速开始) · [十一、使用达到的效果](#十一使用达到的效果) · [十二、约定](#十二约定) · [十三、与 smartServe 的关系](#十三与-smartserve-的关系)
 
 ---
 
@@ -25,7 +26,7 @@
 | 口径冲突 | 同一素材抖音和小红书的 CTR 能比吗？质保 30 天还是 90 天？ | 两平台字段定义不同；文档新旧版本矛盾，相似度检索无法仲裁 |
 | 操作管控 | 帮我删掉 B 案例的这条素材 | Agent 执行动作需要权限边界、约束校验和审计 |
 
-**判断标准**：单类命中各有便宜解（事实数据加一路 Text2SQL 就够），两类以上才需要共享语义模型；只是文档问答，双路 RAG 就是终点，上图谱反而是负资产。广告业务四类全中——20 题的命中类型标注见 `eval/golden_set.jsonl`，是标注结果不是断言。
+**判断标准**：单类命中各有便宜解（事实数据加一路 Text2SQL 就够），两类以上才需要共享语义模型；只是文档问答，双路 RAG 就是终点，上图谱反而是负资产。广告业务四类全中——命中类型标注见 `eval/golden_set.jsonl`（38 题，种子期 20 题），是标注结果不是断言。
 
 ### 1.2 与替代方案对比
 
@@ -50,11 +51,11 @@
 **多 Agent——本体是 Agent 之间的共同语言。** 自然的分工有检索问答、投放分析、素材 AIGC、案例撰写、复盘归因五类 Agent。本体为它们解决四个真问题：
 
 1. 统一世界模型：所有 Agent 读写同一套实体 ID 和指标口径，否则实体对齐的债会随 Agent 数量翻倍
-2. 权限一视同仁：权限矩阵对人和对 Agent 是同一张；Agent 受托替人调用时，生效权限取 Agent role 与终端用户 role 的**交集**（最小权限）。**管控收口在知识层**——散在各 Agent 的 prompt 里，每加一个 Agent 就多一份泄露面；收口在本体，Agent 来多少个都是同一套闸门
+2. 权限一视同仁：权限矩阵对人和对 Agent 是同一张；Agent 受托替人调用时，生效权限取 Agent role 与终端用户 role 的**交集**（最小权限；求交为设计目标，现状单 role 调用 + 审计双身份，见 9.1）。**管控收口在知识层**——散在各 Agent 的 prompt 里，每加一个 Agent 就多一份泄露面；收口在本体，Agent 来多少个都是同一套闸门
 3. 交接即结构：Agent 之间 handoff 传本体化的结构（实体 + 关系 + provenance），不传自由文本，下游可验证再接
 4. 写冲突有仲裁：两个 Agent 对同一实体写入，按 authority 排序，低者进 `review_queue` 人审；同分比 confidence、再比时间取新（见 [12.2](#122-权威度authorityyaml)）
 
-**多域——演进出来的，不是设计出来的。** 先分清两种"多域"：域内子域（投放、素材、客户）一个本体分模块即可；跨业务域（广告 + 电商 + 客服）才需要架构决策。当前覆盖口径：主线 12 类覆盖投放 / 素材 / 客户；财务仅属性级覆盖（`gross_margin`、`settlement_status`），独立结算类二期再议。
+**多域——演进出来的，不是设计出来的。** 先分清两种"多域"：域内子域（投放、素材、客户）一个本体分模块即可；跨业务域（广告 + 电商 + 客服）才需要架构决策。当前覆盖口径：主线 13 类覆盖投放 / 素材 / 客户；财务仅属性级覆盖（`gross_margin`、`settlement_status`），独立结算类二期再议。
 
 | 模式 | 适用条件 | 做法 |
 |---|---|---|
@@ -84,167 +85,178 @@
                   │        使用方 / Agent 引擎                    │
                   │   smartServe engine-py · 前端 · 其他业务系统│
                   └──────────────────────┬────────────────────────┘
-                                         │ HTTP API（service token 认证）
+                                         │ HTTP API（token / 会话 cookie 认证）
 ┌────────────────────────────────────────▼───────────────────────────────────────────────────────┐
-│ 服务层   adkg/api   /ask（只收查询）· /ingest · /graph · /actions/check · /guideline/check │
+│ 服务层   adkg/api   44 端点：/ask · /graph · /actions/check · /guideline/check · /ingest/* ·    │
+│                     /agent/chat(/stream SSE) · 数据面(/creators /cases /brands /settlements    │
+│                     /stats) · 认证与管理(/auth /admin /menus /roles)                           │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 管控层   adkg/guards   认证 · 权限过滤（本体级）· 操作前约束校验 · 审计（只追加）           │
+│ 管控层   adkg/guards   认证收口 · 权限过滤（本体级）· 操作前约束校验 · RBAC · 审计（只追加）    │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ 召回层   adkg/retrieval   router（本体理解→路由）→ vector │ graph │ text2sql → assemble        │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 存储层   adkg/store   raw │ vector(pgvector) │ graph(Neo4j) │ facts │ provenance               │
+│ 存储层   adkg/store   raw │ vector(pgvector) │ graph(Neo4j) │ provenance/ingest_job │          │
+│                     creator_quotes │ pg_pool（事实表由 pipeline/etl_facts 直写）               │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 加工层   adkg/pipeline   chunking → extraction → resolution → conflict · etl_facts            │
+│ 加工层   adkg/pipeline   chunking → extraction → resolution · etl_facts · case_gen · run       │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 接入层   adkg/connectors   files · feishu · platforms · warehouse                           │
+│ 接入层   adkg/connectors   files · feishu · platforms（warehouse 留作扩展）                    │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 本体层   ontology/   schema · mappings · authority · permissions                            │
-│                           ↑ 唯一语义真源，横贯以上所有层                                      │
+│ 本体层   ontology/   schema · mappings · authority · permissions                                │
+│                           ↑ 唯一语义真源，横贯以上所有层                                        │
 └────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 四、目录结构（稳定基线）
+## 四、目录结构
 
 设计原则：**资产与代码分离**（`ontology/`、`eval/`、`sql/` 是资产，先于代码固化）；**代码按层分包**，层与层只通过明确的数据模型（`adkg/models.py`）交互；每层一个目录，每个文件一个职责。
 
 ```text
 ad-kg/
-├── README.md
-├── .gitignore                     # .env、data/raw/、eval/runs/、.venv、__pycache__/、web 构建产物
-├── pyproject.toml                 # uv 管理的 Python 项目
-├── docker-compose.yml             # Postgres(pgvector) + Neo4j
+├── README.md                      # 唯一规范（设计与约定）
+├── CLAUDE.md                      # 开发者速查（命令 / 架构大图 / 铁律）
+├── pyproject.toml / uv.lock       # uv 管理的 Python 项目
+├── docker-compose.yml             # PG18(pgvector) + Neo4j + 星图·模拟 三服务
+├── promptfooconfig.json           # 多角色矩阵评测（24 用例，真 HTTP 打 /ask）
 ├── .env.example                   # 连接串、LLM key、service token 模板
 │
 ├── ontology/                      # 【资产】本体：唯一语义真源
-│   ├── schema.yaml                #   类、属性、关系、约束、动作词表
-│   ├── authority.yaml             #   来源权威度排序，冲突仲裁用
-│   ├── permissions.yaml           #   角色 → 可见类 / 属性 / 指标列 / 操作 的矩阵（人和 Agent 共用）
-│   └── mappings/                  #   各数据源 → 本体映射
-│       ├── douyin.yaml            #     巨量引擎字段 → Campaign / Creative / Metric
-│       ├── xiaohongshu.yaml       #     聚光平台字段 → 同一套 Metric
-│       ├── case_doc.yaml          #     案例文档结构 → Case / Brand / Product
-│       └── warehouse.yaml         #     数仓 / CRM / 组织系统 schema → 本体类（只建映射不搬数）
+│   ├── schema.yaml                #   13 类、17 关系、Case 状态机约束、动作词表(schema#actions)
+│   ├── authority.yaml             #   来源权威度五级 + 同分裁决链，冲突仲裁用
+│   ├── permissions.yaml           #   角色 → 可见类 / 属性 / 指标列 / 操作 / 行过滤（人和 Agent 共用）
+│   └── mappings/
+│       ├── douyin.yaml            #     巨量引擎字段 → 统一指标口径
+│       └── xiaohongshu.yaml       #     聚光平台中文表头 → 同一套口径（映射层翻译）
 │
 ├── adkg/                          # 【代码】Python 包
-│   ├── __init__.py
-│   ├── config.py                  #   环境与连接配置
-│   ├── llm.py                     #   LLM 客户端适配（OpenAI 兼容接口）
-│   ├── models.py                  #   Pydantic 模型：Entity / Relation / Chunk / Fact / Provenance / PermissionPlan / RouterPlan
-│   │
-│   ├── connectors/                #   接入层：只负责拿到原始数据，不做语义解释
+│   ├── models.py                  #   层间契约：Provenance（authority 查表派生）/ Entity / Relation /
+│   │                              #   Fact / PermissionPlan / RouterPlan
+│   ├── llm.py                     #   LLM/嵌入适配：coding 端点 glm-5.3-flash、批任务普通端点
+│   │                              #   glm-4-flash（batch_chat_json）、本地 bge 嵌入
+│   ├── connectors/                #   接入层：只拿原始数据，不做语义解释
 │   │   ├── base.py                #     Connector 协议：fetch() → RawRecord（必带 provenance）
-│   │   ├── files.py               #     本地 PDF / Word / Excel / Markdown（含平台后台导出文件）
-│   │   ├── feishu.py              #     云文档增量同步（按 revision）
-│   │   ├── platforms.py           #     巨量引擎 / 聚光 API，或后台导出文件
-│   │   └── warehouse.py           #     数仓 / 业务库：只读 information_schema 建映射
-│   │
+│   │   ├── files.py               #     本地 Markdown / 导出文件
+│   │   ├── feishu.py              #     云文档：revision 增量 + 共享文件夹模式
+│   │   └── platforms.py           #     平台后台导出 CSV（按文件名认平台，双 adapter 之一）
 │   ├── pipeline/                  #   加工层：原始数据 → 向量 + 图 + 事实
-│   │   ├── chunking.py
-│   │   ├── extraction.py          #     LLM 实体 / 关系抽取：结构化输出 + schema 校验，置信度分级（入图 / 人审 / 丢弃）
-│   │   ├── resolution.py          #     实体对齐消歧：四级漏斗（事实路以 ID 归一为主）
-│   │   ├── conflict.py            #     与已有事实冲突 → 人审队列
-│   │   ├── etl_facts.py           #     平台数据按 mappings 进事实表，经 entity_alias 换算本体 ID
-│   │   └── run.py                 #     流水线编排：按 ingest_job 重放补偿与对账
-│   │
-│   ├── store/                     #   存储层：五层各一个适配器
-│   │   ├── raw.py                 #     原始层：本地目录 / 对象存储，不可变
-│   │   ├── vector.py              #     pgvector（chunk 带 class / brand_id / case_id，检索按角色过滤）
-│   │   ├── graph.py               #     Neo4j
-│   │   ├── facts.py               #     事实表 + unified_metrics 统一口径视图
-│   │   └── provenance.py          #     溯源表 + 实体别名 + 人审队列 + 审计日志
-│   │
+│   │   ├── chunking.py            #     Markdown 按标题切段、超长二切、剥 frontmatter
+│   │   ├── extraction.py          #     LLM 抽取：类/谓词/三元组契约三道滤 + 置信度分级
+│   │   ├── extraction_prompt.py   #     抽取 prompt 独立成文件（改 prompt 不动逻辑）
+│   │   ├── resolution.py          #     对齐消歧 L1（规则归一+alias）/ L2（嵌入相似）；L3 留作扩展
+│   │   ├── etl_facts.py           #     平台 CSV → 映射翻译 → alias 换算 → 维度物化 → 事实表
+│   │   ├── case_gen.py            #     文档→案例草稿 / agent 种子物化 / 人审确认入图
+│   │   └── run.py                 #     双写编排：raw→PG→Neo4j、ingest_job 状态机、收尾对账
+│   ├── store/                     #   存储层适配器
+│   │   ├── raw.py                 #     原始层：不可变落盘 + sha256 旁写
+│   │   ├── vector.py              #     pgvector：chunks+provenance 同事务，(doc_id,chunk_index) 幂等
+│   │   ├── graph.py               #     Neo4j：MERGE 写入 + 六个读侧图查询（维度物化/负责人/违规…）
+│   │   ├── provenance.py          #     ingest_job 状态机 + review_queue + 批次对账
+│   │   ├── creator_quotes.py      #     达人报价快照写路径（同日同源只追加）
+│   │   └── pg_pool.py             #     API 层共享连接池（min1/max8）
 │   ├── retrieval/                 #   召回层
-│   │   ├── router.py              #     本体理解 → 路由计划（含串行依赖与置信度）
-│   │   ├── vector_search.py
-│   │   ├── graph_search.py        #     multi-hop Cypher（消费 PermissionPlan 的可见 ID 集）
-│   │   ├── text2sql.py            #     五道闸：只读账号 · 仅 SELECT · 视图/列白名单 · PermissionPlan 谓词注入 · LIMIT+超时
-│   │   └── assemble.py            #     三路结果按本体拼装（含可选重排），出口按 plan 脱敏，汇总 provenance
-│   │
+│   │   ├── router.py              #     规则路由优先，弱置信走 LLM；意图→计划映射单源
+│   │   ├── graph_search.py        #     1/2/3 跳邻域；属性证据出口（deny_properties 唯一执行点）
+│   │   ├── vector_search.py       #     pgvector cosine + 每类配额 + 权限子句下推 + 关键词兜底
+│   │   ├── text2sql.py            #     双路：LLM 生成过五道闸；失败回落口径感知模板
+│   │   ├── assemble.py            #     去重/缺席路/人名脱敏；permission_applied 汇总
+│   │   ├── metrics.py             #     指标口径单一来源（词表/方向/汇总比/可算性白名单）
+│   │   └── stats.py               #     汇总比统计脚手架（6 个汇总函数，5 个路由模块共享；超时统一）
 │   ├── guards/                    #   管控层
-│   │   ├── auth.py                #     service token → role / Person 绑定
-│   │   ├── permission.py          #     permissions.yaml → PermissionPlan 工厂：一份矩阵翻译为三路过滤器 + 脱敏规则
-│   │   ├── action_check.py        #     操作前校验 schema.yaml 中的约束
-│   │   └── audit.py               #     审计日志（只追加，ULID 主键）
-│   │
+│   │   ├── http.py                #     resolve_identity 认证收口（token > cookie > dev）
+│   │   ├── auth.py                #     service token → role
+│   │   ├── sessions.py / passwords.py   #   web 会话（7 天滑动）与 scrypt 口令
+│   │   ├── permission.py          #     permissions.yaml → PermissionPlan 唯一翻译点
+│   │   ├── action_check.py        #     操作前校验 schema#constraints（状态机/删除约束）
+│   │   ├── rbac.py                #     界面权限门（display_role 判门 / role_allows）
+│   │   └── audit.py               #     审计唯一 INSERT 收口（只追加）
 │   └── api/                       #   服务层 FastAPI
 │       ├── main.py
-│       └── routes/
-│           ├── ask.py             #     POST /ask：三路召回，只收查询类，返回带 provenance 的答案
-│           ├── ingest.py          #     POST /ingest/assertion（断言写回）· /ingest/docs · /ingest/case-draft · /ingest/case-commit（文档→案例草稿确认入图）
-│           ├── graph.py           #     GET  /graph/entity：实体、关系展开、来源
-│           ├── actions.py         #     POST /actions/check：操作裁决 allow/deny + 约束依据 + audit_id
-│           ├── guideline.py       #     POST /guideline/check：生成前查规范 + 机判阈值校验（时长/尺寸等）
-│           ├── creative.py        #     GET /creative/brands · POST /creative/draft：商品知识 × 最好相关案例 × 规范 → 素材草稿
-│           └── agent.py           #     POST /agent/chat：对话式 agent——ReAct 循环调只读工具，产出案例/素材草稿
+│       └── routes/                #     16 个路由模块 44 端点（ask/agent/graph/actions/guideline/
+│                                  #     ingest/auth/menus/roles/admin/creators/cases/brands/
+│                                  #     settlements/stats/creative）+ platform_browser（星图抓取）
 │
-├── sql/                           # 【资产】建表脚本
-│   ├── 001_init.sql               #   chunks / facts / provenance / entity_alias / review_queue / audit_log / ingest_job
-│   └── 002_unified_metrics.sql    #   两平台事实表 → 统一口径视图
+├── sql/                           # 【资产】迁移 001–010（init_db 幂等执行）
+│   ├── 001_init.sql               #   九张核心表：provenance/entity_alias/chunks/review_queue/
+│   │                              #   audit_log/ingest_job/两平台事实表/product_orders_daily
+│   ├── 002_unified_metrics.sql    #   两平台事实 → 统一口径视图（text2sql 唯一生成面）
+│   ├── 003_auth.sql               #   app_user / app_session（web 会话）
+│   ├── 004_quote_history.sql      #   creator_quote_history
+│   ├── 005_menus.sql / 007_menu_tree.sql     # app_menu 页面/按钮树
+│   ├── 006_rbac.sql               #   app_role / app_role_action（自定义角色）
+│   ├── 008_admin_view.sql         #   management 回填 admin_view 读门
+│   ├── 009_creator_seq.sql        #   达人编号 PG 序列（灭 MAX+1 并发撞号）
+│   └── 010_case_stage_grant.sql   #   management/ae 回填 case_stage_change
 │
 ├── eval/                          # 【资产】评估
-│   ├── golden_set.jsonl           #   20 题种子评测集（扩至 50 挂 Phase 6）
-│   ├── run_eval.py                #   跑分：三路 vs 双路 / 双路+Text2SQL 消融（fact / multi_hop / concept 三子集）
+│   ├── golden_set.jsonl           #   38 题（multi_hop 17 / fact 10 / concept 4 / attribution 4 / operation 3）
+│   ├── run_eval.py                #   跑分：进程内打 /ask，规则判据 + LLM judge 双轨
+│   ├── run_ablation.py            #   消融：vec_only / vec_sql / full 三配置归因
+│   ├── judge.py                   #   LLM judge prompt 与解析
+│   ├── recalc_golden.py           #   库值锚点重算（dry-run diff / --yes 落盘，幂等）
 │   └── runs/                      #   评测结果（gitignore）
 │
 ├── data/
-│   ├── seed/                      #   合成种子 CSV（可提交；文档由 gen_seed 直写 raw）
-│   │   ├── brands_products.csv
-│   │   ├── org_people.csv         #   手工维护的"CRM 导出"：人员与品牌对接关系（system_of_record）
-│   │   ├── cases_campaigns.csv    #   案例-计划-素材主数据：Case / Campaign / Creative 及其关系
-│   │   ├── creative_metrics_daily_douyin.csv   # 素材粒度事实（platform × campaign × creative × day）
-│   │   ├── creative_metrics_daily_xhs.csv      # 故意用中文表头，演示映射层的作用
-│   │   ├── assertions.csv         #   预置 violates 断言样例（画面 6 演示锚点）
-│   │   ├── cases/                 #   案例文档（markdown）
-│   │   └── guidelines/            #   创意规范、品牌 VI、广告法条款
-│   └── raw/                       #   原始层落盘（gitignore）
+│   ├── seed/                      #   合成种子 13 CSV（brands_products / org_people / cases_campaigns /
+│   │                              #   case_persons / audiences / creators / case_creators / creator_products /
+│   │                              #   quote_history / assertions / creative_metrics_daily_{douyin,xhs} /
+│   │                              #   product_orders_daily）；文档由 gen_seed 直写 data/raw
+│   ├── raw/                       #   原始层落盘（gitignore；68 篇 md = 60 案例 + 8 规范）
+│   └── logs/                      #   launchd 同步日志
 │
-├── docs/                          #   Phase 6 起沉淀：评测报告、决策记录（届时再定文件名）
+├── docs/                          #   introduction.md（项目详细介绍）· deployment.md（部署运维）·
+│                                  #   specs/（拍板 spec）· reports/（夜间检查等运行报告）
 │
-├── scripts/                       # 一次性脚本
-│   ├── gen_seed.py                #   生成合成种子数据（静态文件，可重生成）
-│   ├── init_db.py                 #   执行 sql/，建 Neo4j 约束与索引、Postgres 双账号
-│   └── load_seed.py               #   导入 data/seed CSV + data/raw 文档（gen_seed 先行）
+├── scripts/
+│   ├── gen_seed.py                #   生成确定性合成种子（固定随机流，同日重跑逐字节一致）
+│   ├── init_db.py                 #   执行 sql/ + 双账号(adkg_rw/adkg_ro) + Neo4j 约束；幂等
+│   ├── init_users.py              #   web 登录账号（与 permissions.yaml bindings 对账，漂移即退）
+│   ├── load_seed.py               #   导入种子：主数据入图 + 文档路 + 事实路 + 交易路；幂等
+│   ├── sync_feishu.py             #   飞书增量同步（双判幂等跳过 + supersedes 版本链）
+│   ├── enrich_aligned.py          #   对齐抽取：历史 chunk → L1 对齐 → 只写两端都命中的关系
+│   ├── gen_golden.py              #   从种子数据生成评测题（答案由查询回填）
+│   └── com.adkg.feishu-sync.plist #   launchd 模板（每 10 分钟）
 │
-└── tests/                         #   单测（mappings 解析 / PermissionPlan / action_check / provenance 必填）
-                                   #   + 集成冒烟（compose 起库 → load_seed → /ask 三例）；越权零泄漏、缺 provenance 拒绝写成不变量测试
+├── web/                           #   前端（React 19 + Vite 8 + Tailwind v4 + shadcn/ui，bun 管理）
+│   └── src/
+│       ├── routes/                #     路由表 + RequireAuth
+│       ├── pages/                 #     login / dashboard / creators / cases / brands / settlements /
+│       │                          #     admin（含 people / permissions / menus）
+│       ├── features/              #     agent（悬浮窗 SSE）/ graph（echarts 力导向）/ shared
+│       ├── components/            #     ui/（shadcn 13 件）· layout/（AppLayout）
+│       └── lib/                   #     api.ts · session.tsx(useCan) · nav.tsx · labels.ts
+│
+├── mock-douyin/                   #   星图·模拟（:8100，纯 stdlib，agent 抓取目标站，零外连）
+├── deploy/                        #   nginx/adkg-demo.conf · systemd/adkg-api.service · alerts/health_alert.sh
+├── .github/workflows/ci.yml       #   PR 跑 pytest；push main 自动发布 A 机
+└── tests/                         #   28 文件 255 用例；越权零泄漏、缺 provenance 拒绝等写成不变量测试
 ```
 
 seed 里两个 `creative_metrics_daily_*.csv` 各含同一素材的记录（同 internal_id、两个平台的 external_id）——跨平台口径验收的锚点（见 [12.5](#125-实体-id-规则)）。
 
-可选扩展（不在稳定基线内，详见 [9.7](#97-前端与运营台webphase-5-后)）：`web/` 前端（React + Vite），Phase 5 后薄演示版、Phase 6 起按需加厚：
-
-```text
-web/
-├── src/
-│   ├── routes/        # react-router 路由表 + RequireAuth 登录守卫（配置路由的地方）
-│   ├── pages/         # login（登录页）· home（主应用：问答/图谱页签装配）
-│   ├── features/      # ask（问答+证据卡）· graph（图谱展开）——按域加 guideline / review / ops
-│   ├── components/    # ui/（shadcn 生成件）· layout/（Header/Footer）
-│   └── lib/           # api.ts（HTTP 客户端+类型）· accounts.ts（演示账号表）· session.tsx（会话上下文）
-```
-
-UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务层（含认证），不直连 Neo4j / Postgres（十三的边界）；部署态浏览器侧由 nginx 按 `X-Adkg-Role` 注入 token（见 §9.7 角色头约定与 docs/deployment.md §四），本地演示 `ADKG_DEV_AUTH=off`。
+web 与后端只有一条通路：web → HTTP API 服务层（含认证），不直连 Neo4j / Postgres（十三的边界）；部署态全靠会话 cookie（~~nginx 按 `X-Adkg-Role` 注入 token~~ 已于 2026-10-24 撤销），本地演示 `ADKG_DEV_AUTH=off`。
 
 ## 五、技术栈与规模假设
 
 | 组件 | 选型 | 理由 | 备选 |
 |---|---|---|---|
 | 语言 / 包管理 | Python 3.11+ / uv | 与 LangGraph 生态同源，smartServe 已用 uv | — |
-| 服务框架 | FastAPI 1.x + Pydantic v2 | 结构化输出校验、OpenAPI 自动生成 | — |
-| 认证 | 静态 service token（每 role 一枚）+ 网关注入 | 单人维护相称，不起 OAuth/JWT | — |
-| 向量 / 事实 / 溯源 | PostgreSQL 18 + pgvector 0.8 | 一个库同时承载向量、事实表、溯源表，单人维护成本最低；异步 I/O 提升读吞吐，UUIDv7 直接做 audit_log / ingest_job 主键；Text2SQL 只对库内白名单视图生成 | Qdrant / Milvus |
-| 嵌入 | BAAI/bge-small-zh-v1.5 · 本地（512 维、cosine、HNSW） | 与 smartServe 同源同构（本地 sentence-transformers），中文小模型够检索用；换模型重刷全部向量并重标 τ（7.4） | qwen3.7-text-embedding-flash · 百炼 API（dimensions 定 512 维）/ bge-m3 |
+| 服务框架 | FastAPI（锁定 0.146）+ Pydantic v2 | 结构化输出校验、OpenAPI 自动生成 | — |
+| 认证 | service token（Bearer 直连路）+ web 会话 cookie（app_session，7 天滑动）| resolve_identity 三级解析 token > cookie > dev；单人维护相称，不起 OAuth/JWT | — |
+| 向量 / 事实 / 溯源 | PostgreSQL 18 + pgvector 0.8 | 一个库同时承载向量、事实表、溯源表，单人维护成本最低；异步 I/O 提升读吞吐，uuidv7 直接做主键；Text2SQL 只对库内白名单视图生成 | Qdrant / Milvus |
+| 嵌入 | BAAI/bge-small-zh-v1.5 · 本地（512 维、cosine、HNSW）| 中文小模型够检索用；load_seed / sync_feishu 当场生成无需回填；换模型重刷全部向量并重标 τ（7.4）；首跑设 `HF_ENDPOINT=https://hf-mirror.com`，已缓存后设 `HF_HUB_OFFLINE=1` | bge-m3 / 百炼 API |
 | 重排（可选） | bge-reranker | 仅对 vector 路候选精排（概念 / 规范类），graph 链路不进重排 | — |
 | 图 | Neo4j 2025.09 LTS Community | multi-hop Cypher 表达力强；自带浏览器可视化，演示友好；日历版本制下取 LTS 线 | Postgres 三元组表（本规模下可替代，见下） |
-| LLM | OpenAI 兼容接口（GLM / 其他） | 抽取、路由、Text2SQL、评估 judge 共用一个适配层 | — |
+| LLM | 智谱 OpenAI 兼容双端点：交互路 **coding 端点 glm-5.3-flash**，批任务（抽取/judge/草稿）**glm-4-flash**（batch_chat_json，同 key）| coding 端点限流严故批任务分流——需配 `ADKG_LLM_BATCH_BASE_URL`，未配时回落主端点；全部调用限时单发、失败一律降级（7.2） | 其他 OpenAI 兼容服务 |
 | 原始层 | 本地目录 | 单机够用；多人时换 MinIO，接口不变 | MinIO |
+| 前端 | React 19 + Vite 8 + Tailwind v4 + shadcn/ui + echarts，**bun 管理**（pnpm 与 Node 22.23 不兼容）| 演示 + 自助看数 + 知识运营一体 | — |
+| 评测 | pytest + promptfoo + 自研 run_eval / run_ablation / recalc_golden | 规则判据 + LLM judge 双轨；消融归因；库值锚点重算 | — |
 | Agent 编排 | 不内置 | 编排在 smartServe engine-py；本项目只暴露 API | — |
 
-**规模假设**（拍板值，非实测，按代投 App 引流、单人维护估计）：品牌 ~50、案例 ~200/年、素材 ~5k、事实行 ~百万级/年、chunk ~1 万、golden set 20 题起。该量级下 Postgres 三元组表也扛得住——选 Neo4j 看重的是 Cypher 多跳表达力与可视化演示，不是规模刚需；量级再涨两个数量级时重估。演示数据用 `data/seed/` 合成种子，量级取上表零头。
+**规模假设**（拍板值，非实测，按代投 App 引流、单人维护估计）：品牌 ~50、案例 ~200/年、素材 ~5k、事实行 ~百万级/年、chunk ~1 万、golden set 20 题起（现 38 题）。该量级下 Postgres 三元组表也扛得住——选 Neo4j 看重的是 Cypher 多跳表达力与可视化演示，不是规模刚需；量级再涨两个数量级时重估。演示数据用 `data/seed/` 合成种子，量级取上表零头。
 
-**运行形态**（拍板）：**智能在线、资产在本地**——LLM / 嵌入 / 重排全走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`），不部署本地模型；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 五道闸第一闸 + 评测），由 `scripts/init_db.py` 创建。部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`；同机走 docker 网络 `shared-infra` 直连，两机走内网 IP:5433）——省一份 PG 实例，库间靠账号与 database 边界隔离；拓扑与自动发布见 `docs/deployment.md`。
+**运行形态**（拍板）：**智能在线、资产在本地**——LLM 走 OpenAI 兼容 API（`llm.py` 一个适配层，key 进 `.env`）、嵌入本地；数据资产全在本地：seed 进 repo、双库在 docker、raw 在磁盘，零云成本。Postgres 两套账号：`adkg_rw` 应用读写、`adkg_ro` 只读（text2sql 执行 / 汇总比统计 / /graph 路由三处消费，五道闸第一闸），由 `scripts/init_db.py` 创建；`adkg_ro` 另被 REVOKE audit_log / app_user / app_session，`adkg_rw` 对 audit_log 收回 UPDATE/DELETE（只追加落账号级）。部署时该 PG18 实例**同时承载 smartServe 两库**（`agent_platform` / `agent_merchant`，独立账号 `agent_user`；同机走 docker 网络 `shared-infra` 直连，两机走内网 IP:5433）——省一份 PG 实例，库间靠账号与 database 边界隔离；拓扑与自动发布见 `docs/deployment.md`。
 
-**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成静态文件（2026-10-24 扩容：品牌 8+16、案例 20+40 覆盖全部 stage、达人 20+40、素材 ~80+160 含 1 对双平台同素材、事实行 ~0.9k+2.24k/表、SKU 3+6——**扩容全部追加且独立随机流**，旧数据逐字节不变，golden 实体域锚定零扰动；规范混入真实广告法条文）。CSV 提交进 repo（`data/seed/`）；**文档（案例 md + 规范 md）由 gen_seed 直写 `data/raw/`**——生成器模板即文档真源，产物不占 git（2026-10-23 去重：seed 目录曾与 raw 逐字节双份），clone 后先 `gen_seed` 再 `load_seed`。事实日期为**滚动窗口**：gen_seed 取生成日近 12 个月、止于上月末（扩容批次整月铺满 1–28 日，近 30 天/上月窗口两侧都有数），对齐素材在最近月各保 ≥3 天（top-N 口径 `HAVING count>=3` 常青命中）——相对时间问句（上月/近 N 天）不因时间流逝空窗；日期只改分布不改数值，全量口径聚合稳定，同日重跑逐字节一致；② **手工"CRM 导出"**——`data/seed/org_people.csv` 走 `/ingest/doc` 标 system_of_record，演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量（Phase 2b）——两种来源：`FEISHU_DOCS` 显式 token 列表，或 `FEISHU_FOLDER` **共享文件夹模式**（应用加为文件夹协作者一次，全公司可往里放文档，同步自动列目录逐篇摄取、类型过滤只吃 docx，零逐篇授权）。
+**数据三层**：① **合成 seed**——`scripts/gen_seed.py` 生成静态文件（2026-10-24 扩容：品牌 8+16、案例 20+40 覆盖全部 stage、达人 20+40、素材 ~80+160 含 1 对双平台同素材、事实行 ~0.9k+2.24k/表、SKU 3+6——**扩容全部追加且独立随机流**，旧数据逐字节不变，golden 实体域锚定零扰动；规范混入真实广告法条文）。CSV 提交进 repo（`data/seed/`）；**文档（案例 md + 规范 md）由 gen_seed 直写 `data/raw/`**——生成器模板即文档真源，产物不占 git，clone 后先 `gen_seed` 再 `load_seed`。事实日期为**滚动窗口**：gen_seed 取生成日近 12 个月、止于上月末（扩容批次整月铺满 1–28 日，近 30 天/上月窗口两侧都有数），对齐素材在最近月各保 ≥3 天（top-N 口径 `HAVING count>=3` 常青命中）——相对时间问句（上月/近 N 天）不因时间流逝空窗；日期只改分布不改数值，全量口径聚合稳定，同日重跑逐字节一致；② **手工"CRM 导出"**——`data/seed/org_people.csv` 由 `load_seed` 直读入图标 system_of_record（文件路通用入口是 connectors/files + run_docs 管线），演示 CRM 通道；③ **真实业务数据**——平台走后台导出文件路（官方 API 需真实代理商授权，留给部署方，connector 双 adapter 成真 seam），飞书自建应用按 revision 增量——两种来源：`FEISHU_DOCS` 显式 token 列表，或 `FEISHU_FOLDER` **共享文件夹模式**（应用加为文件夹协作者一次，全公司可往里放文档，同步自动列目录逐篇摄取、类型过滤只吃 docx，零逐篇授权）。
 
 ## 六、本体概览
 
@@ -262,7 +274,7 @@ UI 用 Tailwind v4 + shadcn/ui；接入只有一条路：web → HTTP API 服务
 | **Creator** | 达人 / 创作者主数据（spec 2026-10-24）：**平台级主数据——类白名单即可见、不设 row_filter**，合作历史经 Case 行过滤收敛 | 名称、平台、视频方向（niches）、粉丝数、20s/图文报价、30 天 GMV、城市、评分 | 数据平台抓取（connectors/platforms + mock-douyin 模拟）、CRM |
 | DocVersion | 文档版本链，`supersedes` | rev | 云文档同步 |
 
-关键关系：`Case→for_brand→Brand`、`Case→for_product→Product`（N:1）、`Brand→has_product→Product`、`Case→collabs_with→Creator`（N:M，spec §3）、`Creator→promotes→Product`（N:M 带货）、`Campaign→belongs_to→Case`、`Campaign→uses→Creative`、`Campaign→in_channel→Channel`（N:1，与事实表的平台维度区分，不重复建模）、`Campaign→targets→Audience`（N:M）、`Creative→links_to→LandingPage`（N:1）、`Creative→complies_with / violates→Guideline`、`Creative→derived_from→Creative`、`Person→responsible_for→Case`、`Person→belongs_to_brand→Brand`（内部对接人归属）、`Person→external_for→Brand`（外部客户账号绑定，N:M，变更走人审）。`平台字段→maps_to→Metric` 是 mappings 层的映射谓词，不是图关系。
+关键关系（17 种）：`Case→for_brand→Brand`、`Case→for_product→Product`（N:1）、`Brand→has_product→Product`、`Case→collabs_with→Creator`（N:M，spec §3）、`Creator→promotes→Product`（N:M 带货）、`Campaign→belongs_to→Case`、`Campaign→uses→Creative`、`Campaign→in_channel→Channel`（N:1，与事实表的平台维度区分，不重复建模）、`Campaign→targets→Audience`（N:M）、`Creative→links_to→LandingPage`（N:1）、`Creative→complies_with / violates→Guideline`、`Creative→derived_from→Creative`、`Person→responsible_for→Case`、`Person→belongs_to_brand→Brand`（内部对接人归属）、`Person→external_for→Brand`（外部客户账号绑定，N:M，变更走人审）、`DocVersion→supersedes→DocVersion`（版本链）。`平台字段→maps_to→Metric` 是 mappings 层的映射谓词，不是图关系。
 
 Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指标词与 Text2SQL 可用指标白名单的依据；视图实现与 Metric 公式的一致性由 `mappings/` 保证；两平台不可比的指标在映射层不映射、视图列留空。`expr / grain / dedup_rule / valid_scope` 落在 schema.yaml。**聚合口径铁律**：比率型指标（ctr / cvr / cpa / cpm）跨行聚合一律**汇总比** `sum(分子) / NULLIF(sum(分母), 0)`（如 cpa = sum(cost) / sum(conversions)），**禁止对行比率再求 avg**——小分母行会带偏总量结论；该铁律同时约束 Text2SQL 模板与 LLM 自由生成（粒度上卷到 campaign / case / brand 同样适用）。**口径单一来源（2026-10-23 收敛）**：指标词汇与聚合口径收口 `adkg/retrieval/metrics.py`——维度列/指标词表/平台词/方向语义/汇总比聚合表达式/可算性白名单，Text2SQL 模板、图侧统计卡（§9.7）、权限指标列宇宙（§12.4）共用一处；graph ↔ text2sql 双写曾是多起口径实弹的温床（cvr 裸 sum、orders 放大、词表漂移）。**收口补完（2026-10-24）**：最X/方向词族（`RANK_WORDS` 等——router 意图词与 text2sql 方向判定同源，曾三份拷贝）、案例统计全家桶 `STAT_FAMILY`（(cost, ctr, cvr, cpa) 曾两处硬编码）、交易 join 形状（`TRADE_SELECT` + `uc_clicks_sql`——orders/gmv 与投放 clicks 的 product×day 预聚合对齐，graph 统计卡与 text2sql 交易模板同款）并入 metrics.py；全局类豁免改 schema 驱动（`models.global_classes` → PermissionPlan 字段，`{Metric, Guideline, Channel}` 字面量消灭）。**交易口径分列**：购买率（purchase_rate = orders / clicks）是**交易侧**指标（grain=product×day，数据源=商品后台导出，§五 数据三层③ seam；演示期合成种子），与投放侧转化率（cvr = conversions / clicks，平台回传的转化目标）**分列定义、不得混用**。
 
@@ -275,13 +287,13 @@ Metric 是 `unified_metrics` 视图列的语义锚点，也是 router 识别指�
 | Phase | 做什么 | 产物 | 预估 | 状态 |
 |---|---|---|---|---|
 | 0 | 列 20 个真实问题并标注命中类型；golden set 骨架；本 README | `eval/golden_set.jsonl`、README | 2d | **完成**（20 题五类 5/4/4/4/3） |
-| 1 | 定 12 类本体、关系、约束；permissions、authority；`sql/`（含 audit_log、ingest_job）；docker-compose；models.py；run_eval 骨架；纸面评审 | `ontology/`、`sql/`、空库 | 4d | **完成** |
-| 2a | 文档路·本地：files connector、chunking、extraction（30 段人工标注回归，precision/recall ≥0.85 才放量）、resolution 前两级、向量 + 图入库；人工只校 schema 和前 50 实体 | 图里第一张关系网 | 6d | **完成**（抽取回归实测：glm-4-flash 批端点 6 篇 → 71 实体/57 关系，置信度分级与白名单滤噪生效；标注集 precision/recall 量化待 Phase 6 扩集时做） |
-| 2b | 文档路·飞书：feishu 按 revision 增量（外部依赖：自建应用审批与文档授权）、LLM 判别级对齐 | 云文档自动入库 | 4d | **进行中**（connector+版本链+定时增量（ingest_job 幂等跳过 / launchd / 同步即嵌入）就绪，6 篇文档已同步；LLM 判别级对齐待做） |
+| 1 | 定本体、关系、约束；permissions、authority；`sql/`（含 audit_log、ingest_job）；docker-compose；models.py；run_eval 骨架；纸面评审 | `ontology/`、`sql/`、空库 | 4d | **完成** |
+| 2a | 文档路·本地：files connector、chunking、extraction、resolution 前两级、向量 + 图入库 | 图里第一张关系网 | 6d | **完成**（抽取回归实测：glm-4-flash 批端点 6 篇 → 71 实体/57 关系，置信度分级与白名单滤噪生效；标注集 precision/recall 量化待真实数据扩集时做） |
+| 2b | 文档路·飞书：feishu 按 revision 增量、LLM 判别级对齐 | 云文档自动入库 | 4d | **完成**（connector + 版本链 + 定时增量（launchd / 同步即嵌入）就绪，10 篇文档双端同步闭环；L3 LLM 判别级对齐未做——对齐靠 L1/L2 + 人审兜底，resolution.py 注明留作扩展） |
 | 3 | 数据路：platforms connector、近 12 个月历史回填（后台导出文件路）、etl_facts、`unified_metrics` | 同一素材两平台可比 | 4d | **完成**（演示级：锚点素材两平台同口径可比；platforms API adapter 留给真实部署方） |
-| 4 | 召回与权限：认证、permission 过滤与下推、router、三路检索、融合排序、assemble、`/ask` | `/ask` 能答混合问题 | 6d | **完成**（规则路由 + 三路 + PermissionPlan 下推；LLM 路由与嵌入待 key，vector 路按 §7.2 降级标注） |
+| 4 | 召回与权限：认证、permission 过滤与下推、router、三路检索、融合排序、assemble、`/ask` | `/ask` 能答混合问题 | 6d | **完成**（规则路由 + 三路 + PermissionPlan 下推；LLM 路由弱置信兜底已接） |
 | 5 | 管控收口：`/actions/check`、audit、AIGC 闭环 | 越权被过滤、违规被拦截 | 5d | **完成**（裁决/机判/断言写回实测：live 删素材被拦、超时长违规、低置信进人审） |
-| 6 | 评估：golden set 扩至 50 题（multi_hop ≥15）、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **完成**（38 题终评：规则判据口径 multi_hop 17/17 全过；LLM judge 33/35 要点全命中、整体 95%±抖动（G08 判据串债 / G15 judge 波动）；消融归因见表下；50 题全量留待真实数据接入后扩） |
+| 6 | 评估：golden set 扩题、三基线跑分、对比报告、docs | 一张收益对比表 | 3d | **完成**（38 题终评（2026-10-24）：规则判据口径 multi_hop 17/17 全过；LLM judge 要点命中 32–34/35（跨 run 抖动）、整体 95%±抖动；消融归因见表下；库值锚点重算脚本化 `recalc_golden.py`（2026-10-27）；50 题全量留待真实数据接入后扩） |
 
 Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"落地为每阶段有分数。合计约 34 人日（单人粗估，不装精确）。
 
@@ -289,7 +301,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 数据侧三条常驻通道：
 
-- 云文档**定时增量**：`scripts/sync_feishu.py` 可手动跑，也可 launchd 挂 `StartInterval`（plist 模板在 `scripts/`，默认 10 分钟）。每轮按 `(source_id, version)` 幂等跳过：`ingest_job` 两段都已 done **且** chunks 仍有该文档块才跳过（不重分块、不重写 provenance；TRUNCATE 后 ingest_job 残留 done 时自动重灌自愈），只有新 revision 才进流水线；chunk 面**恒为最新版**（`(doc_id, chunk_index)` 冲突更新），历史版本在 raw（`@rev` 键）+ DocVersion `supersedes` 链里，不删除；嵌入随同步用本地模型当场生成，不依赖事后回填
+- 云文档**定时增量**：`scripts/sync_feishu.py` 可手动跑，也可 launchd 挂 `StartInterval`（plist 模板在 `scripts/`，默认 10 分钟，装在本机 macOS、服务器侧不配）。每轮按 `(source_id, version)` 幂等跳过：`ingest_job` 两段都已 done **且** chunks 仍有该文档块才跳过（不重分块、不重写 provenance；TRUNCATE 后 ingest_job 残留 done 时自动重灌自愈），只有新 revision 才进流水线；chunk 面**恒为最新版**（`(doc_id, chunk_index)` 冲突更新），历史版本在 raw（`@rev` 键）+ DocVersion `supersedes` 链里，不删除；嵌入随同步用本地模型当场生成，不依赖事后回填
 - 平台数据每日 T+1 ETL；上线首日先经后台导出文件路一次性回填近 12 个月（**平台报表接口回溯窗口有限，窗口外没有第二来源**，这一路不适用"数据留原地"），之后只做增量
 - Agent 对话中暴露的"文档没写 / 写错了"回流成 `review_queue` 条目，人审后入库
 
@@ -309,10 +321,10 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 | router / LLM 超时 | 规则路由（意图关键词模板）兜底 |
 | LLM 慢 / 限流（交互路） | 请求路 LLM 调用（探测 / 路由 / text2sql 生成 / agent 总结）**单次不重试、各自限时**，总结超时回模板、超预算（已耗时 ≥60s）不再发起；端到端压在网关 150s 内（2026-10-22 实测：coding 端点同调用 10~90s 方差，30s×3 重试叠加曾致 504，访客 14s 即弃连）。限时档：探测 12s / 路由 15s / text2sql 生成 30s / **总结 60s**（2026-10-23 调整：35s 档在该端点分布下约五成超时）；`/agent/chat` ReAct 每轮 generate 限时 60s、整循环墙钟 120s（超限带已有 trace 收敛）；`/ingest` 抽取调用显式单发限时 |
 | 单路超时 / 异常 | 降级拼装，答案标注缺席路（响应 `degraded` 字段） |
-| text2sql 失败 | 重试一次，仍败则明示"事实数据缺席"——不编数、不降级发查询模板 |
+| text2sql 失败 | 生成单次不重试；执行失败回落口径感知模板（`sql_source=template(fallback)`），模板仍败才空证据并明示"事实数据缺席"——不编数 |
 | T+1 ETL 失败 | 原始层已存 API 原始响应，次日自动补跑，缺口行留状态标记 |
 | 抽取失败 | 登记 ingest_job 待重放（原始层保底） |
-| Neo4j 不可用 | graph 路跳过并标注；Postgres 不可用则服务不可用（事实与向量同库，接受该单点） |
+| Neo4j 不可用 | 设计：graph 路跳过并标注；**现状：graph 步异常未兜底，穿透为整问 JSON 500（兜底列待办）**；Postgres 不可用则服务不可用（事实与向量同库，接受该单点） |
 | 端点未捕获异常 | 全局 handler 统一返回 **JSON 500**（`detail` 带异常类名）——Starlette 默认纯文本 body 会让消费方 `.json()` 抛 SyntaxError 掩盖真错（2026-10-21 实测教训） |
 
 ### 7.3 路由决策
@@ -327,9 +339,9 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 操作类不进 `/ask`：由调用方直接调 `/actions/check`，`/ask` 识别为操作意图时返回端点指引而非答案。
 
-路由护栏约定（规则版，LLM 路由优先于规则）：① **锚词让贤**——图锚词（名下/负责/对接/谁）与指标词同现时（"李昂名下消耗最高的素材"），fact 置信降至 0.75 交 LLM 裁决，杜绝锚点被事实路静默丢弃；② **定义尾短路**——问句带释义尾（什么意思/怎么算/定义是什么）时归 concept，即使句中含操作词或指标词；③ **状态限定词如实标注**——"被暂停/已下线"类状态限定进不了 SQL 过滤器，事实证据挂 note 说明"状态限定未参与过滤"；④ 释义/规范词与聚合词冲突时以硬聚合信号（消耗/CPA/排名/最差等）为准查数，定语型指标词（跑量素材/爆量视频）不作硬信号。`/agent/chat` 响应下发 `can_commit_case`（服务端按案例生成角色判定），前端不本地硬抄角色表。
+路由护栏约定（规则版，LLM 路由只在弱置信时兜底）：① **锚词让贤**——图锚词（名下/负责/对接）与指标词同现时（"李昂名下消耗最高的素材"），fact 置信降至 0.75 交 LLM 裁决，杜绝锚点被事实路静默丢弃；② **定义尾短路**——问句带释义尾（什么意思/怎么算/定义是什么）时归 concept，即使句中含操作词或指标词；③ **状态限定词如实标注**——"被暂停/已下线"类状态限定进不了 SQL 过滤器，事实证据挂 note 说明"状态限定未参与过滤"；④ 释义/规范词与聚合词冲突时以硬聚合信号（消耗/CPA/排名/最差等）为准查数，定语型指标词（跑量素材/爆量视频）不作硬信号。`/agent/chat` 响应下发 `can_commit_case`（服务端按案例生成角色判定），前端不本地硬抄角色表。
 
-**融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路 RRF 合并 → 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。路由计划 **RouterPlan**（steps 带依赖与置信度、fallback 标志）是 models.py 一等类型，`ask.py` 只解释执行——路由评测直接对 plan 断言，不起整条 LLM 链路。
+**融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路去重合并（v1 用保序去重替代 RRF）→ 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。路由计划 **RouterPlan**（steps 带依赖与置信度、fallback 标志）是 models.py 一等类型，`ask.py` 只解释执行——路由评测直接对 plan 断言，不起整条 LLM 链路。
 
 **权限下推**：`guards/permission.py` 把 permissions.yaml 翻译成 **PermissionPlan**（metadata_filter / 可见 ID 集 / SQL 谓词 + 列白名单 + **属性黑名单** / 脱敏规则），vector、graph、text2sql 三路与 assemble 出口**只消费 plan、不读权限矩阵**——过滤在召回层内生效，assemble 只见过滤后结果，对外仅布尔 `permission_applied`（计数与明细进审计）。graph 路命中实体的**自身属性作为 `entity` 证据项**随关系一起返回（`Product.target_age` 这类属性型问题由此可答），属性白名单（外部 `allow_properties`，fail-closed）与黑名单（内部 `deny_properties`）都在该出口执行——这是它们唯一的执行点。SQL 谓词**案例级优先、品牌级兜底**（optimizer 的"负责案例"粒度 ≠ 对接品牌，品牌级会错杀）；text2sql 的生成 SQL 经五道闸校验后还由系统**注入语义不变量**（NOT unmatched、行谓词）——不信任生成的 SQL。越权值不得参与聚合：top-N / 均值一律算在过滤后集合上。翻译收口在一处，越权测试集只打 PermissionPlan 这一个 interface。
 
@@ -339,36 +351,36 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 | 级 | 做法 | 判定 |
 |---|---|---|
-| 1 规则归一 | ID 直接映射；名称清洗（去平台前后缀、大小写、全半角） | entity_alias 命中即接受 |
-| 2 相似候选 | embedding top-k | 相似度 ≥τ 进下一级（τ 随嵌入模型在 seed 上标定，Qwen3 初值 0.75） |
-| 3 LLM 判别 | 候选对交给 LLM | ≥0.8 接受；0.5–0.8 人审；<0.5 拒绝 |
+| 1 规则归一 | ID 直接映射；名称清洗（去平台前后缀、全半角、casefold） | entity_alias 命中即接受 |
+| 2 相似候选 | embedding top-k（top 5） | 相似度 ≥τ 进下一级（τ 随嵌入模型在 seed 上标定，初值 0.75） |
+| 3 LLM 判别 | 候选对交给 LLM | ≥0.8 接受；0.5–0.8 人审；<0.5 拒绝（**未实现，留作扩展**） |
 | 4 人审 | review_queue | 产物：entity_alias 行 |
 
-产物：entity_alias 表 + 人审条目。验收：seed 内已知同素材对 100% 命中；抽样 50 对齐正确率 ≥95%（进 11.3）。事实路同走此漏斗，以规则级 ID 归一为主（entity_alias 直接换算），embedding / LLM 只兜名称对齐；对不上的行标 unmatched 进 review_queue、不进跨平台对比。
+产物：entity_alias 表 + 人审条目。验收：seed 内已知同素材对 100% 命中；抽样对齐正确率 ≥95%（进 11.3）。事实路同走此漏斗，以规则级 ID 归一为主（entity_alias 直接换算），embedding / LLM 只兜名称对齐；对不上的行标 unmatched 进 review_queue、不进跨平台对比。**铁律：抽取产物必须先过对齐（L1）才能入图**——未对齐直接入图会污染检索（`scripts/enrich_aligned.py` 是历史 chunk 的对齐落地，`case_gen` 在草稿路执行同样纪律）。
 
 ## 八、五层存储
 
 | 层 | 存什么 | 落点 | 特性 |
 |---|---|---|---|
-| 原始层 | 原始文件、API 原始响应 | `data/raw/` | 不可变、带 hash、可重跑 |
-| 向量层 | chunk 文本、embedding、metadata | Postgres `chunks` | 回答"写了什么"；chunk 带 class / brand_id / case_id，检索按角色过滤 |
-| 图层 | 节点（带本体 class 与 provenance）、关系（带 confidence） | Neo4j | 回答"谁和谁有关系" |
-| 事实层 | `creative_metrics_daily_*`（platform × campaign × creative × day，一行一素材一平台一天）+ `unified_metrics` 视图 | Postgres | 回答"多少、趋势"；表内物化 campaign_id / case_id / brand_id 冗余列（etl_facts 从图侧关系回填，关系变更时刷新）——campaign / case / brand 级聚合与 row_filter 谓词的落点，不另建事实表；Text2SQL 只对视图与白名单视图生成 |
-| 溯源层 | `provenance`、`entity_alias`、`review_queue`、`audit_log`、`ingest_job` | Postgres | 审计（只追加、保留 ≥1 年、仅 admin 可读）、仲裁、对齐 |
+| 原始层 | 原始文件、API 原始响应 | `data/raw/` | 不可变（同 key 不同内容抛错）、带 hash、可重跑 |
+| 向量层 | chunk 文本、embedding、metadata | Postgres `chunks` | 回答"写了什么"；chunk 带 class / brand_id / case_id，检索按角色过滤；未分类 chunk 视为公共内容可检索 |
+| 图层 | 节点（单 Entity 标签 + class 属性 + provenance 内联）、关系（带 confidence） | Neo4j | 回答"谁和谁有关系"；entity_id 唯一约束 + class 索引 |
+| 事实层 | `creative_metrics_daily_*`（platform × campaign × creative × day，一行一素材一平台一天）+ `unified_metrics` 视图 | Postgres | 回答"多少、趋势"；表内物化 campaign_id / case_id / brand_id / product_id 冗余列（etl_facts 从图侧关系回填）——campaign / case / brand 级聚合与 row_filter 谓词的落点，不另建事实表；Text2SQL 只对视图生成 |
+| 溯源层 | `provenance`、`entity_alias`、`review_queue`、`audit_log`、`ingest_job`（另 auth/RBAC/菜单/报价 6 表——全库 15 表 + 1 视图） | Postgres | 审计（只追加、保留 ≥1 年、仅 admin 可读）、仲裁、对齐 |
 
-**双写一致性**：一次抽取写 Postgres（chunks / facts / provenance）与 Neo4j 两库。顺序 Postgres 先、Neo4j 后；幂等键 = provenance 的 `source_id + version`（version 缺省取 fetched_at 日期），图层一律 MERGE；`ingest_job` 记录每条原始记录两库落库状态，run.py 按 job 重放补偿，失败不跨库留影；每批次收尾对账——图层带 provenance 的节点 / 关系数 vs provenance 表计数，差异写 review_queue。
+**双写一致性**：一次抽取写 Postgres（chunks / facts / provenance）与 Neo4j 两库。顺序 Postgres 先、Neo4j 后；幂等键 = provenance 的 `source_id + version`（version 缺省取 fetched_at 日期），图层一律 MERGE；`ingest_job` 记录每条原始记录两库落库状态，run.py 按 job 重放补偿，失败不跨库留影；每批次收尾对账——图层带 provenance 的节点 / 关系数 vs provenance 表计数，差异写 review_queue（批量溯源下不追求相等，差异供人审）。
 
-**备份与重建**：`data/raw/` 是全系统唯一不可再生源，每日增量同步到第二位置（外置盘 / 对象存储，RPO 24h），落盘 hash 兼作完整性校验（多人换 MinIO 时改跨桶复制，约定不变）；Postgres 每日 pg_dump 一次，覆盖向量 / 事实 / 溯源 / 审计；图层可从 raw + ontology 全量重建（重建即全量重跑），Neo4j 低频 dump 排 ETL 前维护窗口，重建耗时 Phase 6 实测补齐。raw 丢失 = 业务历史丢失，任何迁移先迁 raw。
+**备份与重建**：`data/raw/` 是全系统唯一不可再生源，每日增量同步到第二位置（外置盘 / 对象存储，RPO 24h），落盘 hash 兼作完整性校验（多人换 MinIO 时改跨桶复制，约定不变）；Postgres 每日 pg_dump 一次，覆盖向量 / 事实 / 溯源 / 审计；图层可从 raw + ontology 全量重建（重建即全量重跑），Neo4j 低频 dump 排 ETL 前维护窗口。raw 丢失 = 业务历史丢失，任何迁移先迁 raw。
 
 ## 九、如何使用
 
 ### 9.1 身份与鉴权
 
-- **认证**：静态 service token（每 role 一枚），网关 / 引擎注入 `Authorization` 头；AdKG 校验 token → role，**不信任请求体自报的身份**。未带凭证 401；有凭证但无 Person 绑定，按最小权限只读全局类（Metric、Guideline、Channel，见 12.4）。token 本体进 `.env` / 密管，仓库里只有 bindings 映射结构（[12.4](#124-权限矩阵permissionsyaml)）
+- **认证**：静态 service token（每 role 一枚，`ADKG_TOKEN_<ROLE>` 环境变量），网关 / 引擎注入 `Authorization` 头；AdKG 校验 token → role，**不信任请求体自报的身份**。未带凭证 401；有凭证但无 Person 绑定，按最小权限只读全局类（Metric、Guideline、Channel，见 12.4）。token 本体进 `.env` / 密管，仓库里只有 bindings 映射结构（[12.4](#124-权限矩阵permissionsyaml)）
 - **Web 会话登录**（2026-10-24，spec §2）：web 前端走 `/auth/login`——账号在库（`app_user`，stdlib scrypt + 等时哑校验），`app_session` 表支撑 HttpOnly cookie（7 天滑动、可吊销、登录成败均审计）；`guards/http.py::resolve_identity` 优先级 **token > cookie > dev**，Bearer 直连路（smartServe / eval）不受影响
-- **user ↔ Person**：绑定落 entity_alias 表，作 row_filter 起点
+- **user ↔ Person**：绑定落 permissions.yaml `bindings` 段（token 路由 person；零绑/多绑时回退 body/query 自报），作 row_filter 起点
 - **外部客户**：独立签发的只读 token（与内部隔离），凭证只标识主体、不含 brand_id；租户绑定走 `Person→external_for→Brand`（N:M，一家客户多品牌即多条），变更走 review_queue 人审并记审计；token 设有效期，吊销 = 从 bindings 移除映射并记审计
-- **Agent 受托**：凭证同时携带 agent_id 与终端用户身份；生效权限取 Agent role 与用户 role 的**交集**（最小权限），行过滤取更严者；审计记双身份
+- **Agent 受托**（设计目标）：凭证携带 agent_id 与终端用户身份，生效权限取两 role **交集**（最小权限）、行过滤取更严者——**求交当前未实现**：现状单 role 调用，仅审计记双身份（audit_log.agent_id）
 - **本地开发**：`ADKG_DEV_AUTH=off` 时允许 body 传 role（仅限本地）
 - **收口（2026-10-23）**：token→role + 绑定 person / dev 兜底的认证解析统一走 `guards/http.py::resolve_identity`（各端点不再自抄认证块——散抄曾致漏门）；审计写入统一走 `guards/audit.py::audit`（四端点各抄一份 INSERT 是漏账温床，verdict 枚举由库约束兜底）；Agent 工具面注册表化（`_TOOLS` 名→描述+handler 同时驱动 system prompt、未知工具提示与分发——加工具只改一处）
 - **收口补完（2026-10-24）**：①`role ∈ planner.roles` 预检并入 `resolve_identity`（各端点的"未知角色 401"不再自抄，actions/guideline 两个漏网端点同补）；②planner / graph 惰性单例挂 `app.state`（`guards/http.py::get_planner / get_graph`——http 层曾反向 import `routes.ask._planner`，且 planner 与 actions 各建一份 GraphStore）；③`audit()` 增 `agent_id`（/actions/check 双身份）与外部 `conn`（/ingest/case-commit 与别名注册同事务落账）参数并返回 `audit_id`——最后两处手写 INSERT 消灭
@@ -419,15 +431,14 @@ Authorization: Bearer <service-token>
 }
 ```
 
-`answer` 为 **markdown 文本**：agent 总结结论先行、每条事实带 `[#N]` 引用；清单/排名/多条对比用表格输出，前端按 markdown 渲染（LLM 不可用时降级为纯文本模板摘要）。
+`answer` 为 **markdown 文本**：agent 总结结论先行、每条事实带 `[#N]` 引用；清单/排名/多条对比用表格输出，前端按 markdown 渲染（LLM 不可用时降级为纯文本模板摘要，`answer_source` 标注 agent/template）。
 
 操作类请求走独立的裁决端点（AdKG 只裁决，不代执行）：
 
 ```http
 POST /actions/check
 Authorization: Bearer <service-token>
-X-ADKG-Actor: agent:aigc-01
-{"op": "delete_creative", "target": "Creative:creative_992"}
+{"op": "delete_creative", "target": "Creative:creative_992", "agent_id": "agent:aigc-01"}
 ```
 
 ```json
@@ -436,7 +447,7 @@ X-ADKG-Actor: agent:aigc-01
  "audit_id": "01JGZ8K7Q4M3NP2T5V9WXBCDRE"}
 ```
 
-放行时返回 `{"decision": "allow", "basis": "…", "audit_id": "…"}`，调用方自行执行后回传结果与平台回执，补写同一条审计（裁决与回执分两段）。动作词表 `read / create_creative / pause_campaign / delete_creative …` 见 `schema.yaml#actions`。
+放行时返回 `{"decision": "allow", "reason": "…", "audit_id": "…"}`；调用方自行执行后回传结果与平台回执，补写同一条审计（裁决与回执分两段——回执通道现为约定设计，未落地）。动作词表 `read / create_creative / pause_campaign / delete_creative …` 见 `schema.yaml#actions`。
 
 AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 机判阈值结果（时长 / 尺寸等结构化项，不做语义比对）；`POST /ingest/assertion` 生成后写回断言（`{"subject": "Creative:creative_1007", "predicate": "violates", "object": "Guideline:G-03", "confidence": 0.91}`，provenance 为 conversation / 20）。语义 / 多模态比对归 smartServe 的 AIGC Agent 或人工，AdKG 收口规范检索与断言写回，过权限与审计。
 
@@ -454,13 +465,13 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 | 通道 | 入口 | 机制 |
 |---|---|---|
-| 手动整理的文件 | `/ingest/doc` 或 `connectors/files` | 解析 → 分块 → 向量 + 抽取入图 |
+| 手动整理的文件 | `connectors/files`（run_docs 管线，load_seed / 手动触发） | 解析 → 分块 → 向量 + 抽取入图 |
 | 云文档 | `connectors/feishu` 定时 | 按 revision 增量，新版本 `supersedes` 旧版 |
 | 平台效果数据 | `connectors/platforms` 每日 | T+1 ETL 进事实表，经 `mappings/` 统一口径 |
 | 达人主数据（星图·模拟） | agent 工具 `fetch_creator_from_platform`（spec §6） | Playwright 无头浏览器真实点击抓取，逐步截图进轨迹；platform_api / 80 幂等 MERGE 入图——连接器主数据同步，非 agent 断言 |
 | 达人主数据（手工/表格） | web 达人库「录入」表单与「导入 CSV」（spec §13.1） | conversation/20 与 official_doc/60 低权威入库，平台抓取可覆盖；同一权威仲裁（高权威在场不覆盖，冲突去重进 review_queue） |
-| CRM / 组织系统主数据 | 定期导出文件走 `/ingest/doc`（演示期即 `data/seed/org_people.csv`） | 解析入图标 system_of_record——authority 顶层级有真实数据来源 |
-| 数仓 / 业务库 | `connectors/warehouse` | 只读 schema 建映射（供 router 理解字段语义），不搬数不直查；指标查询统一走事实层视图（FDW 直查留作扩展） |
+| CRM / 组织系统主数据 | 定期导出文件落 data/ 由 `load_seed` 入图（演示期即 `data/seed/org_people.csv`） | 解析入图标 system_of_record——authority 顶层级有真实数据来源 |
+| 数仓 / 业务库 | `connectors/warehouse`（**规划，未实现**） | 只读 schema 建映射（供 router 理解字段语义），不搬数不直查；指标查询统一走事实层视图（FDW 直查留作扩展） |
 | Agent 断言（AIGC 比对结果等） | `/ingest/assertion` | 带低 authority provenance 入图，冲突按 [12.2](#122-权威度authorityyaml) 进 review_queue |
 | 飞书文档里的新品牌 / 商品 / 案例 | web Agent 对话（`/ingest/case-draft` → `case-commit`） | 定时同步只入 chunks；草稿经人确认后建实体入图（official_doc / 60），Person 未对齐不入图 |
 | 对话中暴露的缺口 | Agent 自动写 `review_queue` | 人审通过后入库 |
@@ -486,10 +497,10 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 |---|---|---|
 | 数据看板 `/` | management/ae/optimizer/finance（client 只看自己品牌） | `/stats/overview`（M5） |
 | 达人库 `/creators` | management/ae/optimizer（finance 结算视角） | `/creators`（M2，Creator 本体扩展）；**数据闭环（M8，spec §13.1）**：录入 `POST /creators`（conversation/20）与 CSV 导入 `POST /creators/import`（official_doc/60），与平台抓取（80）、种子（100）构成四来源梯度——列表「来源」列 + 详情来源卡；高权威在场不覆盖、冲突去重进 review_queue |
-| 案例 `/cases` | management/ae/optimizer/client（client 只看自己品牌） | `/cases` + `/cases/{id}`（M9，spec §13.2 全生命周期）：列表批量指标（汇总比）+ 详情六段（概要/内容 chunks/指标/状态流转条含拒因/收益与素材明细/合作达人）；行过滤后分页（锚点角色首页不被不可见案例占满） |
+| 案例 `/cases` | management/ae/optimizer/client（client 只看自己品牌） | `/cases` + `/cases/{id}`（M9，spec §13.2 全生命周期）：列表批量指标（汇总比）+ 详情六段（概要/内容 chunks/指标/状态流转条含拒因/收益与素材明细/合作达人）；行过滤后分页（锚点角色首页不被不可见案例占满）；阶段迁移控件由详情下发的 `stage_flow.transitions` 驱动（schema#constraints 派生，前端不手抄状态机） |
 | 客户 `/brands` | management/ae；client 只看自己 | `/brands`（M3） |
 | 财务结算 `/settlements` | management/finance | `/settlements`（M4） |
-| Agent 助手（全局悬浮窗，SSE 流式） | 所有人（证据与草稿随角色过滤） | `/agent/chat/stream`（事件契约：thought / tool_start / tool_step 浏览子步含截图 / tool_result / reply / draft / done；ReAct 循环生成器化，`/agent/chat` 聚合同流保旧契约；工具面新增 `fetch_creator_from_platform`——Playwright 无头真实点击星图·模拟、逐步截图、幂等入图，spec §6） |
+| Agent 助手（全局悬浮窗，SSE 流式） | 所有人（证据与草稿随角色过滤） | `/agent/chat/stream`（事件契约：thought / tool_start / tool_step 浏览子步含截图 / tool_result / reply / draft / done / error；ReAct 循环生成器化，`/agent/chat` 聚合同流保旧契约；工具面新增 `fetch_creator_from_platform`——Playwright 无头真实点击星图·模拟、逐步截图、幂等入图，spec §6） |
 | 图谱展开 `/graph` | management/ae/optimizer/creative | `/graph/entity`（Case/Product/Creative 类实体响应附 `stats`：指标汇总比——cost/ctr/cvr/cpa/天数 + 覆盖平台；Product 另附交易段 orders/gmv/购买率（§六 交易口径分列）；行权限过滤，client 视角越权对象不出数；Creative 投放未对齐时不出卡——§7.4 对齐漏斗的诚实边界） |
 | 规范检查 | 创意 / AIGC | `/guideline/check` |
 | 管理后台 `/admin` | management/admin（读门 `admin_view`） | 审计流水（action/verdict/role/关键词筛选）+ 人审队列（只读 + approve/reject 处置，门 review_resolve）+ 账号一览（写操作在人员管理页）；矩阵视图已迁权限管理页 |
@@ -508,24 +519,36 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 **认证与角色头**：web 走**服务端会话**（spec §2）——`POST /auth/login` 校验 `app_user`（stdlib scrypt + 等时哑校验防用户名探测），签发 `app_session` 表支撑的 HttpOnly cookie（7 天滑动续期、可吊销）；`resolve_identity` 解析优先级 **token > cookie > dev**，登录成败均落审计。~~X-Adkg-Role 换 token~~ **已撤**（2026-10-24）：nginx 不再按头注入 Authorization，web 全靠会话 cookie；`Authorization: Bearer` 直连路保留给 smartServe / eval。每账号绑定唯一 role + Person，**演示期的管理员自由切换身份已移除**（真系统不留后门）；本地开发 `ADKG_DEV_AUTH=off` 不变。
 
-## 十、快速开始（规划，代码就绪后生效）
+## 十、快速开始
 
 ```bash
-docker compose up -d                         # Postgres:5433  Neo4j:7474/7687
+docker compose up -d                         # Postgres:5433  Neo4j:7474/7687  星图·模拟:8100
 uv sync
 cp .env.example .env                         # 填 LLM key、service token；本地开发可 ADKG_DEV_AUTH=off
-uv run python scripts/init_db.py             # 建表（含 audit_log、ingest_job、app_user/app_session）、Neo4j 约束
+uv run python scripts/init_db.py             # 建表（001–010）+ 双账号 + Neo4j 约束；幂等
 ADKG_USER_PASSWORD=xxx uv run python scripts/init_users.py   # web 登录账号（不设密码则随机生成打印一次）
+export HF_ENDPOINT=https://hf-mirror.com     # 嵌入模型下载；模型已缓存后改设 HF_HUB_OFFLINE=1 断网防卡
 uv run python scripts/gen_seed.py            # 生成种子：CSV 进 data/seed，文档直写 data/raw（幂等，clone 后首跑）
-uv run python scripts/load_seed.py           # 导入种子数据（含同素材双平台与 violates 断言样例）
-uv run uvicorn adkg.api.main:app --reload    # http://127.0.0.1:8000/docs
+uv run python scripts/load_seed.py           # 导入种子数据（含同素材双平台与 violates 断言样例）；幂等
+uv run uvicorn adkg.api.main:app --port 8000 # http://127.0.0.1:8000/docs（改代码后要重启，默认没挂 --reload）
+cd web && bun run dev                        # 前端 :5173（vite 代理 → :8000；用 bun，pnpm 与 Node 22.23 不兼容）
+```
+
+验证与评测：
+
+```bash
+HF_HUB_OFFLINE=1 uv run pytest                              # 全量 255（库不在线自动跳集成）
+uv run python eval/run_eval.py                              # golden set 38 题（规则判据 + LLM judge）
+uv run python eval/run_ablation.py                          # 消融：multi_hop 图谱增益归因
+bunx promptfoo@latest eval -c promptfooconfig.json -j 1 --no-cache   # 多角色矩阵 24 用例（必须串行+关缓存）
+uv run python scripts/sync_feishu.py                        # 飞书增量同步（.env FEISHU_DOCS / FEISHU_FOLDER）
 ```
 
 演示用 `data/seed/` 合成数据；真实部署先做 12 个月历史回填（7.2），两条路径分开。
 
 ## 十一、使用达到的效果
 
-> 本章为**设计目标与演示脚本**，非实测数据；实测以 Phase 6 评测报告为准。
+> 11.1 / 11.2 为演示脚本与目标态叙事；11.3 表是**设定的目标值**，实测小结见表下（Phase 6 终评，2026-10-24）。
 
 ### 11.1 演示级效果（六个画面）
 
@@ -549,20 +572,22 @@ uv run uvicorn adkg.api.main:app --reload    # http://127.0.0.1:8000/docs
 
 ### 11.3 量化验收
 
-以下为**设定的目标值**，验收时跑 `eval/run_eval.py` 得出（LLM judge 按要点打分 + 人工抽检 20%，一致率 <90% 以人工为准并修 rubric）：
+以下为**设定的目标值**，验收跑 `eval/run_eval.py`（LLM judge 按要点打分 + 人工抽检 20%，一致率 <90% 以人工为准并修 rubric）：
 
 | 指标 | 目标 | 说明 |
 |---|---|---|
 | golden set 回答正确率 | ≥ 80% | 判据 = 要点命中 + 数字一致 + 引用可溯源（[12.3](#123-评测集格式golden_setjsonl)） |
 | 引用可溯源率 | 100% | 硬性，缺来源即判错 |
-| multi_hop 子集命中 | 多于双路基线 | 20 题种子仅验方向；双路+Text2SQL 在 multi_hop 上零贡献，增益归因图谱；扩至 50 题（multi_hop ≥15）后复测 |
+| multi_hop 子集命中 | 多于双路基线 | 双路+Text2SQL 在 multi_hop 上零贡献，增益归因图谱（消融见 7.1） |
 | fact 子集 vs 双路+Text2SQL | 预期打平 | 消融边界——图谱不靠它赢，标出边界比全赢更可信 |
 | concept 子集召回命中率 | 比双路 ≥ +15 pt | vector 主路线的兜底指标 |
 | 路由准确率 | ≥ 90% | 对照 `expected_routes`；走错的由三路全跑兜底 |
 | 越权泄漏 | 0 | 构造题含三类：外部客户跨品牌、跨两跳（client 问其他品牌 Campaign 消耗）、越权值参与聚合 |
 | 口径一致性 | 人工核对零错误 | 同一素材两平台在 `unified_metrics` 下可比 |
-| 抽取 precision / recall | ≥ 0.85 | 30 段人工标注集回归，改 prompt / schema 必跑 |
-| 实体对齐抽样正确率 | ≥ 95% | 抽 50 对（7.4） |
+| 抽取 precision / recall | ≥ 0.85 | 人工标注集回归，改 prompt / schema 必跑 |
+| 实体对齐抽样正确率 | ≥ 95% | 抽样对（7.4） |
+
+**实测小结**（Phase 6 终评，2026-10-24，38 题）：规则判据口径 multi_hop 17/17 全过；LLM judge 要点命中 32–34/35（跨 run 抖动；历史抖动源为判据串债与 judge 波动，见 `eval/runs/` 存档）；本地复跑 37/38（时点产物）。回归底座：pytest 255 绿（截至 2026-10-27）、promptfoo 多角色矩阵 24 用例全绿（时点记录；批任务永不上服务器，docs/deployment.md §五）。
 
 非功能目标（设计值）：graph 路 p95 ≤ 5s、text2sql 路 ≤ 15s、归因混合 ≤ 30s；每问 LLM 调用 ≤ 3 次；并发 ≤ 10。部署口径：演示与内部为单机 docker-compose，不承诺 SLA；客户方外部自助看数为演进项（独立部署 + 网络隔离）；全量重跑抽取约 10⁷ token 量级（满配规模假设，seed 更小）。
 
@@ -583,16 +608,16 @@ source_type : system_of_record | platform_api | official_doc | wiki | conversati
               （CRM / 案例系统 / 组织系统等内部主数据源归 system_of_record）
 source_id   : 文档 ID / 文件 hash / API 请求标识
 fetched_at  : ISO 时间
-authority   : 由 source_type 查表得出（12.2），不单独配置
+authority   : 由 source_type 查表得出（12.2），不单独配置（模型层强制，手给不符值抛异常）
 ---- 可选 ----
 source_url  : 可回跳地址
-version     : 文档 revision / 数据批次
+version     : 文档 revision / 数据批次（缺省取 fetched_at 日期作幂等键）
 confidence  : 抽取置信度 0–1（事实表恒为 1）；≥0.7 入图、0.4–0.7 进 review_queue、<0.4 丢弃
 ```
 
 ### 12.2 权威度（`authority.yaml`）
 
-`system_of_record(100) > platform_api(80) > official_doc(60) > wiki(40) > conversation(20)`，五级与 source_type 一一对应。同一实体字段冲突时取高者，低者标 `conflicted` 保留供人审。**同分规则**：authority 相同（如两个 Agent 同为 conversation）比 confidence，高者暂胜；缺失或相等比 fetched_at 取新者；仍不能判定则双方标 `conflicted` 进 review_queue。
+`system_of_record(100) > platform_api(80) > official_doc(60) > wiki(40) > conversation(20)`，五级与 source_type 一一对应。同一实体字段冲突时取高者（**当前在低权威写路径实现**：`/ingest/assertion`、达人录入——高者在场不覆盖、冲突进 review_queue；常规 MERGE 为直接覆盖）。**同分规则**（tie_breaker 链，`authority.yaml` 声明的仲裁契约）：authority 相同（如两个 Agent 同为 conversation）比 confidence，高者暂胜；缺失或相等比 fetched_at 取新者；仍不能判定则双方标 `conflicted` 进 review_queue。
 
 ### 12.3 评测集格式（`golden_set.jsonl`）
 
@@ -604,24 +629,25 @@ confidence  : 抽取置信度 0–1（事实表恒为 1）；≥0.7 入图、0.4
  "notes": "默认分母：该对接人名下全部 live 案例"}
 ```
 
-`type ∈ {multi_hop, fact, concept, attribution, operation}`，20 题种子按 5 / 4 / 4 / 4 / 3 分布，扩至 50 题（multi_hop ≥15）挂 Phase 6。rubric：正确 = 要点命中 + 数字一致 + 引用可溯源。`data_window` 标明题目依赖的数据窗口——种子为滚动窗口（止于上月），窗口类题（上月/近 N 天）的期望数字随数据重生成联动改写；超出已沉淀窗口的题在 Phase 0 当场改写，不留给评测日爆雷。**库值锚点重算脚本化（`eval/recalc_golden.py`）**：种子扩容 / 口径调整后按当前库（PG / Neo4j 直查）重算期望里的数值与实体锚——dry-run 出 diff、`--yes` 落盘、幂等；日常回归仍用 `run_eval.py` 对拍不重算。
+`type ∈ {multi_hop, fact, concept, attribution, operation}`；20 题种子按 5/4/4/4/3 起步，Phase 6 扩至 **38 题**（multi_hop 17 / fact 10 / concept 4 / attribution 4 / operation 3）；50 题全量（multi_hop ≥15）留待真实数据接入后扩。rubric：正确 = 要点命中 + 数字一致 + 引用可溯源。`data_window` 标明题目依赖的数据窗口——种子为滚动窗口（止于上月），窗口类题（上月/近 N 天）的期望数字随数据重生成联动改写。**库值锚点重算脚本化（`eval/recalc_golden.py`）**：种子扩容 / 口径调整后按当前库（PG / Neo4j 直查）重算期望里的数值与实体锚——dry-run 出 diff、`--yes` 落盘、幂等；日常回归仍用 `run_eval.py` 对拍不重算。
 
 ### 12.4 权限矩阵（`permissions.yaml`）
 
-一行一个 role，人和 Agent 共用。身份来源：`bindings` 段只存 token 标识 → role / Person 的映射结构，token 本体进 `.env` / 密管（git 资产不放明文密钥）；**token 路由 person 一律取 bindings 绑定值**（body/query 自报 person 仅 dev 模式兜底，token 路不采信）。默认策略：**内部角色类白名单 + 属性黑名单；外部角色（客户方）一律白名单 `allow_properties`，schema 新增属性默认不可见（fail-closed）**；CI 校验新增属性无 allow / deny 覆盖则报警（Phase 6）。指标列权限：内部 `metrics_deny` / 外部 `metrics_allow`，作用域 = `unified_metrics` 列 + Text2SQL 可选字段（per-role 视图）。**派生联动**：deny 一列时同步 deny 含它的派生列（deny cost 连带 cpa / roi，防乘法反推）；gross_margin 为内部核算列，Case 属性与指标列两处同步 deny。**行权限 fail-closed（2026-10-23）**：配置了 `row_filter` 的角色在 person 缺失、图中无此人或展开结果为空时产出 **deny-all plan**（`PermissionPlan.deny_all=True`——graph / vector 路零证据、text2sql 恒假谓词），而非跳过行过滤；`/graph/entity` 主实体与 `/ask` graph 路属性证据同过类白名单与可见集闸（全局类豁免）；`/creative/brands` 与 Agent 品牌工具按可见 Brand 裁剪；`/ingest/*` 写端点要求 `actions` 含对应写动作（`write_assertion` 等），审计随写落账。
+一行一个 role，人和 Agent 共用。身份来源：`bindings` 段只存 token 标识 → role / Person 的映射结构，token 本体进 `.env` / 密管（git 资产不放明文密钥）；**token 路由 person 取 bindings 唯一绑定**（零绑/多绑时回退 body/query 自报兜底——当前每 role 恰一条绑定，不触发）。默认策略：**内部角色类白名单 + 属性黑名单；外部角色（客户方）一律白名单 `allow_properties`，schema 新增属性默认不可见（fail-closed）**。指标列权限：内部 `metrics_deny` / 外部 `metrics_allow`，作用域 = `unified_metrics` 列 + Text2SQL 可选字段（per-role 视图）。**派生联动**：deny 一列时同步 deny 含它的派生列（deny cost 连带 cpa / roi，防乘法反推；同理 impressions→cpm/ctr、clicks→ctr/cvr）；gross_margin 为内部核算列，Case 属性与指标列两处同步 deny。**行权限 fail-closed（2026-10-23）**：配置了 `row_filter` 的角色在 person 缺失、图中无此人或展开结果为空时产出 **deny-all plan**（`PermissionPlan.deny_all=True`——graph / vector 路零证据、text2sql 恒假谓词），而非跳过行过滤；`/graph/entity` 主实体与 `/ask` graph 路属性证据同过类白名单与可见集闸（全局类豁免）；`/creative/brands` 与 Agent 品牌工具按可见 Brand 裁剪；`/ingest/assertion` 要求 `actions` 含 `write_assertion`；`/ingest/case-commit` 走案例生成角色门（CASEGEN_ROLES：admin/management/optimizer/ae）；审计随写落账。
 
 ```yaml
 bindings:
   tok-optimizer-li: {role: optimizer, person: Person:li}
 
 optimizer:                          # 内部角色：类白名单 + 属性黑名单
-  classes: [Case, Campaign, Creative, Channel, Metric, Guideline]
+  classes: [Case, Campaign, Creative, Channel, Metric, Guideline, Creator]
   deny_properties: [Case.bd_budget, Case.gross_margin]
   metrics_deny: [gross_margin]
   actions: [read, create_creative, pause_campaign, delete_creative]
   row_filter: Person(responsible_for)->Case<-belongs_to-Campaign-uses->Creative
 
 client:                             # 外部角色：一律白名单
+  external: true                    #   外部标记：驱动 assemble/graph 出口人名脱敏
   classes: [Case, Campaign, Creative, Metric]
   allow_properties: [Case.stage, Case.lost_reason, Campaign.status]
   metrics_allow: [cost, ctr, cvr, conversions]
@@ -636,7 +662,7 @@ client:                             # 外部角色：一律白名单
 - 内部主键平台无关、本体命名空间内唯一，格式 `{class}:{slug}`（`Case:C-2026-008`、`Creative:creative_992`、`Guideline:G-03`）
 - 平台 ID 一律作 external_id 进 `entity_alias(source, external_id, internal_id)`，不进任何主键
 - 事实表带 `platform + creative_local_id` 及物化的 campaign_id / case_id / brand_id 冗余列（etl_facts 按图侧关系回填，见八），本体 ID 经 entity_alias 换算后进 `unified_metrics`；对不上标 unmatched 进 review_queue、不进跨平台对比
-- token → Person 绑定同落 entity_alias（9.1）
+- token → Person 绑定落 permissions.yaml `bindings` 段（9.1；row_filter 锚点直接用绑定 person ID）
 - seed 预置同一素材双平台样例（画面 3 与口径一致性验收的锚点）
 
 ### 12.6 数据边界与保留
@@ -653,6 +679,6 @@ client:                             # 外部角色：一律白名单
 | 调用 | 持 service token 调 `/ask` `/graph` `/actions/check` `/guideline/check`，注册为工具；Agent 受托调用带双身份（9.1） | 为引擎提供"查什么、能动什么"的依据 |
 | 写操作 | `/actions/check` 只裁决（allow / deny + 依据 + audit_id）；引擎执行后回传结果与平台回执，补写审计 | 不代执行（决策点不是执行点） |
 | AIGC | 语义 / 多模态比对归素材 AIGC Agent 或人工 | 收口规范检索（`/guideline/check`）与断言写回（`/ingest/assertion`），过权限与审计 |
-| 故障边界 | AdKG 不可用时**fail-closed**：知识类请求报错并明示原因，不旁路、不缓存降级 | 底层存储凭据不向引擎暴露，绕过直查在部署上不可达；可用性由 AdKG 自身负责（单机 compose 重启恢复），不转嫁给调用方 |
+| 故障边界 | AdKG 不可用时**fail-closed**：知识类请求报错并明示原因，不旁路、不缓存降级 | 底层存储凭据不向引擎暴露；PG 仅经 WireGuard 隧道可达 B 机，隔离靠账号与 database 边界（agent_user 无 adkg 库权限）；可用性由 AdKG 自身负责（compose 跑库 + systemd Restart=always 跑 API），不转嫁给调用方 |
 
 换行业的重写边界见 9.6：复用代码与评估协议，重写本体与数据资产——这是本项目作为方法论的可复用边界。
