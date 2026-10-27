@@ -78,18 +78,24 @@ def ask(request: Request, body: dict,
     graph = get_graph(request)
     results: dict[str, dict] = {}
     for step in decision.plan.steps:                        # 按序执行即满足依赖
-        if step.route.value == "graph":
-            r = graph_search.search(question, plan, graph, person=person)
-        elif step.route.value == "text2sql":
-            dep = step.params.get("entity_ids_from")
-            entity_ids = results.get(dep, {}).get("entity_ids") if dep else None
-            if entity_ids:            # graph 圈到 Brand/Case/Campaign 时展开成素材再进 SQL（§7.3）
-                entity_ids = graph.expand_to_creatives(entity_ids) or None
-            r = text2sql.run(question, plan, env["ADKG_PG_RO_DSN"], entity_ids,
-                             generator=(lambda s, u: llm.chat_json(s, u, timeout=30, max_retries=0))
-                             if llm else None)
-        else:
-            r = vector_search.search(question, plan, env["ADKG_PG_DSN"], embed_fn=embed_fn)
+        try:
+            if step.route.value == "graph":
+                r = graph_search.search(question, plan, graph, person=person)
+            elif step.route.value == "text2sql":
+                dep = step.params.get("entity_ids_from")
+                entity_ids = results.get(dep, {}).get("entity_ids") if dep else None
+                if entity_ids:      # graph 圈到 Brand/Case/Campaign 时展开成素材再进 SQL（§7.3）
+                    entity_ids = graph.expand_to_creatives(entity_ids) or None
+                r = text2sql.run(question, plan, env["ADKG_PG_RO_DSN"], entity_ids,
+                                 generator=(lambda s, u: llm.chat_json(s, u, timeout=30, max_retries=0))
+                                 if llm else None)
+            else:
+                r = vector_search.search(question, plan, env["ADKG_PG_DSN"], embed_fn=embed_fn)
+        except Exception:
+            # 单路异常该路缺席、其余路照常（§7.2 缺席不如降级）：graph 步曾裸调用，
+            # Neo4j 宕机 ServiceUnavailable 穿透为整问 500（缺陷备忘⑬，2026-10-27 修）；
+            # vector/text2sql 自带兜底（关键词兜底/回落模板），统一包裹只兜漏网异常
+            r = {"evidence": [], "degraded": True}      # 形状同 vector 路 degraded，assemble 记缺席路
         results[step.step_id] = {"route": step.route.value, "confidence": step.confidence, **r}
 
     # 事实行→图补 join（"谁做的"）：text2sql 命中的素材回查负责人，作为 relation 证据

@@ -327,9 +327,18 @@ class TestIngestEndpoints:
         assert r.status_code == 403
 
     def test_commit缺draft422(self):
+        # 角色用 ae：management 无 create_case 动作，2026-10-27 动作门后会被 403 挡在 422 之前
         r = self._client().post("/ingest/case-commit", json={
-            "role": "management", "user": "Person:chen"})
+            "role": "ae", "user": "Person:li"})
         assert r.status_code == 422
+
+    def test_commit动作门403(self):
+        # 备忘⑰收口：optimizer 过 CASEGEN_ROLES 角色门但 actions 无 create_case
+        # → 动作门 fail-closed（§12.4），与 /ingest/assertion 同款
+        r = self._client().post("/ingest/case-commit", json={
+            "role": "optimizer", "user": "Person:li"})
+        assert r.status_code == 403
+        assert "create_case" in r.json()["detail"]
 
     def test_未认证401(self):
         r = self._client(ADKG_DEV_AUTH="on").get("/ingest/docs")

@@ -30,14 +30,28 @@ ACCEPT, REVIEW = 0.7, 0.4
 CASEGEN_ROLES = {"admin", "management", "optimizer", "ae"}     # 案例生成 = 内部操作角色
 
 
-def _casegen_role(request: Request, body: dict,
-                  authorization: str | None) -> tuple[str, str | None]:
+def can_commit_case(planner, role: str) -> bool:
+    """案例提交判定（单一来源）：CASEGEN_ROLES 角色门 + actions 含 create_case
+    动作门（§12.4 fail-closed）——/ingest/case-commit 写门与 /agent/chat 下发
+    can_commit_case 共用此处，别两处抄（2026-10-27 收口：曾只查角色门，
+    optimizer 无 create_case 动作也能 commit）。"""
+    return role in CASEGEN_ROLES and "create_case" in \
+        planner.perms["roles"].get(role, {}).get("actions", [])
+
+
+def _casegen_role(request: Request, body: dict, authorization: str | None,
+                  *, commit: bool = False) -> tuple[str, str | None]:
     """认证 + 案例生成角色门（token 反查优先，dev 模式 body 兜底，fail-closed）；
-    person 一并返回（token 路取绑定值——审计 user_id 用，2026-10-24 起）。"""
+    person 一并返回（token 路取绑定值——审计 user_id 用，2026-10-24 起）。
+    commit=True（case-commit 专用）叠加 create_case 动作门——§12.4「/ingest/*
+    写端点要求 actions 含对应写动作」，与 /ingest/assertion 同款；角色门只是
+    预检快失败，写门以动作判定为准。"""
     from adkg.guards.http import resolve_identity
-    role, person, _planner = resolve_identity(request, authorization, body=body)
+    role, person, planner = resolve_identity(request, authorization, body=body)
     if role not in CASEGEN_ROLES:
         raise HTTPException(403, f"角色 {role} 无案例生成权限（允许：{sorted(CASEGEN_ROLES)}）")
+    if commit and not can_commit_case(planner, role):
+        raise HTTPException(403, f"角色 {role} 无案例提交权限（actions 不含 create_case，§12.4 动作门）")
     return role, person
 
 
@@ -117,7 +131,7 @@ def case_commit(request: Request, body: dict,
                 authorization: str | None = Header(default=None)) -> dict:
     """草稿确认入图：服务端重校验（不信客户端）→ 写实体/关系 → 别名注册 → 审计。"""
     env = request.app.state.env
-    role, person = _casegen_role(request, body, authorization)
+    role, person = _casegen_role(request, body, authorization, commit=True)
     draft = body.get("draft")
     if not isinstance(draft, dict):
         raise HTTPException(422, "draft 必填（/ingest/case-draft 的返回原样传回）")

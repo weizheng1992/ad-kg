@@ -57,6 +57,19 @@ class TestAsk:
         assert body.get("action") == "guidance" and body["endpoint"] == "/actions/check"
         assert "evidence" not in body
 
+    def test_graph步宕机降级不炸整问(self, client, monkeypatch):
+        # 备忘⑬（2026-10-27 修）：graph 步异常该路缺席、其余路照常（§7.2 缺席
+        # 不如降级）——曾裸调用，Neo4j 宕机 ServiceUnavailable 穿透为整问 500
+        import adkg.retrieval.graph_search as gs
+
+        def _boom(*a, **k):
+            raise RuntimeError("simulated neo4j down")
+        monkeypatch.setattr(gs, "search", _boom)
+        r = client.post("/ask", json={"question": "李昂名下有哪些 live 案例",
+                                      "role": "management", "user": "Person:chen"})
+        assert r.status_code == 200
+        assert "graph" in r.json()["degraded"]
+
     def test_生产模式无token返回401(self):
         c = _client(ADKG_DEV_AUTH="on")
         assert c.post("/ask", json={"question": "x", "role": "management"}).status_code == 401

@@ -7,10 +7,14 @@ networks:
   shared-infra:
     external: true
 
+# 容器自愈：全服务 restart: unless-stopped——崩溃/宿主重启后 dockerd 自动拉起，手工
+# stop 或 compose down 后不再拉起（保留人的最终决定权）。与宿主 systemd Restart=always
+# 管 adkg-api（非容器，deploy/systemd/adkg-api.service）互补：两层各兜各的进程
 services:
   postgres:
     image: pgvector/pgvector:pg18
     container_name: adkg-postgres
+    restart: unless-stopped
     networks:
       - default
       - shared-infra
@@ -45,6 +49,7 @@ services:
   neo4j:
     image: neo4j:2025.09-community        # 日历版本制下取 LTS 线（§五）
     container_name: adkg-neo4j
+    restart: unless-stopped
     environment:
       NEO4J_AUTH: ${NEO4J_AUTH}
       # 内存压限：4G 机器防 Neo4j 按默认比例抓满（docs/deployment.md §一）
@@ -62,6 +67,7 @@ services:
   mock-douyin:
     build: ./mock-douyin
     container_name: adkg-mock-douyin
+    restart: unless-stopped
     ports:
       - "8100:8100"
     volumes:

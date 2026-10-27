@@ -110,6 +110,14 @@ class TestAgentChat:
         assert body["trace"][0]["tool"] == "ask_knowledge"
         assert "已按证据回答" in body["trace"][0]["result"]
 
+    def test_can_commit_case随动作门(self):
+        # 备忘⑰联动收口：下发标志与 /ingest/case-commit 写门同源——
+        # ae（有 create_case）True，optimizer（角色门过但无动作）False
+        c = self._client([FINAL])
+        assert self._post(c, role="ae", user="Person:li").json()["can_commit_case"] is True
+        assert self._post(c, role="optimizer",
+                          user="Person:li").json()["can_commit_case"] is False
+
     def test_空messages422与未认证401(self):
         assert self._client([FINAL]).post("/agent/chat", json={
             "messages": [], "role": "management"}).status_code == 422

@@ -225,9 +225,12 @@ def _agent_events(tool_ctx: _ToolCtx, history: list[dict],
         yield {"type": "reply", "text": reply}
     if case_draft is not None or creative_drafts is not None:
         yield {"type": "draft", "case_draft": case_draft, "creative_drafts": creative_drafts}
-    from adkg.api.routes.ingest import CASEGEN_ROLES
+    from adkg.api.routes.ingest import can_commit_case
+    from adkg.guards.http import get_planner
     yield {"type": "done", "turns": len(trace),
-           "can_commit_case": tool_ctx.role in CASEGEN_ROLES,
+           # 与 /ingest/case-commit 写门同源判定（备忘⑰收口：角色门 + create_case
+           # 动作门）——前端只见服务端下发，不本地硬抄角色表（§9.7）
+           "can_commit_case": can_commit_case(get_planner(tool_ctx.request), tool_ctx.role),
            "has_result": bool(reply or case_draft or creative_drafts)}
 
 

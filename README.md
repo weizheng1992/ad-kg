@@ -324,7 +324,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 | text2sql 失败 | 生成单次不重试；执行失败回落口径感知模板（`sql_source=template(fallback)`），模板仍败才空证据并明示"事实数据缺席"——不编数 |
 | T+1 ETL 失败 | 原始层已存 API 原始响应，次日自动补跑，缺口行留状态标记 |
 | 抽取失败 | 登记 ingest_job 待重放（原始层保底） |
-| Neo4j 不可用 | 设计：graph 路跳过并标注；**现状：graph 步异常未兜底，穿透为整问 JSON 500（兜底列待办）**；Postgres 不可用则服务不可用（事实与向量同库，接受该单点） |
+| Neo4j 不可用 | graph 步跳过并标注缺席路、其余路照常（2026-10-27 兑现：三路执行统一 try/except，单路异常不再穿透为整问 500）；Postgres 不可用则服务不可用（事实与向量同库，接受该单点） |
 | 端点未捕获异常 | 全局 handler 统一返回 **JSON 500**（`detail` 带异常类名）——Starlette 默认纯文本 body 会让消费方 `.json()` 抛 SyntaxError 掩盖真错（2026-10-21 实测教训） |
 
 ### 7.3 路由决策
@@ -339,7 +339,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 操作类不进 `/ask`：由调用方直接调 `/actions/check`，`/ask` 识别为操作意图时返回端点指引而非答案。
 
-路由护栏约定（规则版，LLM 路由只在弱置信时兜底）：① **锚词让贤**——图锚词（名下/负责/对接）与指标词同现时（"李昂名下消耗最高的素材"），fact 置信降至 0.75 交 LLM 裁决，杜绝锚点被事实路静默丢弃；② **定义尾短路**——问句带释义尾（什么意思/怎么算/定义是什么）时归 concept，即使句中含操作词或指标词；③ **状态限定词如实标注**——"被暂停/已下线"类状态限定进不了 SQL 过滤器，事实证据挂 note 说明"状态限定未参与过滤"；④ 释义/规范词与聚合词冲突时以硬聚合信号（消耗/CPA/排名/最差等）为准查数，定语型指标词（跑量素材/爆量视频）不作硬信号。`/agent/chat` 响应下发 `can_commit_case`（服务端按案例生成角色判定），前端不本地硬抄角色表。
+路由护栏约定（规则版，LLM 路由只在弱置信时兜底）：① **锚词让贤**——图锚词（名下/负责/对接）与指标词同现时（"李昂名下消耗最高的素材"），fact 置信降至 0.75 交 LLM 裁决，杜绝锚点被事实路静默丢弃；② **定义尾短路**——问句带释义尾（什么意思/怎么算/定义是什么）时归 concept，即使句中含操作词或指标词；③ **状态限定词如实标注**——"被暂停/已下线"类状态限定进不了 SQL 过滤器，事实证据挂 note 说明"状态限定未参与过滤"；④ 释义/规范词与聚合词冲突时以硬聚合信号（消耗/CPA/排名/最差等）为准查数，定语型指标词（跑量素材/爆量视频）不作硬信号。`/agent/chat` 响应下发 `can_commit_case`（服务端按案例生成角色 + `create_case` 动作同源判定），前端不本地硬抄角色表。
 
 **融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路去重合并（v1 用保序去重替代 RRF）→ 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。路由计划 **RouterPlan**（steps 带依赖与置信度、fallback 标志）是 models.py 一等类型，`ask.py` 只解释执行——路由评测直接对 plan 断言，不起整条 LLM 链路。
 
@@ -633,7 +633,7 @@ confidence  : 抽取置信度 0–1（事实表恒为 1）；≥0.7 入图、0.4
 
 ### 12.4 权限矩阵（`permissions.yaml`）
 
-一行一个 role，人和 Agent 共用。身份来源：`bindings` 段只存 token 标识 → role / Person 的映射结构，token 本体进 `.env` / 密管（git 资产不放明文密钥）；**token 路由 person 取 bindings 唯一绑定**（零绑/多绑时回退 body/query 自报兜底——当前每 role 恰一条绑定，不触发）。默认策略：**内部角色类白名单 + 属性黑名单；外部角色（客户方）一律白名单 `allow_properties`，schema 新增属性默认不可见（fail-closed）**。指标列权限：内部 `metrics_deny` / 外部 `metrics_allow`，作用域 = `unified_metrics` 列 + Text2SQL 可选字段（per-role 视图）。**派生联动**：deny 一列时同步 deny 含它的派生列（deny cost 连带 cpa / roi，防乘法反推；同理 impressions→cpm/ctr、clicks→ctr/cvr）；gross_margin 为内部核算列，Case 属性与指标列两处同步 deny。**行权限 fail-closed（2026-10-23）**：配置了 `row_filter` 的角色在 person 缺失、图中无此人或展开结果为空时产出 **deny-all plan**（`PermissionPlan.deny_all=True`——graph / vector 路零证据、text2sql 恒假谓词），而非跳过行过滤；`/graph/entity` 主实体与 `/ask` graph 路属性证据同过类白名单与可见集闸（全局类豁免）；`/creative/brands` 与 Agent 品牌工具按可见 Brand 裁剪；`/ingest/assertion` 要求 `actions` 含 `write_assertion`；`/ingest/case-commit` 走案例生成角色门（CASEGEN_ROLES：admin/management/optimizer/ae）；审计随写落账。
+一行一个 role，人和 Agent 共用。身份来源：`bindings` 段只存 token 标识 → role / Person 的映射结构，token 本体进 `.env` / 密管（git 资产不放明文密钥）；**token 路由 person 取 bindings 唯一绑定**（零绑/多绑时回退 body/query 自报兜底——当前每 role 恰一条绑定，不触发）。默认策略：**内部角色类白名单 + 属性黑名单；外部角色（客户方）一律白名单 `allow_properties`，schema 新增属性默认不可见（fail-closed）**。指标列权限：内部 `metrics_deny` / 外部 `metrics_allow`，作用域 = `unified_metrics` 列 + Text2SQL 可选字段（per-role 视图）。**派生联动**：deny 一列时同步 deny 含它的派生列（deny cost 连带 cpa / roi，防乘法反推；同理 impressions→cpm/ctr、clicks→ctr/cvr）；gross_margin 为内部核算列，Case 属性与指标列两处同步 deny。**行权限 fail-closed（2026-10-23）**：配置了 `row_filter` 的角色在 person 缺失、图中无此人或展开结果为空时产出 **deny-all plan**（`PermissionPlan.deny_all=True`——graph / vector 路零证据、text2sql 恒假谓词），而非跳过行过滤；`/graph/entity` 主实体与 `/ask` graph 路属性证据同过类白名单与可见集闸（全局类豁免）；`/creative/brands` 与 Agent 品牌工具按可见 Brand 裁剪；`/ingest/assertion` 要求 `actions` 含 `write_assertion`；`/ingest/case-commit` 案例生成角色门（CASEGEN_ROLES：admin/management/optimizer/ae）之上再要求 `actions` 含 `create_case`（2026-10-27 收口：曾只查角色门，optimizer 无该动作也能 commit；`/agent/chat` 下发的 `can_commit_case` 同源判定，前端不再见点了必 403 的按钮）；审计随写落账。
 
 ```yaml
 bindings:
