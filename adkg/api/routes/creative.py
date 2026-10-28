@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from adkg.api.routes.ingest import _casegen_role
+from adkg.guards.http import require_casegen_role
+from adkg.retrieval.creative_evidence import best_creatives_for, related_brand_ids, \
+    scoped_brands
 
 router = APIRouter()
 
@@ -34,61 +36,19 @@ def creative_brands(request: Request, role: str | None = None, user: str | None 
     """品牌清单（素材生成的选择器数据源）——案例生成角色门 + 可见 Brand 裁剪（§12.4，
     2026-10-23 检查：曾对所有角色返回全量品牌+类目）。"""
     from adkg.guards.http import resolve_identity
+    from adkg.guards.rbac import CASEGEN_ROLES
     role, user, planner = resolve_identity(request, authorization, role=role, user=user,
                                            dev_default="management")  # dev 无角色默认管理视角
-    from adkg.api.routes.ingest import CASEGEN_ROLES
     if role not in CASEGEN_ROLES:
         raise HTTPException(403, f"角色 {role} 无素材生成权限（允许：{sorted(CASEGEN_ROLES)}）")
     plan = planner.plan(role, person=user)
-    graph = _graph_of(request)
+    from adkg.guards.http import get_graph
+    graph = get_graph(request)
     with graph.session() as s:
         brands = s.run("MATCH (b:Entity {class:'Brand'})"
                        " RETURN b.id AS id, b.name AS name, b.category AS category"
                        " ORDER BY b.id").data()
-    return {"brands": _scoped_brands(brands, plan, graph)}
-
-
-def _scoped_brands(brands: list[dict], plan, graph) -> list[dict]:
-    """品牌按行权限裁剪：可见 Brand ∪ 可见案例所属品牌（optimizer 的路径不经过 Brand
-    节点，但其案例属于品牌——生成素材需要品牌选择器，按案例归属放行）。"""
-    if plan.deny_all:
-        return []
-    visible = plan.visible_entity_ids
-    if not visible:
-        return brands
-    allowed = {i for i in visible if i.startswith("Brand:")}
-    case_ids = [i for i in visible if i.startswith("Case:")]
-    if case_ids:
-        with graph.session() as s:
-            allowed |= {r["b"] for r in s.run(
-                "MATCH (c:Entity)-[:for_brand]->(b:Entity) WHERE c.id IN $cs"
-                " RETURN DISTINCT b.id AS b", cs=case_ids).data()}
-    return [b for b in brands if b["id"] in allowed]
-
-
-def related_brand_ids(graph, brand_id: str) -> set[str]:
-    """"相关案例"口径：本品牌 + 同类目品牌集合。"""
-    with graph.session() as s:
-        brand = s.run("MATCH (b:Entity {id:$id})"
-                      " RETURN b.id AS id, b.name AS name, b.category AS category",
-                      id=brand_id).single()
-        if not brand:
-            raise LookupError(f"品牌不存在：{brand_id}")
-        row = s.run("MATCH (b:Entity {class:'Brand'}) WHERE b.category = $c"
-                    " RETURN collect(b.id) AS ids", c=brand["category"]).single()
-    return set(row["ids"] or []) | {brand_id}
-
-
-def best_creatives_for(graph, plan, dsn_ro: str, related: set[str], k: int = 5) -> list[dict]:
-    """同类目最好素材：模板口径（成本型 ASC，20 池——top5 常无同类目）+ 图上下文过滤。"""
-    from adkg.retrieval import text2sql
-    top = text2sql.run("CPA 最好的 20 个素材", plan, dsn_ro, None, generator=None)
-    fact_rows = next((ev.get("rows") or [] for ev in top["evidence"]
-                      if ev.get("type") == "fact"), [])
-    ctx = graph.creative_contexts([r["creative_id"] for r in fact_rows
-                                   if r.get("creative_id")])
-    return [{**r, **ctx.get(r.get("creative_id"), {})} for r in fact_rows
-            if ctx.get(r.get("creative_id"), {}).get("brand_id") in related][:k]
+    return {"brands": scoped_brands(brands, plan, graph)}
 
 
 @router.post("/creative/draft")
@@ -96,7 +56,7 @@ def creative_draft(request: Request, body: dict,
                    authorization: str | None = Header(default=None)) -> dict:
     """生成素材草稿：n 条 {标题/形式/前3秒钩子/分镜/文案}，证据与规范随响应返回。"""
     env = request.app.state.env
-    role, person = _casegen_role(request, body, authorization)
+    role, person = require_casegen_role(request, body, authorization)
 
     brand_id = str(body.get("brand_id") or "").strip()
     if not brand_id.startswith("Brand:"):
@@ -108,9 +68,8 @@ def creative_draft(request: Request, body: dict,
     except (TypeError, ValueError):
         n = 3
 
-    from adkg.api.routes.ask import _llm
-    from adkg.guards.http import get_graph, get_planner
-    llm = _llm(request)
+    from adkg.guards.http import get_graph, get_llm, get_planner
+    llm = get_llm(request)
     if llm is None:
         raise HTTPException(503, "LLM 不可用，无法生成（稍后重试，§7.2）")
     planner = get_planner(request)
@@ -152,7 +111,9 @@ def creative_draft(request: Request, body: dict,
     if not drafts:
         raise HTTPException(503, "生成结果为空，请重试或补充商品信息")
 
-    _audit(env, role, person, brand_id, product, len(drafts))
+    from adkg.guards.audit import audit                  # 审计写入收口（§9.1）
+    audit(env, role, person, "creative_draft", f"{brand_id} {product or '-'}",
+          "info", f"n={len(drafts)}")
     return {"brand": dict(brand), "product": product, "platform": platform,
             "drafts": drafts,
             "evidence": {"商品知识": knowledge.get("evidence", [])[:6],
@@ -170,14 +131,3 @@ def _user_prompt(brand: dict, product: str, platform: str, n: int, evidence: dic
         "创意规范": evidence["创意规范"],
     }, ensure_ascii=False, default=str))
 
-
-def _graph_of(request: Request):
-    from adkg.guards.http import get_graph
-    return get_graph(request)
-
-
-def _audit(env: dict, role: str, person: str | None,
-           brand_id: str, product: str, n: int) -> None:
-    from adkg.guards.audit import audit                  # 审计写入收口（§9.1）
-    audit(env, role, person, "creative_draft", f"{brand_id} {product or '-'}",
-          "info", f"n={n}")

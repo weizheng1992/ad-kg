@@ -27,32 +27,11 @@ from adkg.pipeline.resolution import normalize_name
 router = APIRouter()
 
 ACCEPT, REVIEW = 0.7, 0.4
-CASEGEN_ROLES = {"admin", "management", "optimizer", "ae"}     # 案例生成 = 内部操作角色
 
-
-def can_commit_case(planner, role: str) -> bool:
-    """案例提交判定（单一来源）：CASEGEN_ROLES 角色门 + actions 含 create_case
-    动作门（§12.4 fail-closed）——/ingest/case-commit 写门与 /agent/chat 下发
-    can_commit_case 共用此处，别两处抄（2026-10-27 收口：曾只查角色门，
-    optimizer 无 create_case 动作也能 commit）。"""
-    return role in CASEGEN_ROLES and "create_case" in \
-        planner.perms["roles"].get(role, {}).get("actions", [])
-
-
-def _casegen_role(request: Request, body: dict, authorization: str | None,
-                  *, commit: bool = False) -> tuple[str, str | None]:
-    """认证 + 案例生成角色门（token 反查优先，dev 模式 body 兜底，fail-closed）；
-    person 一并返回（token 路取绑定值——审计 user_id 用，2026-10-24 起）。
-    commit=True（case-commit 专用）叠加 create_case 动作门——§12.4「/ingest/*
-    写端点要求 actions 含对应写动作」，与 /ingest/assertion 同款；角色门只是
-    预检快失败，写门以动作判定为准。"""
-    from adkg.guards.http import resolve_identity
-    role, person, planner = resolve_identity(request, authorization, body=body)
-    if role not in CASEGEN_ROLES:
-        raise HTTPException(403, f"角色 {role} 无案例生成权限（允许：{sorted(CASEGEN_ROLES)}）")
-    if commit and not can_commit_case(planner, role):
-        raise HTTPException(403, f"角色 {role} 无案例提交权限（actions 不含 create_case，§12.4 动作门）")
-    return role, person
+# 案例生成角色/动作门收口 guards（rbac.can_commit_case + http.require_casegen_role，
+# 2026-10-28 下沉）：本模块曾同时养着 CASEGEN_ROLES / can_commit_case /
+# _casegen_role 三件，creative.py 与 agent.py 跨 route 挖私有符号
+from adkg.guards.http import require_casegen_role  # noqa: E402
 
 
 @router.get("/ingest/docs")
@@ -97,7 +76,7 @@ def synced_docs(pg_dsn: str, q: str | None = None) -> list[dict]:
 def case_draft(request: Request, body: dict,
                authorization: str | None = Header(default=None)) -> dict:
     """已同步文档 → 案例草稿（LLM 抽取 + L1 对齐，只读不写）。"""
-    _casegen_role(request, body, authorization)
+    require_casegen_role(request, body, authorization)
     doc_id = str(body.get("doc_id") or "").strip()
     if not doc_id.startswith("feishu:"):
         raise HTTPException(422, "doc_id 必须是已同步飞书文档（feishu:doc:…，见 GET /ingest/docs）")
@@ -108,8 +87,8 @@ def case_draft(request: Request, body: dict,
     if not rows:
         raise HTTPException(404, f"文档未同步或无内容：{doc_id}")
 
-    from adkg.api.routes.ask import _llm
-    llm = _llm(request)
+    from adkg.guards.http import get_llm
+    llm = get_llm(request)
     if llm is None:
         raise HTTPException(503, "LLM 不可用，无法抽取草稿（稍后重试，§7.2）")
     from adkg.models import load_schema
@@ -131,7 +110,7 @@ def case_commit(request: Request, body: dict,
                 authorization: str | None = Header(default=None)) -> dict:
     """草稿确认入图：服务端重校验（不信客户端）→ 写实体/关系 → 别名注册 → 审计。"""
     env = request.app.state.env
-    role, person = _casegen_role(request, body, authorization, commit=True)
+    role, person = require_casegen_role(request, body, authorization, commit=True)
     draft = body.get("draft")
     if not isinstance(draft, dict):
         raise HTTPException(422, "draft 必填（/ingest/case-draft 的返回原样传回）")

@@ -161,6 +161,9 @@ class PermissionPlan(BaseModel):
     """permissions.yaml 的翻译产物（§7.3）：三路与 assemble 出口只消费本对象。
 
     深模块 guards/permission.py 的输出接口——翻译收口在一处，越权测试只打这里。
+    执行侧五方法（2026-10-28 收口，§12.4 出口唯一执行点）：端点不再手推
+    「我被拒了吗 / 这个类可见吗 / 哪些字段能出门」——此前 ~8 个 route 各抄一份，
+    语义已漂（403/404 不一致、client 的 Case.lost_reason 详情路丢失）。
     """
 
     metadata_filter: dict[str, Any] = Field(default_factory=dict)  # vector 路：下推进 SQL
@@ -172,6 +175,72 @@ class PermissionPlan(BaseModel):
     allow_properties: frozenset[str] = Field(default_factory=frozenset)  # 同出口的属性白名单（外部角色，空=不限）
     mask_rules: list[str] = Field(default_factory=list)  # assemble 出口脱敏（如 Person 姓名）
     deny_all: bool = False  # 行权限 fail-closed（§12.4）：person 缺失/无效时三路全拒（graph/vector 零证据、text2sql 恒假谓词）
+
+    # ------------------------------------------------- 执行侧：类/行门
+    def _deny(self, code: int, msg: str) -> None:
+        from fastapi import HTTPException                  # 惰性：models 保持纯域层
+        raise HTTPException(code, msg)
+
+    def gate(self, cls: str, *, not_found: bool = False,
+             anchor_ok: bool = False) -> None:
+        """列表端点类门（fail-closed）：deny_all 或类不在白名单即拒。
+
+        anchor_ok：锚点角色（可见集非空）豁免类闸——client 类白名单无 Brand，
+        但 external_for 路径上的品牌可见（/brands 列表语义，同 /graph/entity 锚点豁免）。
+        not_found：详情面用 404（不泄露存在性）；列表端点默认 403（调用方据此隐菜单）。
+        """
+        code = 404 if not_found else 403
+        if self.deny_all:
+            self._deny(code, "行权限未生效（缺有效身份），拒绝读取")
+        if cls not in set(self.metadata_filter.get("entity_class__in", [])):
+            if anchor_ok and self.visible_entity_ids:
+                return                                     # 锚点角色只看自己那一片
+            self._deny(code, f"类 {cls} 不在当前角色白名单")
+
+    def gate_detail(self, cls: str, eid: str, *, label: str = "实体",
+                    not_found: bool = False) -> None:
+        """详情端点门：deny_all → 锚点外（全局类豁免）→ 类白名单（锚点内豁免）。
+
+        次序钉死：先可见集后类闸——client 查他牌 Brand 应得锚点外 404，而不是
+        类闸 403（/brands 详情与 /graph/entity 的既有语义，2026-10-28 统一）。
+        可见集失败恒 404（存在性隐藏）；deny_all 与类闸按 not_found 取 403/404
+        （/brands 详情 403 面，/graph/entity 404 面）。
+        """
+        code = 404 if not_found else 403
+        if self.deny_all:
+            self._deny(code, "行权限未生效（缺有效身份），拒绝读取")
+        if self.visible_entity_ids and eid not in self.visible_entity_ids \
+                and cls not in self.global_classes:
+            self._deny(404, f"{label}不在当前身份可见范围（锚点外）")
+        allowed = set(self.metadata_filter.get("entity_class__in", []))
+        if cls not in allowed and cls not in self.global_classes \
+                and eid not in self.visible_entity_ids:
+            self._deny(code, f"类 {cls} 不在当前角色白名单")
+
+    def require_visible(self, eid: str, *, label: str = "实体") -> None:
+        """行可见集单点校验（写端点等无类闸场景）：锚点外 404，不泄露存在性。"""
+        if self.visible_entity_ids and eid not in self.visible_entity_ids:
+            self._deny(404, f"{label}不在当前身份可见范围（锚点外）")
+
+    # ------------------------------------------------- 执行侧：集合与属性
+    def filter_visible(self, items: list[dict], key: str = "id") -> list[dict]:
+        """行可见集过滤（visible_entity_ids 的列表执行点）：无行过滤全量放行。"""
+        if not self.visible_entity_ids:
+            return items
+        return [i for i in items if i.get(key) in self.visible_entity_ids]
+
+    def project(self, props: dict, cls: str) -> dict:
+        """属性出口过滤（§12.4 唯一执行点）：外部角色按 allow_properties 白名单
+        （fail-closed，schema 新增属性默认不可见），内部按 deny_properties 黑名单。
+        props 键为裸属性名；身份/呈现键（id、brand_id 等）由调用方自行保留——
+        本方法只裁 Class 属性。"""
+        if self.allow_properties:
+            allow = {p.split(".", 1)[1] for p in self.allow_properties
+                     if p.startswith(f"{cls}.")}
+            return {k: v for k, v in props.items() if k in allow}
+        denied = {d.split(".", 1)[1] for d in self.deny_properties
+                  if d.startswith(f"{cls}.")}
+        return {k: v for k, v in props.items() if k not in denied}
 
 
 class RouteStep(BaseModel):

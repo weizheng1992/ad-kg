@@ -17,9 +17,13 @@ from psycopg.rows import dict_row
 
 from adkg.guards.http import get_graph, resolve_identity
 from adkg.models import load_schema
+from adkg.retrieval.assemble import load_person_names, mask_person
 from adkg.retrieval.stats import case_stats_batch, creative_stats_by_case
 
 router = APIRouter()
+
+_CASE_PROPS = ("stage", "bd_budget", "gross_margin", "settlement_status",
+               "lost_reason", "terminate_reason")          # Case.* 属性投影子集
 
 
 def _derive_stage_display(case_stage: dict) -> tuple[list[str], dict[str, str]]:
@@ -44,13 +48,6 @@ STAGE_TRANSITIONS: dict[str, list[str]] = _CASE_STAGE["transitions"]
 STAGE_FLOW, STAGE_BRANCH = _derive_stage_display(_CASE_STAGE)
 
 
-def _mask_case_props(plan, props: dict) -> dict:
-    """Case 属性出口过滤：内部 deny_properties（ae 不见预算/毛利）、外部只剩 stage。"""
-    if plan.allow_properties:                               # 外部角色属性白名单
-        return {k: props.get(k) for k in ("stage",) if props.get(k) is not None}
-    denied = {d.split(".", 1)[1] for d in plan.deny_properties if d.startswith("Case.")}
-    return {k: v for k, v in props.items() if k not in denied}
-
 
 @router.get("/cases")
 def list_cases(request: Request, q: str = "", stage: str = "", brand: str = "",
@@ -59,12 +56,7 @@ def list_cases(request: Request, q: str = "", stage: str = "", brand: str = "",
                authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     plan = planner.plan(role, person=user)
-    if plan.deny_all:
-        raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")
-    allowed = set(plan.metadata_filter.get("entity_class__in", []))
-    if "Case" not in allowed:
-        raise HTTPException(403, "类 Case 不在当前角色白名单")
-    visible = plan.visible_entity_ids
+    plan.gate("Case")
     size = max(1, min(size, 100))
     page = max(1, page)
     with get_graph(request).session() as s:
@@ -83,24 +75,16 @@ def list_cases(request: Request, q: str = "", stage: str = "", brand: str = "",
             "b.id AS brand_id, b.name AS brand_name, "
             "collect(DISTINCT p.name) AS owners ORDER BY c.id LIMIT 500",
             q=q.strip(), stage=stage.strip(), brand=brand.strip()).data()
-    rows = [r for r in rows if not visible or r["id"] in visible]
+    rows = plan.filter_visible(rows)
     total = len(rows)
     items = rows[(page - 1) * size:page * size]
     stats = case_stats_batch(request.app.state.env, plan, [r["id"] for r in items])
-    external = bool(plan.allow_properties)
     for r in items:
         r["stats"] = stats.get(r["id"])
-        if external:                                        # client：姓名掩码 + 只留 stage
+        if plan.allow_properties:                           # client：姓名掩码（§12.6）
             r["owners"] = []
-            # client 保留 lost_reason（spec §5「为什么没成」；2026-10-25 审查勘误）
-            for k in ("bd_budget", "gross_margin", "settlement_status",
-                      "terminate_reason"):
-                r.pop(k, None)
-        else:
-            denied = {d.split(".", 1)[1] for d in plan.deny_properties
-                      if d.startswith("Case.")}
-            for k in denied:
-                r.pop(k, None)
+        props = plan.project({k: r.pop(k, None) for k in _CASE_PROPS}, "Case")
+        r.update(props)          # 行保留 id/name/brand/owners/stats，Case.* 属性过闸（§12.4）
     return {"items": items, "total": total, "page": page, "size": size}
 
 
@@ -110,13 +94,10 @@ def case_detail(request: Request, cid: str,
                 authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     plan = planner.plan(role, person=user)
-    if plan.deny_all:
-        raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")
-    allowed = set(plan.metadata_filter.get("entity_class__in", []))
-    if "Case" not in allowed:
-        raise HTTPException(403, "类 Case 不在当前角色白名单")
-    visible = plan.visible_entity_ids
+    plan.gate_detail("Case", cid, label="案例")
     external = bool(plan.allow_properties)                  # client：属性白名单 + 姓名掩码
+    allowed = set(plan.metadata_filter.get("entity_class__in", []))
+    visible = plan.visible_entity_ids
     env = request.app.state.env
 
     with get_graph(request).session() as s:
@@ -129,8 +110,6 @@ def case_detail(request: Request, cid: str,
                     id=cid).single()
         if not rec or rec["class"] != "Case":
             raise HTTPException(404, f"案例 {cid} 不存在")
-        if visible and cid not in visible:
-            raise HTTPException(404, "案例不在当前身份可见范围（锚点外）")
         brand = product = None
         b = s.run("MATCH (:Entity {id: $id})-[:for_brand]->(b:Entity) "
                   "RETURN b.id AS id, b.name AS name", id=cid).single()
@@ -187,18 +166,11 @@ def case_detail(request: Request, cid: str,
         timeline = []
 
     if plan.mask_rules:            # 外部角色出口脱敏（§12.6）：chunk 文本掩人名、
-        with get_graph(request).session() as _s:  # timeline 剥 role/reason（内部身份与人名）
-            _names = [r["n"] for r in _s.run(
-                "MATCH (p:Entity) WHERE p.class='Person' AND p.name IS NOT NULL"
-                " RETURN p.name AS n").data()]
+        names = load_person_names(get_graph(request))   # timeline 剥 role/reason（内部身份与人名）
         for d in docs:
-            for n in _names:
-                d["text"] = d["text"].replace(n, "＊＊")
+            d["text"] = mask_person(d["text"], names)
         timeline = [{k: t[k] for k in ("ts", "action", "verdict")} for t in timeline]
-    props = _mask_case_props(plan, {k: rec[k] for k in
-                                    ("stage", "bd_budget", "gross_margin",
-                                     "settlement_status", "lost_reason",
-                                     "terminate_reason")})
+    props = plan.project({k: rec[k] for k in _CASE_PROPS}, "Case")
     stats = case_stats_batch(env, plan, [cid]).get(cid)
     # 状态变更权限（spec §15）：rbac 统一门判原始角色（display_role）——映射基角色
     # 会吃掉自定义角色的按钮授权（2026-10-26 收口）
@@ -243,8 +215,7 @@ def update_case_stage(request: Request, cid: str, body: dict,
                     id=cid).single()
     if not rec or rec["class"] != "Case":
         raise HTTPException(404, f"案例 {cid} 不存在")
-    if plan.visible_entity_ids and cid not in plan.visible_entity_ids:
-        raise HTTPException(404, "案例不在当前身份可见范围（锚点外）")
+    plan.require_visible(cid, label="案例")
     from adkg.guards.action_check import ActionChecker
     verdict = ActionChecker(load_schema(), graph).check(
         "update_stage", {"case_id": cid, "from_stage": rec["stage"],

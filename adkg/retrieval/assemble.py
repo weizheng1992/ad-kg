@@ -8,6 +8,22 @@
 from __future__ import annotations
 
 
+def load_person_names(graph) -> list[str]:
+    """全图人名表（§12.6 脱敏出口的装载点）：ask 与案例详情两处共用，
+    2026-10-28 自 ask.py 下沉（掩码装载曾散两份）。"""
+    with graph.session() as s:
+        return [r["n"] for r in s.run(
+            "MATCH (p:Entity) WHERE p.class='Person' AND p.name IS NOT NULL"
+            " RETURN p.name AS n").data()]
+
+
+def mask_person(text: str, names: list[str]) -> str:
+    """人名 → ＊＊（§12.6）；空名跳过。文本出口唯一实现。"""
+    for name in (n for n in names if n):
+        text = text.replace(name, "＊＊")
+    return text
+
+
 def assemble(route_results: dict, plan, decision, *, person_names: list[str] | None = None) -> dict:
     evidence, seen = [], set()
     routes_used, degraded = [], []
@@ -27,11 +43,10 @@ def assemble(route_results: dict, plan, decision, *, person_names: list[str] | N
             evidence.append(ev)
 
     if plan.mask_rules and "person_name" in plan.mask_rules and person_names:
-        for ev in evidence:                                # 脱敏出口（§12.6）
+        for ev in evidence:                                # 脱敏出口（§12.6，mask_person 唯一实现）
             for field in ("ref", "quote"):
                 if field in ev and isinstance(ev[field], str):
-                    for name in (n for n in person_names if n):
-                        ev[field] = ev[field].replace(name, "＊＊")
+                    ev[field] = mask_person(ev[field], person_names)
 
     return {
         "intent": decision.intent,

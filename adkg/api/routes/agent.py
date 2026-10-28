@@ -65,8 +65,8 @@ def _t_list_brands(args: dict, ctx: _ToolCtx) -> str:
         rows = s.run("MATCH (b:Entity {class:'Brand'})"
                      " RETURN b.id AS id, b.name AS name, b.category AS category"
                      " ORDER BY b.id").data()
-    from adkg.api.routes.creative import _scoped_brands
-    return _compact(_scoped_brands(rows, ctx.plan, ctx.graph))   # 行权限裁剪（§12.4）
+    from adkg.retrieval.creative_evidence import scoped_brands
+    return _compact(scoped_brands(rows, ctx.plan, ctx.graph))    # 行权限裁剪（§12.4）
 
 
 def _t_search_product_knowledge(args: dict, ctx: _ToolCtx) -> str:
@@ -79,7 +79,7 @@ def _t_search_product_knowledge(args: dict, ctx: _ToolCtx) -> str:
 
 
 def _t_search_best_creatives(args: dict, ctx: _ToolCtx) -> str:
-    from adkg.api.routes.creative import best_creatives_for, related_brand_ids
+    from adkg.retrieval.creative_evidence import best_creatives_for, related_brand_ids
     bid = str(args.get("brand_id") or "")
     if not bid.startswith("Brand:"):
         return "brand_id 必须是 Brand:{slug} 形态（先调 list_brands 拿真实 id）"
@@ -147,13 +147,13 @@ _AGENT_SYSTEM = (
 def _prepare(request: Request, body: dict, authorization: str | None):
     """身份与输入校验（流式响应开始前完成——错了还能回标准 HTTP 错误码）。"""
     env = request.app.state.env
-    from adkg.api.routes.ask import _llm
+    from adkg.guards.http import get_llm
     role, person, planner = resolve_identity(request, authorization, body=body)
     history = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     last = next((m for m in reversed(history) if m.get("role") == "user"), None)
     if not last or not str(last.get("content") or "").strip():
         raise HTTPException(422, "messages 至少要有一条非空 user 消息")
-    llm = _llm(request)
+    llm = get_llm(request)
     if llm is None:
         raise HTTPException(503, "LLM 不可用（稍后重试，§7.2）")
     plan = planner.plan(role, person=person)
@@ -225,8 +225,8 @@ def _agent_events(tool_ctx: _ToolCtx, history: list[dict],
         yield {"type": "reply", "text": reply}
     if case_draft is not None or creative_drafts is not None:
         yield {"type": "draft", "case_draft": case_draft, "creative_drafts": creative_drafts}
-    from adkg.api.routes.ingest import can_commit_case
     from adkg.guards.http import get_planner
+    from adkg.guards.rbac import can_commit_case
     yield {"type": "done", "turns": len(trace),
            # 与 /ingest/case-commit 写门同源判定（备忘⑰收口：角色门 + create_case
            # 动作门）——前端只见服务端下发，不本地硬抄角色表（§9.7）
@@ -255,7 +255,9 @@ def agent_chat(request: Request, body: dict,
             can_commit, has_result = ev["can_commit_case"], ev["has_result"]
     if not has_result:
         raise HTTPException(503, f"agent 未能产出结果（{len(trace)} 次工具调用），请重试")
-    _audit(env, role, person, str(last.get("content") or ""), len(trace))
+    from adkg.guards.audit import audit
+    audit(env, role, person, "agent_chat", str(last.get("content") or ""),
+          "info", f"turns={len(trace)}")
     return {"reply": reply, "case_draft": case_draft,
             "creative_drafts": creative_drafts, "trace": trace,
             "can_commit_case": can_commit}   # 前端不本地硬抄角色表（§9.7）
@@ -277,7 +279,9 @@ def agent_chat_stream(request: Request, body: dict,
                 if ev["type"] == "done":
                     turns = ev["turns"]
                 yield f"data: {json.dumps(ev, ensure_ascii=False, default=str)}\n\n"
-            _audit(env, role, person, str(last.get("content") or ""), turns)
+            from adkg.guards.audit import audit
+            audit(env, role, person, "agent_chat", str(last.get("content") or ""),
+                  "info", f"turns={turns}")
         except Exception as e:                              # noqa: BLE001 不断流：转 error 事件
             yield f"data: {json.dumps({'type': 'error', 'detail': f'{type(e).__name__}: {e}'}, ensure_ascii=False)}\n\n"
 
@@ -339,7 +343,3 @@ def _turn_prompt(history: list[dict], trace: list[dict]) -> str:
 def _compact(data) -> str:
     return json.dumps(data, ensure_ascii=False, default=str)
 
-
-def _audit(env: dict, role: str, person: str | None, question: str, turns: int) -> None:
-    from adkg.guards.audit import audit                  # 审计写入收口（§9.1）
-    audit(env, role, person, "agent_chat", question, "info", f"turns={turns}")

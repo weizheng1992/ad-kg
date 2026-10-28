@@ -244,16 +244,45 @@ class TestCommitDraft:
             ("Brand:B05", "has_product", "Product:游星表"),
             ("Person:li", "responsible_for", "Case:C-2026-001")}
 
-    def test_主数据id冲突不覆盖且边一并拦下(self):
+    def test_伪造existing被对齐收编节点不重写边照挂(self):
+        # 信任面收口：客户端把主数据品牌伪装成新实体（existing=False）已无效——
+        # 身份从图上重推导，对齐命中即收编：节点不重写、锚边照挂（对齐语义）
         load_schema, build_draft = _draft_cls()
         schema, commit = self._commit()
         g = _graph()
         d = build_draft("feishu:doc:X", "正文", g, load_schema(), _chat(_GOOD), now=NOW)
-        d["brand"]["existing"] = False                          # 伪装新实体，id 撞主数据（auth 100）
+        d["brand"]["existing"] = False                          # 伪造申报，服务端不读
         out = commit(d, g, schema, now=NOW)
-        assert any("不覆盖" in w for w in out["warnings"])
         assert not any(e.entity_id == "Brand:B05" for e in g.upserted_entities)
-        assert all("B05" not in r.target + r.source for r in g.upserted_relations)  # 被拦端点的边不写
+        assert ("Case:C-2026-001", "for_brand", "Brand:B05") in \
+            {(r.source, r.predicate, r.target) for r in g.upserted_relations}
+        assert not any("不覆盖" in w for w in out["warnings"])
+
+    def test_伪造same_doc刷新不了低authority实体(self):
+        # 旧实现可伪造 same_doc=True 覆写任意 authority ≤ 60 实体属性（绕过字段仲裁）；
+        # 收口后 existing/same_doc 不读客户端，对齐命中即不碰
+        load_schema, build_draft = _draft_cls()
+        schema, commit = self._commit()
+        g = _graph()
+        g.entities["Brand:B09"] = {"class": "Brand", "name": "途野露营", "authority": 40}
+        d = build_draft("feishu:doc:X", "正文", g, load_schema(), _chat(_GOOD), now=NOW)
+        d["brand"].update({"id": "Brand:B09", "existing": True, "same_doc": True})
+        d["warnings"] = ["<伪造警告>客户端回显不采信"]           # 草稿阶段已展示，commit 不回显
+        out = commit(d, g, schema, now=NOW)
+        assert not any(e.entity_id == "Brand:B09" for e in g.upserted_entities)
+        assert all("伪造警告" not in w for w in out["warnings"])
+
+    def test_伪造CaseId被服务端重推导(self):
+        # 客户端自报 id（绕建号约定）不采信：按 case_id_for 顺位重推导
+        load_schema, build_draft = _draft_cls()
+        schema, commit = self._commit()
+        g = _graph()
+        d = build_draft("feishu:doc:X", "正文", g, load_schema(), _chat(_GOOD), now=NOW)
+        d["case"]["id"] = "Case:C-2099-999"
+        out = commit(d, g, schema, now=NOW)
+        assert out["case_id"] == "Case:C-2026-001"
+        assert {e.entity_id for e in g.upserted_entities} == {
+            "Case:C-2026-001", "Product:星链pro", "Product:游星表"}
 
     def test_同边高authority不覆盖(self):
         load_schema, build_draft = _draft_cls()
@@ -272,9 +301,10 @@ class TestCommitDraft:
         d = build_draft("feishu:doc:X", "正文", g, load_schema(), _chat(_GOOD), now=NOW)
         commit(d, g, schema, now=NOW)
         n_rels = len(g.upserted_relations)
-        out2 = commit(d, g, schema, now=NOW)                    # 二次：auth 60 不高于 60 → MERGE 幂等重写
-        assert out2["entities"] == 3 and out2["relations"] == 6
+        out2 = commit(d, g, schema, now=NOW)    # 二次：身份重推导全对齐命中 → 节点零重写
+        assert out2["entities"] == 0 and out2["relations"] == 6   # 边 MERGE 幂等重挂
         assert len(g.upserted_relations) == n_rels * 2
+        assert out2["case_id"] == "Case:C-2026-001"               # 对齐命中的案例仍是回跳锚
         assert not any("不覆盖" in w for w in out2["warnings"])
 
     def test_无case仅品牌商品可入图(self):

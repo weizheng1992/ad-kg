@@ -46,6 +46,53 @@ def get_planner(request: Request) -> "PermissionPlanner":
     return request.app.state.planner
 
 
+def get_llm(request: Request):
+    """惰性 LLM 客户端（app.state.llm，与 get_graph/get_planner 同族）；探测失败
+    不缓存（限流是暂态，下一问重试，§7.2）。2026-10-28 自 ask.py 下沉——曾由
+    四个 route 跨模块 import 私有符号（§9.1 import 只向下）。
+    tests 预置 app.state.llm 即命中缓存分支跳过探测（test_creative/test_agent）。"""
+    if not hasattr(request.app.state, "llm"):
+        request.app.state.llm = None
+    if request.app.state.llm is None and request.app.state.env.get("ADKG_LLM_API_KEY"):
+        try:
+            from adkg.llm import LLMClient
+            client = LLMClient()
+            client.chat_json("ping", '返回 {"ok": true}', timeout=12, max_retries=0)
+            request.app.state.llm = client
+        except Exception:
+            return None                                  # 本问降级，不缓存失败
+    return request.app.state.llm
+
+
+def get_embed_fn(request: Request):
+    """本地 bge 嵌入独立于 chat 探测（失败域解耦，§7.2）：嵌入与 chat 端点零依赖，
+    探测失败曾级联杀掉 vector 路（2026-10-23 检查实锤）。常驻缓存（本地模型可靠）。"""
+    if not hasattr(request.app.state, "embedder"):
+        try:
+            from adkg.llm import LLMClient
+            request.app.state.embedder = LLMClient()
+        except Exception:
+            request.app.state.embedder = None
+    return request.app.state.embedder.embed if request.app.state.embedder else None
+
+
+def require_casegen_role(request: Request, body: dict, authorization: str | None,
+                         *, commit: bool = False) -> tuple[str, str | None]:
+    """认证 + 案例生成角色门（token 反查优先，dev 模式 body 兜底，fail-closed）；
+    person 一并返回（token 路取绑定值——审计 user_id 用，2026-10-24 起）。
+    commit=True（case-commit 专用）叠加 create_case 动作门——§12.4「/ingest/*
+    写端点要求 actions 含对应写动作」，与 /ingest/assertion 同款；角色门只是
+    预检快失败，写门以动作判定为准。2026-10-28 自 ingest.py 下沉（creative.py
+    曾跨 route import 此私有函数）。"""
+    from adkg.guards.rbac import CASEGEN_ROLES, can_commit_case
+    role, person, planner = resolve_identity(request, authorization, body=body)
+    if role not in CASEGEN_ROLES:
+        raise HTTPException(403, f"角色 {role} 无案例生成权限（允许：{sorted(CASEGEN_ROLES)}）")
+    if commit and not can_commit_case(planner, role):
+        raise HTTPException(403, f"角色 {role} 无案例提交权限（actions 不含 create_case，§12.4 动作门）")
+    return role, person
+
+
 def resolve_identity(request: Request, authorization: str | None, *,
                      role: str | None = None, user: str | None = None,
                      body: dict | None = None, dev_default: str | None = None

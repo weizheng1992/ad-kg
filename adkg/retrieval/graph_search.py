@@ -27,8 +27,13 @@ def search(question: str, plan, graph, *, limit: int = 50, person: str | None = 
             ids |= {r["id"] for r in s.run(
                 "MATCH (n:Entity) WHERE n.id ENDS WITH $suffix RETURN n.id AS id LIMIT 5",
                 suffix=f":{token}").data()}
-        if not ids and person:
-            ids.add(person)                     # "我的品牌/我们的案例"——锚点即本人（§9.1）
+        if not ids and person and any(w in question for w in ("我", "咱", "本人", "自己")):
+            # "我的品牌/我们的案例"——锚点即本人（§9.1）。仅限第一人称指代：无锚点的
+            # 全局问题（G14"效果差的素材和规范有关系吗"）曾被静默圈到提问者本人，
+            # 归因串行把 CPA 榜也收窄成其品牌子集（entity_ids_from: g），全图最差
+            # 素材（带 violates 边）进不了证据——检索启发式不是权限边界，权限仍由
+            # PermissionPlan 的 visible/谓词保证
+            ids.add(person)
         if not ids:
             return {"evidence": [], "entity_ids": [], "filtered": 0}
 
@@ -111,8 +116,8 @@ def search(question: str, plan, graph, *, limit: int = 50, person: str | None = 
     global_classes = plan.global_classes             # schema 驱动（§12.4，models 单一来源）
     evidence, kept_ids, filtered = [], set(ids), 0
     # entity 证据项：可见集 + 属性白名单（外部，fail-closed）/ 黑名单（内部）双过滤
-    # （prov_* 与 authority 是溯源不是业务属性；§12.6 人名对外掩码在此兜底）
-    deny, allow = plan.deny_properties, plan.allow_properties
+    # （prov_* 与 authority 是溯源不是业务属性；§12.6 人名对外掩码在此兜底；
+    #   属性出口过滤收口 plan.project——2026-10-28 与 CRUD 端点同一实现）
     for pr in prop_rows:
         cls = pr["cls"] or pr["id"].split(":")[0]
         allowed_classes = plan.metadata_filter.get("entity_class__in", [])
@@ -120,11 +125,9 @@ def search(question: str, plan, graph, *, limit: int = 50, person: str | None = 
             continue                                     # 类白名单：属性证据不越类（§12.4）
         if visible and pr["id"] not in visible and cls not in global_classes:
             continue
-        props = {k: v for k, v in (pr["props"] or {}).items()
-                 if not k.startswith("prov_") and k not in ("id", "class", "authority")
-                 and f"{cls}.{k}" not in deny}
-        if allow:
-            props = {k: v for k, v in props.items() if f"{cls}.{k}" in allow}
+        props = plan.project({k: v for k, v in (pr["props"] or {}).items()
+                              if not k.startswith("prov_")
+                              and k not in ("id", "class", "authority")}, cls)
         if "person_name" in plan.mask_rules and cls == "Person" and "name" in props:
             props["name"] = "＊＊"
         evidence.append({

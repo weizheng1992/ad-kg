@@ -11,39 +11,13 @@ import time
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from adkg.guards.http import get_graph, resolve_identity
+from adkg.guards.audit import audit
+from adkg.guards.http import get_embed_fn, get_graph, get_llm, resolve_identity
 from adkg.retrieval import graph_search, text2sql, vector_search
-from adkg.retrieval.assemble import assemble
+from adkg.retrieval.assemble import assemble, load_person_names
 from adkg.retrieval.router import llm_route, rule_route
 
 router = APIRouter()
-
-
-def _llm(request: Request):
-    """惰性 LLM 客户端；探测失败不缓存（限流是暂态，下一问重试，§7.2）。"""
-    if not hasattr(request.app.state, "llm"):
-        request.app.state.llm = None
-    if request.app.state.llm is None and request.app.state.env.get("ADKG_LLM_API_KEY"):
-        try:
-            from adkg.llm import LLMClient
-            client = LLMClient()
-            client.chat_json("ping", '返回 {"ok": true}', timeout=12, max_retries=0)
-            request.app.state.llm = client
-        except Exception:
-            return None                                  # 本问降级，不缓存失败
-    return request.app.state.llm
-
-
-def _embed_fn(request: Request):
-    """本地 bge 嵌入独立于 chat 探测（失败域解耦，§7.2）：嵌入与 chat 端点零依赖，
-    探测失败曾级联杀掉 vector 路（2026-10-23 检查实锤）。常驻缓存（本地模型可靠）。"""
-    if not hasattr(request.app.state, "embedder"):
-        try:
-            from adkg.llm import LLMClient
-            request.app.state.embedder = LLMClient()
-        except Exception:
-            request.app.state.embedder = None
-    return request.app.state.embedder.embed if request.app.state.embedder else None
 
 
 @router.post("/ask")
@@ -58,8 +32,8 @@ def ask(request: Request, body: dict,
         raise HTTPException(422, "question 不能为空")
 
     plan = planner.plan(role, person=person)
-    llm = _llm(request)
-    embed_fn = _embed_fn(request)
+    llm = get_llm(request)
+    embed_fn = get_embed_fn(request)
     t0 = time.monotonic()                                 # 交互路时延预算（§7.2）
     decision = rule_route(question)
     if llm is not None and decision.confidence < 0.8:     # 强关键词信规则，LLM 只兜弱置信
@@ -70,7 +44,7 @@ def ask(request: Request, body: dict,
             pass                                          # 回规则（§7.2）
 
     if decision.intent == "operation":                      # 不进 /ask（§7.3）
-        _audit(env, role, person, question, "info", "operation 意图，返回端点指引")
+        audit(env, role, person, "ask", question, "info", "operation 意图，返回端点指引")
         return {"action": "guidance", "intent": "operation",
                 "endpoint": "/actions/check",
                 "reason": "操作类请求请直接调用 /actions/check 做裁决（AdKG 只裁决不代执行）"}
@@ -147,11 +121,7 @@ def ask(request: Request, body: dict,
         else:
             gres["evidence"] = gres.get("evidence", []) + joined
 
-    person_names = None
-    if plan.mask_rules:
-        with graph.session() as s:                          # 脱敏出口需要人名表（§12.6）
-            person_names = [r["n"] for r in s.run(
-                "MATCH (p:Entity) WHERE p.class='Person' AND p.name IS NOT NULL RETURN p.name AS n").data()]
+    person_names = load_person_names(graph) if plan.mask_rules else None  # §12.6
     out = assemble(results, plan, decision, person_names=person_names)
 
     name_map = _id_name_map(out["evidence"], graph)         # ID → 中文名（答案/证据可读性）
@@ -164,7 +134,7 @@ def ask(request: Request, body: dict,
             answer, answer_source = _agent_answer(llm, question, out["evidence"], name_map), "agent"
         except Exception:
             pass                                            # 回模板（§7.2）
-    _audit(env, role, person, question, "info", f"intent={decision.intent}")
+    audit(env, role, person, "ask", question, "info", f"intent={decision.intent}")
     return {"answer": answer, "answer_source": answer_source, **out}
 
 
@@ -254,8 +224,3 @@ def _agent_answer(llm, question: str, evidence: list[dict],
                                                                           "routes_used": [],
                                                                           "degraded": []}, None)
 
-
-def _audit(env: dict, role: str, person: str | None, question: str,
-           verdict: str, reason: str) -> None:
-    from adkg.guards.audit import audit                  # 审计写入收口（§9.1）
-    audit(env, role, person, "ask", question, verdict, reason)

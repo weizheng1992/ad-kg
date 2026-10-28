@@ -34,16 +34,9 @@ def graph_entity(request: Request, id: str, hops: int = 1,
         if not rec:
             raise HTTPException(404, f"实体 {id} 不存在")
         # 主实体同过闸（§12.4，2026-10-23 检查：曾直接返回实体卡，finance 可读任意
-        # Product、client 可读他牌 Brand）——类白名单（全局类豁免）+ 可见集，不过即 404；
-        # 可见集内的锚点本人豁免类闸（"李昂名下的案例"要看得到李昂自己）
-        in_vis = bool(visible) and rec["id"] in visible
-        if plan.deny_all:
-            raise HTTPException(404, "行权限未生效（缺有效身份），拒绝读取")
-        if allowed_classes and rec["class"] not in allowed_classes \
-                and rec["class"] not in global_classes and not in_vis:
-            raise HTTPException(404, f"类 {rec['class']} 不在当前角色白名单")
-        if visible and rec["id"] not in visible and rec["class"] not in global_classes:
-            raise HTTPException(404, "实体不在当前角色可见范围")
+        # Product、client 可读他牌 Brand）——详情门唯一实现 plan.gate_detail：
+        # 类白名单（全局类豁免）+ 锚点内豁免类闸（"李昂名下的案例"要看得到李昂自己）
+        plan.gate_detail(rec["class"], rec["id"], not_found=True)
         rows = s.run(
             "MATCH (a:Entity {id: $id})-[r]-(b:Entity) RETURN a.id AS src,"
             " type(r) AS rel, b.id AS dst, b.class AS cls, b.name AS name,"

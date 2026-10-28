@@ -23,12 +23,8 @@ def list_brands(request: Request, q: str = "",
                 authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     plan = planner.plan(role, person=user)
-    if plan.deny_all:
-        raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")
-    allowed = set(plan.metadata_filter.get("entity_class__in", []))
+    plan.gate("Brand", anchor_ok=True)   # 锚点角色豁免类闸：client 只看 external_for 那片
     visible = plan.visible_entity_ids
-    if "Brand" not in allowed and not visible:
-        raise HTTPException(403, "类 Brand 不在当前角色白名单")
     with get_graph(request).session() as s:
         rows = s.run("MATCH (b:Entity {class: 'Brand'}) "
                      "WHERE $q = '' OR b.name CONTAINS $q "
@@ -39,7 +35,8 @@ def list_brands(request: Request, q: str = "",
                      "sum(CASE WHEN c.stage = 'live' THEN 1 ELSE 0 END) AS cases_live, "
                      "sum(CASE WHEN c.stage = 'lost' THEN 1 ELSE 0 END) AS cases_lost "
                      "ORDER BY b.id", q=q.strip()).data()
-    items = [r for r in rows if not visible or r["id"] in visible]
+    items = plan.filter_visible(rows)
+    allowed = set(plan.metadata_filter.get("entity_class__in", []))
     if "Brand" not in allowed and not items:
         raise HTTPException(403, "类 Brand 不在当前角色白名单且锚点内无品牌")
     stats = brand_stats(request.app.state.env, plan, [r["id"] for r in items])
@@ -56,8 +53,6 @@ def brand_detail(request: Request, bid: str,
                  authorization: str | None = Header(default=None)) -> dict:
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     plan = planner.plan(role, person=user)
-    if plan.deny_all:
-        raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")
     allowed = set(plan.metadata_filter.get("entity_class__in", []))
     visible = plan.visible_entity_ids
     with get_graph(request).session() as s:
@@ -66,11 +61,7 @@ def brand_detail(request: Request, bid: str,
         if not rec or rec["class"] != "Brand":
             raise HTTPException(404, f"品牌 {bid} 不存在")
         # 锚点豁免类闸（client：Brand 不在类白名单但 external_for 锚点内可见）
-        in_vis = bool(visible) and bid in visible
-        if visible and bid not in visible:
-            raise HTTPException(404, "品牌不在当前身份可见范围（锚点外）")
-        if "Brand" not in allowed and not in_vis:
-            raise HTTPException(403, "类 Brand 不在当前角色白名单")
+        plan.gate_detail("Brand", bid, label="品牌")
         products = []
         if "Product" in allowed:
             products = s.run(
@@ -86,10 +77,12 @@ def brand_detail(request: Request, bid: str,
             "RETURN c.id AS id, c.name AS name, c.stage AS stage, "
             "c.lost_reason AS lost_reason, c.settlement_status AS settlement_status "
             "ORDER BY c.id", id=bid).data()
-        cases = [c for c in cases if not visible or c["id"] in visible]
-        if external:       # client 保留 lost_reason（spec §5；2026-10-25 审查勘误）
-            cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"],
-                      "lost_reason": c["lost_reason"]} for c in cases]
+        cases = plan.filter_visible(cases)
+        for c in cases:      # Case.* 属性过闸（client 保留 lost_reason，spec §5）
+            props = plan.project({k: c.pop(k, None)
+                                  for k in ("stage", "lost_reason",
+                                            "settlement_status")}, "Case")
+            c.update(props)
         # 对接人（spec §14）：内部角色可见（姓名经关系边，同案例 owners 口径）；外部掩码
         owners = [] if external else [
             dict(r) for r in s.run(

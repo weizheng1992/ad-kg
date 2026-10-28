@@ -25,7 +25,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
 
 from adkg.guards.http import get_graph, resolve_identity
 from adkg.retrieval.stats import case_stats_batch, collab_stats
-from adkg.store.creator_quotes import record_quote_history
+from adkg.store.creator_quotes import quote_history, record_quote_history
 
 router = APIRouter()
 
@@ -35,11 +35,7 @@ SOURCE_LABEL = {"system_of_record": "种子", "platform_api": "平台抓取",
 
 
 def _require_creator(plan) -> None:
-    if plan.deny_all:
-        raise HTTPException(403, "行权限未生效（缺有效身份），拒绝读取")
-    allowed = set(plan.metadata_filter.get("entity_class__in", []))
-    if "Creator" not in allowed:
-        raise HTTPException(403, "类 Creator 不在当前角色白名单")
+    plan.gate("Creator")            # 类门唯一实现 plan.gate（§12.4，2026-10-28 收口）
 
 
 def _next_creator_id(env: dict, graph) -> str:
@@ -292,7 +288,6 @@ def creator_detail(request: Request, cid: str,
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     plan = planner.plan(role, person=user)
     _require_creator(plan)
-    visible = plan.visible_entity_ids
     with get_graph(request).session() as s:
         rec = s.run("MATCH (n:Entity {id: $id}) RETURN n.id AS id, n.name AS name, "
                     "n.platform AS platform, n.niches AS niches, n.followers AS followers, "
@@ -315,22 +310,14 @@ def creator_detail(request: Request, cid: str,
                 "MATCH (n:Entity {id: $id})-[:promotes]->(p:Entity) "
                 "RETURN p.id AS id, p.name AS name, p.price AS price, "
                 "p.spec AS spec, p.target_age AS target_age ORDER BY p.id", id=cid).data()
-    visible_cases = [c for c in collabs if not visible or c["id"] in visible]
-    if plan.allow_properties:                               # 外部角色属性白名单（§12.4）
-        visible_cases = [{"id": c["id"], "name": c["name"], "stage": c["stage"]}
-                         for c in visible_cases]
+    visible_cases = plan.filter_visible(collabs)
+    for c in visible_cases:      # Case.* 属性过闸（§12.4 唯一执行点；client 现与
+        props = plan.project({k: c.pop(k, None)   # /cases、/brands 同样保留 lost_reason）
+                             for k in ("stage", "lost_reason")}, "Case")
+        c.update(props)
     stats = collab_stats(request.app.state.env, plan, [c["id"] for c in visible_cases])
-    # 报价历史（spec §15）：种子轨迹 + 三条入库口的运行时快照
-    history: list[dict] = []
-    try:
-        with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
-                             row_factory=dict_row) as conn, conn.cursor() as cur:
-            cur.execute("SELECT date::text AS date, quote_20s, source_type"
-                        " FROM creator_quote_history WHERE creator_id = %(id)s"
-                        " ORDER BY date", {"id": cid})
-            history = [dict(r) for r in cur.fetchall()]
-    except psycopg.Error:
-        history = []
+    # 报价历史（spec §15）：读写两路都收口 store/creator_quotes（2026-10-28 随迁）
+    history = quote_history(request.app.state.env, cid)
     # 合作行指标（spec §14：M10 承诺漏做补上）——与 /cases 列表同源批量统计
     case_metrics = case_stats_batch(request.app.state.env, plan,
                                     [c["id"] for c in visible_cases])

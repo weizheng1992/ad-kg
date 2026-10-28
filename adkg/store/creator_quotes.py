@@ -1,10 +1,12 @@
-"""达人报价快照写入（spec §15，2026-10-27 缺陷⑨收敛）。
+"""达人报价快照读写（spec §15，2026-10-27 缺陷⑨收敛；2026-10-28 读侧随迁）。
 
 原住在 api/routes/creators.py，被 admin.py（冲突采纳留痕）跨 route import——
-写路径归 store（检索层只读），route 只留 HTTP 壳；读侧（详情报价历史查询）
-仍在 creators.py，量小未随迁。
+读写两路都归 store，route 只留 HTTP 壳。
 """
 from __future__ import annotations
+
+import psycopg
+from psycopg.rows import dict_row
 
 from adkg.store import pg_pool
 
@@ -21,3 +23,17 @@ def record_quote_history(env: dict, creator_id: str, quote_20s, source_type: str
             " source_id) VALUES (%s, current_date, %s, %s, %s)"
             " ON CONFLICT (creator_id, date, source_type) DO NOTHING",
             (creator_id, int(quote_20s), source_type, source_id))
+
+
+def quote_history(env: dict, creator_id: str) -> list[dict]:
+    """报价历史（spec §15）：种子轨迹 + 三条入库口的运行时快照；表缺席等 PG 错
+    回空（2026-10-28 自 creators.py 下沉）。"""
+    try:
+        with pg_pool.connect(env["ADKG_PG_DSN"], row_factory=dict_row) as conn, \
+                conn.cursor() as cur:
+            cur.execute("SELECT date::text AS date, quote_20s, source_type"
+                        " FROM creator_quote_history WHERE creator_id = %(id)s"
+                        " ORDER BY date", {"id": creator_id})
+            return [dict(r) for r in cur.fetchall()]
+    except psycopg.Error:
+        return []

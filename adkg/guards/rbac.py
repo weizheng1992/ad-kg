@@ -185,3 +185,17 @@ def require_admin_view(request, authorization, role: str | None,
     require（display_role 门判）；require 的收口注释同样适用本门。"""
     require(request, authorization, gate="admin_view", role=role, user=user,
             message="无管理后台查看权限（spec §19 admin_view 门）")
+
+
+# 案例生成 = 内部操作角色（/ingest/case-*、/creative/* 与 agent 工具共用）
+CASEGEN_ROLES = {"admin", "management", "optimizer", "ae"}
+
+
+def can_commit_case(planner, role: str) -> bool:
+    """案例提交判定（单一来源）：CASEGEN_ROLES 角色门 + actions 含 create_case
+    动作门（§12.4 fail-closed）——/ingest/case-commit 写门与 /agent/chat 下发
+    can_commit_case 共用此处，别两处抄（2026-10-27 收口：曾只查角色门，
+    optimizer 无 create_case 动作也能 commit；2026-10-28 自 ingest.py 下沉至此
+    ——rbac 本就是按钮/数据两套词表的会合点）。"""
+    return role in CASEGEN_ROLES and "create_case" in \
+        planner.perms["roles"].get(role, {}).get("actions", [])

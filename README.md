@@ -343,7 +343,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 
 **融合与排序**：路内排序（向量按相似度、图按 confidence × 跳数惩罚、事实按指标）→ 跨路去重合并（v1 用保序去重替代 RRF）→ 同一事实按 authority 仲裁（[12.2](#122-权威度authorityyaml)）。router 输出各意图置信度，最高低于阈值 → 三路全跑兜底；响应 `routes_used` 各项带得分，评测可归因到路。路由计划 **RouterPlan**（steps 带依赖与置信度、fallback 标志）是 models.py 一等类型，`ask.py` 只解释执行——路由评测直接对 plan 断言，不起整条 LLM 链路。
 
-**权限下推**：`guards/permission.py` 把 permissions.yaml 翻译成 **PermissionPlan**（metadata_filter / 可见 ID 集 / SQL 谓词 + 列白名单 + **属性黑名单** / 脱敏规则），vector、graph、text2sql 三路与 assemble 出口**只消费 plan、不读权限矩阵**——过滤在召回层内生效，assemble 只见过滤后结果，对外仅布尔 `permission_applied`（计数与明细进审计）。graph 路命中实体的**自身属性作为 `entity` 证据项**随关系一起返回（`Product.target_age` 这类属性型问题由此可答），属性白名单（外部 `allow_properties`，fail-closed）与黑名单（内部 `deny_properties`）都在该出口执行——这是它们唯一的执行点。SQL 谓词**案例级优先、品牌级兜底**（optimizer 的"负责案例"粒度 ≠ 对接品牌，品牌级会错杀）；text2sql 的生成 SQL 经五道闸校验后还由系统**注入语义不变量**（NOT unmatched、行谓词）——不信任生成的 SQL。越权值不得参与聚合：top-N / 均值一律算在过滤后集合上。翻译收口在一处，越权测试集只打 PermissionPlan 这一个 interface。
+**权限下推**：`guards/permission.py` 把 permissions.yaml 翻译成 **PermissionPlan**（metadata_filter / 可见 ID 集 / SQL 谓词 + 列白名单 + **属性黑名单** / 脱敏规则），vector、graph、text2sql 三路与 assemble 出口**只消费 plan、不读权限矩阵**——过滤在召回层内生效，assemble 只见过滤后结果，对外仅布尔 `permission_applied`（计数与明细进审计）。graph 路命中实体的**自身属性作为 `entity` 证据项**随关系一起返回（`Product.target_age` 这类属性型问题由此可答），属性白名单（外部 `allow_properties`，fail-closed）与黑名单（内部 `deny_properties`）都在该出口执行——这是它们唯一的执行点。SQL 谓词**案例级优先、品牌级兜底**（optimizer 的"负责案例"粒度 ≠ 对接品牌，品牌级会错杀）；text2sql 的生成 SQL 经五道闸校验后还由系统**注入语义不变量**（NOT unmatched、行谓词）——不信任生成的 SQL。越权值不得参与聚合：top-N / 均值一律算在过滤后集合上。翻译收口在一处，越权测试集只打 PermissionPlan 这一个 interface。**执行侧同样收口在 plan**（2026-10-28）：`gate / gate_detail / require_visible / filter_visible / project` 五方法 + `mask_person` 掩码——CRUD 端点不再手推「我被拒了吗 / 类可见吗 / 哪些字段能出门」（此前 ~8 处手抄已漂：403/404 不一致、client 的 Case.lost_reason 详情路丢失，统一后一并修正）。
 
 ### 7.4 实体对齐（四级漏斗）
 
@@ -447,7 +447,7 @@ Authorization: Bearer <service-token>
  "audit_id": "01JGZ8K7Q4M3NP2T5V9WXBCDRE"}
 ```
 
-放行时返回 `{"decision": "allow", "reason": "…", "audit_id": "…"}`；调用方自行执行后回传结果与平台回执，补写同一条审计（裁决与回执分两段——回执通道现为约定设计，未落地）。动作词表 `read / create_creative / pause_campaign / delete_creative …` 见 `schema.yaml#actions`。
+放行时返回 `{"decision": "allow", "reason": "…", "audit_id": "…"}`；调用方自行执行后 `POST /actions/receipt {audit_id, outcome ∈ done/failed/skipped, note}` 回写结果——审计只追加，回执写新行（`action=action_receipt`、`target=audit:<原id>`、`verdict=outcome`，011 迁移扩枚举）引用原裁决行，裁决与回执两段闭环（2026-10-28 落地）。动作词表 `read / create_creative / pause_campaign / delete_creative …` 见 `schema.yaml#actions`。
 
 AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 机判阈值结果（时长 / 尺寸等结构化项，不做语义比对）；`POST /ingest/assertion` 生成后写回断言（`{"subject": "Creative:creative_1007", "predicate": "violates", "object": "Guideline:G-03", "confidence": 0.91}`，provenance 为 conversation / 20）。语义 / 多模态比对归 smartServe 的 AIGC Agent 或人工，AdKG 收口规范检索与断言写回，过权限与审计。
 
@@ -455,7 +455,7 @@ AIGC 闭环两个端点：`POST /guideline/check` 生成前返回适用规范 + 
 
 - `GET /ingest/docs?q=`：列已同步飞书文档（chunks 聚合 + ingest_job 版本；标题取 chunk#0 首行）
 - `POST /ingest/case-draft` `{"doc_id": "feishu:doc:xxx"}`：LLM 抽 Brand / Product / Case 草稿 + [7.4](#74-实体对齐) L1 对齐——命中既有实体复用其 id（`existing: true`），未命中的 Person 一律丢弃（未对齐不入图，[12](#十二约定) 铁律）；**不写任何库**
-- `POST /ingest/case-commit` `{"draft": {…}}`：人工确认后入图。服务端重校验（类 / 谓词 / 三元组契约 / 属性白名单），新实体 provenance 为 **official_doc / 60**（低于 system_of_record，冲突仲裁保护主数据）、`source_id=doc_id` 可溯源；注册 `entity_alias(name)`；写 audit。同文档重复 commit 幂等（Case id 复用 + MERGE）
+- `POST /ingest/case-commit` `{"draft": {…}}`：人工确认后入图。服务端重校验（**身份重推导**——existing / same_doc / eid 不采信客户端，从图上按 L1 对齐 + case_id_for 重推；谓词 / 三元组契约 / 属性白名单），新实体 provenance 为 **official_doc / 60**（低于 system_of_record，冲突仲裁保护主数据）、`source_id=doc_id` 可溯源；注册 `entity_alias(name)`；写 audit。同文档重复 commit 幂等（身份重推导全对齐命中 → 节点零重写；边 MERGE）
 
 素材草稿两端点（表单式生成，Agent 对话内同样能力经工具提供）：商品知识（vector 路）× 最好相关案例素材（text2sql top 口径 + 图上下文过滤同类目）× 创意规范（机判阈值）→ LLM 生成素材草稿（前 3 秒钩子 / 分镜脚本 / 投放文案，带证据编号与 provenance）。证据三路全过 PermissionPlan 过滤（§12.4）；草稿为灵感件，投放前须过 `/guideline/check` 机判与人工审。
 

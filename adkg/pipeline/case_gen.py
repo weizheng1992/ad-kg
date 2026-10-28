@@ -208,37 +208,54 @@ def case_id_for(graph, doc_id: str, now: datetime) -> tuple[str, bool]:
 
 
 def commit_draft(draft: dict, graph, schema: dict, *, now: datetime) -> dict:
-    """服务端重校验后入图（不信客户端 draft）：只写新建实体与构造关系。
+    """服务端重校验后入图（不信客户端 draft）：身份重推导 + 只写新实体与构造关系。
 
-    仲裁（§12.2）：同 id / 同边已有更高 authority → 不覆盖，跳过并记 warning；
+    信任面（2026-10-28 收口）：existing / same_doc / eid 一律不读客户端——
+    身份按 build_draft 同款规则从图上重推导（L1 对齐 → Case 走 case_id_for
+    幂等复用与建号 → 其余走确定性 slug），对齐命中不碰（主数据保护），对齐
+    不中才写；对齐命中的 Case 仍作为 case_id 回跳锚。"同文档旧产物可刷新"
+    由 case_id_for 的 prov_source_id==doc_id 判定给出，客户端无从伪造。
+    仲裁（§12.2）：目标 id 已有更高 authority → 不覆盖，跳过并记 warning；
     端点被拦的关系一并跳过（防把边挂到没写进去的节点上）。
+    warnings 只装服务端产生的警告——draft.warnings 是客户端回显字段，不采信。
     """
     triples = {(r["source"], r["predicate"], r["target"]) for r in schema["relations"]}
     case = draft.get("case") if isinstance(draft.get("case"), dict) else None
+    doc_id = str(draft.get("doc_id") or "api")
     nodes = [("Case", case), ("Brand", draft.get("brand"))] + \
         [("Product", p) for p in draft.get("products") or []]
     if not any(isinstance(n, dict) and str(n.get("name") or "").strip() for _, n in nodes):
         raise ValueError("草稿没有任何可入图实体（case / brand / products 全空）")
-    warnings = list(draft.get("warnings") or [])
+    warnings: list[str] = []
     prov = Provenance(source_type=SourceType.OFFICIAL_DOC,
-                      source_id=str(draft.get("doc_id") or "api"), fetched_at=now)
+                      source_id=doc_id, fetched_at=now)
 
-    entities, blocked = [], set()
+    entities, blocked, case_eid = [], set(), ""
     for cls, node in nodes:
         if not isinstance(node, dict):
             continue
-        if node.get("existing") and not node.get("same_doc"):
-            continue                        # 对齐命中的主数据实体不碰；同文档旧产物可刷新
-        name, eid = str(node.get("name") or "").strip(), str(node.get("id") or "")
-        if not name or not eid.startswith(f"{cls}:"):
-            warnings.append(f"{cls} 的 id 非法，跳过：{eid!r}")
-            blocked.add(eid)
+        name = str(node.get("name") or "").strip()
+        if not name:
+            warnings.append(f"{cls} 缺名称，跳过")
             continue
+        aligned = _align(graph, cls, name)                  # 身份重推导：L1 对齐优先
+        if aligned:
+            if cls == "Case":
+                case_eid = aligned                          # 命中的既有案例仍是回跳锚
+            continue                        # 对齐命中的既有实体不碰（主数据保护）
+        if cls == "Case":                               # 幂等复用 / 顺位建号（服务端权威）
+            eid, same_doc = case_id_for(graph, doc_id, now)
+            if same_doc:
+                case_eid = eid                  # 本文档旧产物按 prov_source_id 认定，可刷新
+        else:
+            eid = f"{cls}:{_collapse(name)}"
         prev = _node_authority(graph, eid)
         if prev is not None and prev > prov.authority:
             warnings.append(f"{eid} 已有 authority={prev} 的主数据，不覆盖（§12.2）")
             blocked.add(eid)
             continue
+        if cls == "Case":
+            case_eid = eid
         entities.append(Entity(entity_class=cls, entity_id=eid,
                                props=_props_of(schema, cls, name, node.get("props")),
                                provenance=prov))
@@ -263,7 +280,7 @@ def commit_draft(draft: dict, graph, schema: dict, *, now: datetime) -> dict:
 
     graph.upsert_entities(entities)
     graph.upsert_relations(relations)
-    return {"case_id": str((case or {}).get("id") or ""),   # 商品知识文档无案例时为空串
+    return {"case_id": case_eid,                          # 商品知识文档无案例时为空串
             "entities": len(entities), "relations": len(relations),
             "written": [{"id": e.entity_id, "name": e.props.get("name")} for e in entities],
             "warnings": warnings}
