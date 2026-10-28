@@ -96,7 +96,7 @@ jobs:
           echo "$SSH_KEY" > ~/deploy_key
           # root 一次性加两条窄 sudoers（cp 指定文件 + nginx -t/reload）后此步自动生效
           ssh -i ~/deploy_key "$SSH_USER@$SSH_HOST" 'set -e; cd ~/ad-kg \
-            && sudo -n cp deploy/nginx/adkg-demo.conf /etc/nginx/sites-available/adkg \
+            && sudo -n cp "$HOME/ad-kg/deploy/nginx/adkg-demo.conf" /etc/nginx/sites-available/adkg \
             && sudo -n nginx -t && sudo -n systemctl reload nginx \
             && echo "nginx 配置已同步并重载" \
             || echo "SKIP: sudoers 尚未授权（一次性授权见 docs/deployment.md 五）"'

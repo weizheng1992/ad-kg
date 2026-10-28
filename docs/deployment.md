@@ -92,14 +92,17 @@ curl -s http://127.0.0.1:8000/docs >/dev/null && echo "API OK"
   其中 web/nginx 两步需要 root **一次性授权**（之后 CI 全自动，无需再登 root）：
 
   ```bash
-  ssh root@152.136.165.95   # 一次性（约 6 行）
-  # 1) web 静态目录交 deploy（CI 用 adkg.new/adkg.old 原子轮换发布）
+  ssh root@152.136.165.95   # 一次性（2026-10-28 勘误：/var/www 目录本身也要交 deploy；systemctl 在 /usr/bin 非 /usr/sbin）
+  # 1) web 静态目录交 deploy（CI 用 adkg.new/adkg.old 原子轮换发布——mkdir/rename 需要
+  #    /var/www 写权，只 chown adkg 不够，曾致 web 发布步自上线起静默 SKIP 七天）
+  chown deploy:deploy /var/www
   chown -R deploy:deploy /var/www/adkg
   # 2) nginx 配置同步 + 校验/重载三条窄 sudoers（写 /etc/sudoers.d/adkg-ci）
+  #    sudoers 逐字匹配 argv：cp 源必须是绝对路径（ci.yml 同步用绝对路径），systemctl 用 /usr/bin
   cat >/etc/sudoers.d/adkg-ci <<'EOF'
   deploy ALL=(root) NOPASSWD: /usr/bin/cp /home/deploy/ad-kg/deploy/nginx/adkg-demo.conf /etc/nginx/sites-available/adkg
   deploy ALL=(root) NOPASSWD: /usr/sbin/nginx -t
-  deploy ALL=(root) NOPASSWD: /usr/sbin/systemctl reload nginx
+  deploy ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
   EOF
   chmod 440 /etc/sudoers.d/adkg-ci
   # 3) 首次手动应用一次（此后 CI 接管）
