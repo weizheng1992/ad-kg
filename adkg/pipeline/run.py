@@ -33,6 +33,12 @@ def version_of(record: RawRecord) -> str:
     return record.provenance.version or record.provenance.fetched_at.date().isoformat()
 
 
+def _edge_ok(graph, r) -> bool:
+    """同边仲裁：既有更高权威边在场则低者不写入（§12.2；与物化路同规则）。"""
+    prev = graph.edge_authority(r.predicate, r.source, r.target)
+    return not (prev is not None and prev > r.provenance.authority)
+
+
 def run_docs(connector: Connector, raw: RawStore, vector, graph, trace,
              extractor=None, embed_fn=None, max_chars: int = 500) -> RunStats:
     stats = RunStats()
@@ -57,14 +63,33 @@ def run_docs(connector: Connector, raw: RawStore, vector, graph, trace,
         if extractor is not None:                        # Neo4j 后
             for piece in pieces:
                 result = extractor(piece.text, record.provenance.model_dump())
-                graph.upsert_entities(result.entities)
-                graph.upsert_relations(result.relations)
-                stats.entities += len(result.entities)
-                stats.relations += len(result.relations)
+                # 权威仲裁（§12.2，备忘⑯窄范围接入）：更高权威在场不覆盖——
+                # 抽取产物 official_doc/60 不得刷掉种子 system_of_record/100；
+                # 被拦实体进人审队列，其两端关系一并跳过
+                blocked: set[str] = set()
+                writable: list = []
+                for e in result.entities:
+                    prev = graph.authority_of(e.entity_id)
+                    if prev is not None and prev > e.provenance.authority:
+                        blocked.add(e.entity_id)
+                        trace.push_review("conflict-review", {
+                            "entity": e.entity_id, "existing_authority": prev,
+                            "incoming_authority": e.provenance.authority,
+                            "reason": "抽取产物遇更高权威主数据，不覆盖（§12.2）"})
+                        stats.review += 1
+                        continue
+                    writable.append(e)
+                relations = [r for r in result.relations
+                             if r.source not in blocked and r.target not in blocked
+                             and _edge_ok(graph, r)]
+                stats.entities += len(writable)
+                stats.relations += len(relations)
                 stats.dropped += result.dropped
                 for item in result.review:
                     trace.push_review("conflict-review", item)
                     stats.review += 1
+                graph.upsert_entities(writable)
+                graph.upsert_relations(relations)
         trace.job_mark(record.provenance.source_id, version, neo4j="done")
 
     stats.reconcile = trace.reconcile(graph.counts())    # 批次收尾对账

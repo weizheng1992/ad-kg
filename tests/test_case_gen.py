@@ -27,6 +27,13 @@ class FakeGraph:
         self.upserted_entities: list = []
         self.upserted_relations: list = []
 
+    def authority_of(self, eid):                        # ⑯仲裁单源接口（与真 GraphStore 同形）
+        row = self.entities.get(eid)
+        return row.get("authority") if row else None
+
+    def edge_authority(self, pred, src, dst):
+        return self.edge_auth.get((src, pred, dst))
+
     def session(self):
         return self
 

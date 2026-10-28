@@ -287,14 +287,8 @@ def commit_draft(draft: dict, graph, schema: dict, *, now: datetime) -> dict:
 
 
 def _node_authority(graph, eid: str) -> int | None:
-    with graph.session() as s:
-        row = s.run("MATCH (n:Entity {id: $id}) RETURN n.authority AS auth LIMIT 1",
-                    id=eid).single()
-        return row["auth"] if row else None
+    return graph.authority_of(eid)                  # 单源在 GraphStore（⑯仲裁收敛）
 
 
 def _edge_authority(graph, pred: str, src: str, dst: str) -> int | None:
-    with graph.session() as s:
-        row = s.run(f"MATCH (a:Entity {{id: $s}})-[r:{pred}]->(b:Entity {{id: $o}})"
-                    " RETURN r.authority AS auth LIMIT 1", s=src, o=dst).single()
-        return row["auth"] if row else None
+    return graph.edge_authority(pred, src, dst)

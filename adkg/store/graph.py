@@ -24,6 +24,20 @@ class GraphStore:
     def close(self) -> None:
         self._driver.close()
 
+    def authority_of(self, eid: str) -> int | None:
+        """既有实体 authority（备忘⑯仲裁单源：case_gen 物化路与抽取写图共用）。"""
+        with self.session() as s:
+            row = s.run("MATCH (n:Entity {id: $id}) RETURN n.authority AS auth LIMIT 1",
+                        id=eid).single()
+            return row["auth"] if row else None
+
+    def edge_authority(self, pred: str, src: str, dst: str) -> int | None:
+        """既有同边 authority（关系级仲裁同上）。"""
+        with self.session() as s:
+            row = s.run(f"MATCH (a:Entity {{id: $s}})-[r:{pred}]->(b:Entity {{id: $o}})"
+                        " RETURN r.authority AS auth LIMIT 1", s=src, o=dst).single()
+            return row["auth"] if row else None
+
     def upsert_entities(self, entities: list[Entity]) -> None:
         with self.session() as s:
             for e in entities:

@@ -21,7 +21,10 @@ class FakeVector:
 
 
 class FakeGraph:
-    def __init__(self): self.calls, self.entities, self.relations = [], [], []
+    def __init__(self):
+        self.calls, self.entities, self.relations = [], [], []
+        self.node_auth: dict = {}                        # 仲裁测试用：既有 authority
+        self.edge_auth: dict = {}
 
     def upsert_entities(self, es):
         self.calls.append("neo4j")
@@ -30,6 +33,11 @@ class FakeGraph:
     def upsert_relations(self, rs):
         self.calls.append("neo4j")
         self.relations.extend((r.source, r.predicate) for r in rs)
+
+    def authority_of(self, eid): return self.node_auth.get(eid)
+
+    def edge_authority(self, pred, src, dst):
+        return self.edge_auth.get((pred, src, dst))
 
     def counts(self): return {"nodes": len(set(self.entities)), "relations": len(self.relations)}
 
@@ -106,3 +114,48 @@ class TestRunDocs:
         run_docs(_Conn([_record(tmp_path)]), RawStore(tmp_path / "raw"), v, g, t,
                  extractor=None, embed_fn=None)
         assert "reconcile" in t.reviews
+
+
+class Test抽取仲裁:
+    """备忘⑯窄范围接入（2026-10-28）：抽取写图接权威仲裁——更高权威在场
+    不覆盖、进人审、被拦实体两端关系一并跳（§12.2，与物化路同规则）"""
+
+    def _extract(self):
+        from adkg.models import Entity, Relation
+        from adkg.pipeline.extraction import ExtractionResult
+
+        def fake_extract(text, provenance):
+            prov = Provenance(**provenance)
+            return ExtractionResult(
+                entities=[Entity(entity_class="Brand", entity_id="Brand:A",
+                                 props={"name": "A"}, provenance=prov),
+                          Entity(entity_class="Brand", entity_id="Brand:B",
+                                 props={"name": "B"}, provenance=prov)],
+                relations=[Relation(source="Case:C-1", predicate="for_brand",
+                                    target="Brand:A", provenance=prov, confidence=0.9)],
+                review=[])
+        return fake_extract
+
+    def test_高权威在场不覆盖并进人审(self, tmp_path):
+        v, g, t = FakeVector(), FakeGraph(), FakeTrace()
+        g.node_auth = {"Brand:A": 100}                       # 种子 system_of_record 在场
+        raw = RawStore(tmp_path / "raw")
+        stats = run_docs(_Conn([_record(tmp_path)]), raw, v, g, t,
+                         extractor=self._extract(), embed_fn=None)
+        assert g.entities == ["Brand:B"]                     # A 被拦，B 照写
+        assert stats.review == 1                             # 拦截进人审队列
+
+    def test_被拦实体两端关系一并跳(self, tmp_path):
+        v, g, t = FakeVector(), FakeGraph(), FakeTrace()
+        g.node_auth = {"Brand:A": 100}
+        run_docs(_Conn([_record(tmp_path)]), RawStore(tmp_path / "raw"),
+                 v, g, t, extractor=self._extract(), embed_fn=None)
+        assert ("Case:C-1", "for_brand") not in g.relations  # 端点被拦 → 关系跳
+
+    def test_同边更高权威不写入(self, tmp_path):
+        v, g, t = FakeVector(), FakeGraph(), FakeTrace()
+        g.edge_auth = {("for_brand", "Case:C-1", "Brand:A"): 100}
+        run_docs(_Conn([_record(tmp_path)]), RawStore(tmp_path / "raw"),
+                 v, g, t, extractor=self._extract(), embed_fn=None)
+        assert set(g.entities) == {"Brand:A", "Brand:B"}     # 实体都放行
+        assert ("Case:C-1", "for_brand") not in g.relations  # 边被拦
