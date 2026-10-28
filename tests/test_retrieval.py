@@ -129,6 +129,31 @@ class TestGraphSearch:
         assert set(case_props) <= {"stage"}              # 白名单内属性才可见
         g.close()
 
+    def test_人锚点仅限第一人称(self):
+        """G14 实弹（2026-10-27 golden）：无锚点的全局问题被静默圈到提问者本人，
+        归因串行把 CPA 榜收窄成其品牌子集；人锚点只服务"我的品牌/我们的案例"
+        （§9.1）——第一人称指代在场才启用。"""
+        import os
+
+        from adkg.guards.permission import PermissionPlanner
+        from adkg.retrieval.graph_search import search
+        from adkg.store.graph import GraphStore
+
+        g = GraphStore(os.environ["ADKG_NEO4J_URI"], os.environ["ADKG_NEO4J_USER"],
+                       os.environ["ADKG_NEO4J_PASSWORD"])
+        planner = PermissionPlanner(ROOT / "ontology/permissions.yaml", graph=g)
+        # 全局问法：不得锚到 Person:chen（entity_ids 会经 entity_ids_from 收窄 text2sql）
+        out = search("效果差的素材和创意规范有没有关系？",
+                     planner.plan("management", person="Person:chen"), g, person="Person:chen")
+        assert out["entity_ids"] == []
+        assert not any("Person:chen" in str(e.get("ref", "")) for e in out["evidence"])
+        # 第一人称问法：锚点即本人（§9.1 原语义保留）
+        mine = search("我负责哪些案例", planner.plan("management", person="Person:chen"), g,
+                      person="Person:chen")
+        assert "Person:chen" in mine["entity_ids"]
+        assert any("Person:chen" in e["ref"] for e in mine["evidence"])
+        g.close()
+
 
 @pytest.mark.skipif(not _dbs_up(), reason="数据库不在线")
 class TestText2SQL:
@@ -166,6 +191,34 @@ class TestText2SQL:
             ("Creative:C-2025-005", "Creative:C-2025-006", "Creative:C-2025-002"))]
         assert not bad, f"越权：{bad}"
         g.close()
+
+    def test_点名素材不走自由生成保双平台分行(self):
+        """G16 实弹（2026-10-27 golden）：生成 prompt 建议的 string_agg(platform) 聚合形
+        把 (素材,平台) 分行压成单行，"双平台 CPA 数值"证据点随 LLM 成败漂移——点名
+        素材一律直落 entity_metrics 模板（§12.5），生成器不得被调用。"""
+        import os
+
+        from adkg.guards.permission import PermissionPlanner
+        from adkg.retrieval.text2sql import run
+
+        planner = PermissionPlanner(ROOT / "ontology/permissions.yaml")
+        plan = planner.plan("management")
+        gen_sql = ("SELECT creative_id, string_agg(DISTINCT platform::text, ',') AS platforms,"
+                   " sum(cost)/NULLIF(sum(conversions),0) AS cpa FROM unified_metrics"
+                   " WHERE creative_id = 'Creative:creative_992' GROUP BY 1 LIMIT 10")
+        called = []
+
+        def gen(prompt, user):
+            called.append(1)                              # 若被调用即回归（聚合单行形）
+            return {"sql": gen_sql}
+
+        out = run("creative_992 的 CPA 高吗？和规范有关系吗？", plan,
+                  os.environ["ADKG_PG_RO_DSN"], generator=gen)
+        assert not called
+        assert out["evidence"][0]["sql_source"].startswith("template")
+        plats = {r["platform"] for r in out["evidence"][0]["rows"]
+                 if r["creative_id"] == "Creative:creative_992"}
+        assert plats == {"douyin", "xhs"}                 # 双平台分行在场
 
     def test_创意角色列白名单_无cpa(self):
         from adkg.guards.permission import PermissionPlanner
@@ -237,6 +290,18 @@ class TestTopMetric模板:
         _, p = build_sql("最近一个月花钱最多的创意", self._plan())
         assert p["metric"] == "cost" and p["direction"] == "DESC" and p["window"]
         assert p["n"] == 5    # "最近一个月"的"一个"是时长不是数量词，n 维持默认
+
+    def test_效果差是排名语义且不劫持归因路由(self):
+        """G14 实弹（2026-10-27 golden）："效果差"不带"最"也曾是排名语义——词表缺席时
+        模板落到平台汇总/entity_metrics，"CPA 排序的素材清单"证据点永远缺席。"""
+        from adkg.retrieval.router import rule_route
+        from adkg.retrieval.text2sql import build_sql
+        sql, p = build_sql("效果差的素材和创意规范有没有关系？", self._plan())
+        assert p["metric"] == "cpa" and p["direction"] == "DESC"   # 缺省口径+差向前=最差优先
+        assert p.get("group") == "creative_id" and "ORDER BY cpa DESC" in sql
+        # 词表加词不得劫持既有路由：归因问法仍归因（_ATTR 先于 _FACT），裸问法进 fact
+        assert rule_route("效果差的素材和创意规范有没有关系？").intent == "attribution"
+        assert rule_route("效果差的素材有哪些").intent == "fact"
 
     def test_交易语义优先于排名词(self):
         """夜检 D7："卖得最好/购买率最高/订单最多"是交易语义，不得落缺省 cpa 的

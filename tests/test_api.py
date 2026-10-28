@@ -144,3 +144,18 @@ class TestPermissionGates:
         ev = r.json()["evidence"]                          # deny-all（§12.4 fail-closed）
         assert all(not e.get("rows") for e in ev)          # 事实行恒空
         assert not any(e["type"] in ("entity", "doc") for e in ev)   # 图/文档路零证据
+
+
+def test_总结证据窗口补缺席类型():
+    """G14 实弹：归因串行把十几条关系链排在 fact/doc 前，总结窗口 10 全是关系，
+    总结员答"证据中未涵盖效果数据"而事实行明明在场——窗口须补齐缺席类型。"""
+    from adkg.api.routes.ask import _answer_window
+
+    rel = [{"type": "relation", "ref": f"(a)-[:r]->(b{i})"} for i in range(12)]
+    ev = rel + [{"type": "fact", "ref": "unified_metrics", "rows": []},
+                {"type": "doc", "ref": "chunk:x", "quote": "…"}]
+    w = _answer_window(ev)
+    types = [e["type"] for e in w]
+    assert "fact" in types and "doc" in types           # 缺席类型被补进窗口
+    assert len(w) <= 13 and w[:10] == ev[:10]           # 原前 10 保序、总额外 ≤3
+    assert _answer_window(ev[:5]) == ev[:5]             # 不超窗原样返回

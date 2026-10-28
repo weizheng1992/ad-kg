@@ -205,6 +205,23 @@ _SLIM_DROP = {"ref", "provenance"}
 # （filtered/entity_ids/sql 从不落在 evidence 项上，曾列进丢弃集是空转——2026-10-23 检查勘正）
 
 
+def _answer_window(evidence: list[dict], cap: int = 10) -> list[dict]:
+    """总结证据窗口：前 cap 条打底，再补齐窗口里缺席的证据类型（总额外 ≤3 条）。
+    归因串行 g→t→v 会把十几条关系链排在 fact/doc 之前——窗口 10 曾全是关系，
+    总结员对着满屏关系链答"证据中未涵盖效果数据"，事实行明明在场（G14 实弹）。"""
+    window = list(evidence[:cap])
+    if len(evidence) <= cap:
+        return window
+    have = {ev.get("type") for ev in window}
+    for ev in evidence[cap:]:
+        if ev.get("type") not in have:
+            window.append(ev)
+            have.add(ev.get("type"))
+            if len(window) >= cap + 3:
+                break
+    return window
+
+
 def _agent_answer(llm, question: str, evidence: list[dict],
                   name_map: dict[str, str] | None = None) -> str:
     import json
@@ -217,7 +234,7 @@ def _agent_answer(llm, question: str, evidence: list[dict],
                               **{k: v for k, v in ev.items()
                                  if k not in _SLIM_DROP and k != "rows"},
                               "rows": ev.get("rows", [])[:5]}
-                             for i, ev in enumerate(evidence[:10], 1)]},
+                             for i, ev in enumerate(_answer_window(evidence), 1)]},
                    ensure_ascii=False, default=str),
         timeout=60, max_retries=0)                         # 限时单发：超时回模板（§7.2；60s 档）
     return str(payload.get("answer", "")).strip() or _summarize(question, {"evidence": evidence,

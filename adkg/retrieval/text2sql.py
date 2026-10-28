@@ -436,7 +436,11 @@ def run(question: str, plan, dsn_ro: str, entity_ids: list[str] | None = None,
     模板自身不可执行时降级为空证据 + note——事实路永不把异常抛给 /ask
     （2026-10-22 验证：问 roi 曾生成 sum(roi) 必炸 SQL，fallback 重放同款直接 500）。"""
     sql, params, source = None, None, "template"
-    if generator is not None:
+    # 点名素材的问题不走自由生成，直落 entity_metrics 模板（§12.5 双平台锚点）：
+    # 生成 prompt 建议的 string_agg(platform) 聚合形会把 (素材,平台) 分行压成单行，
+    # G16"双平台 CPA 数值"证据点随 LLM 成败漂移（2026-10-27 golden 实弹——生成成
+    # 功即失双平台，生成失败回落模板才过）；点名即走模板与 _template 的拍板同源
+    if generator is not None and not _named_creative_of(question):
         gen = generate_sql(generator, question, plan)
         m = _metric_of(question)
         if gen and m not in _COMPUTABLE:

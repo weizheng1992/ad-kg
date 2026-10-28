@@ -47,7 +47,9 @@ PLATFORM_WORDS = {"抖音": "douyin", "巨量": "douyin", "小红书": "xhs", "�
 # 漂移）——加词只改这里，两端自动跟随
 HIGH_WORDS = ("最高", "最多", "最大", "最凶", "最猛")     # 绝对高向：不随成本型反转
 LOW_WORDS = ("最低", "最少", "最小")                      # 绝对低向
-VALENCE_WORDS = ("最差", "最好", "最佳")                  # 好坏向：按成本型反转（§六）
+# 好坏向：按成本型反转（§六）。"效果差"不带"最"也是排名语义（G14 实弹：缺此词时
+# 模板落到平台汇总/entity_metrics，"CPA 排序的素材清单"证据点永远缺席）
+VALENCE_WORDS = ("最差", "最好", "最佳", "效果差")
 RANK_WORDS = HIGH_WORDS + LOW_WORDS + VALENCE_WORDS + ("排名",)   # 排名语义全集
 TRADE_ASC_WORDS = LOW_WORDS + ("最差",)   # 交易模板方向：orders/gmv 无成本型，最差=最少
 
