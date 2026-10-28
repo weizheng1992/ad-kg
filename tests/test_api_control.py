@@ -90,3 +90,4 @@ class TestIngestAssertion:
             "subject": "a", "predicate": "teleports_to", "object": "b",
             "confidence": 0.9, "role": "creative"})
         assert r.status_code == 422
+

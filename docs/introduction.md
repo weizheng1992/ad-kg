@@ -18,7 +18,7 @@ AdKG（Ad Knowledge Graph）是**本体驱动的广告营销知识中台**，业
 
 | 边界 | 含义 |
 |---|---|
-| 决策点不是执行点 | `/actions/check` 只裁决 allow/deny + 依据 + audit_id，执行归调用方；裁决与回执分两段（回执补写为约定设计，暂无回执端点） |
+| 决策点不是执行点 | `/actions/check` 只裁决 allow/deny + 依据 + audit_id，执行归调用方；裁决与回执分两段——`POST /actions/receipt {audit_id, outcome}` 补写审计链新行引用原裁决（2026-10-28 落地） |
 | 只暴露 HTTP API | web 前端、smartServe、其他业务系统一律走 API + 认证，不直连 Neo4j / Postgres |
 | 检索层只读 | 写路径全部在 connectors → pipeline 一侧，数据流单向 |
 
