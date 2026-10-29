@@ -190,9 +190,12 @@ ad-kg/
 ├── eval/                          # 【资产】评估
 │   ├── golden_set.jsonl           #   38 题（multi_hop 17 / fact 10 / concept 4 / attribution 4 / operation 3）
 │   ├── run_eval.py                #   跑分：进程内打 /ask，规则判据 + LLM judge 双轨
+│   ├── agent_scenarios.jsonl      #   agent 场景集（query/stat/comparison/casegen 四型，真实措辞打 /agent/chat）
+│   ├── agent_eval.py              #   agent 跑分：ReAct 全链路判分（judge+数值锚+场景断言；--rounds 两轮防抖）
 │   ├── run_ablation.py            #   消融：vec_only / vec_sql / full 三配置归因
 │   ├── judge.py                   #   LLM judge prompt 与解析
 │   ├── recalc_golden.py           #   库值锚点重算（dry-run diff / --yes 落盘，幂等）
+│   ├── recalc_agent.py            #   agent 场景数值锚重算（协议同 recalc_golden，口径复用 metrics.agg_expr）
 │   └── runs/                      #   评测结果（gitignore）
 │
 ├── data/
@@ -539,6 +542,8 @@ cd web && bun run dev                        # 前端 :5173（vite 代理 → :8
 ```bash
 HF_HUB_OFFLINE=1 uv run pytest                              # 全量 255（库不在线自动跳集成）
 uv run python eval/run_eval.py                              # golden set 38 题（规则判据 + LLM judge）
+uv run python eval/agent_eval.py                            # agent 场景集（/agent/chat ReAct 真 LLM；--types 选型 --rounds N 防抖）
+uv run python eval/recalc_agent.py                          # agent 场景数值锚重算（dry-run diff；--yes 落盘）
 uv run python eval/run_ablation.py                          # 消融：multi_hop 图谱增益归因
 bunx promptfoo@latest eval -c promptfooconfig.json -j 1 --no-cache   # 多角色矩阵 24 用例（必须串行+关缓存）
 uv run python scripts/sync_feishu.py                        # 飞书增量同步（.env FEISHU_DOCS / FEISHU_FOLDER）
@@ -630,6 +635,8 @@ confidence  : 抽取置信度 0–1（事实表恒为 1）；≥0.7 入图、0.4
 ```
 
 `type ∈ {multi_hop, fact, concept, attribution, operation}`；20 题种子按 5/4/4/4/3 起步，Phase 6 扩至 **38 题**（multi_hop 17 / fact 10 / concept 4 / attribution 4 / operation 3）；50 题全量（multi_hop ≥15）留待真实数据接入后扩。rubric：正确 = 要点命中 + 数字一致 + 引用可溯源。`data_window` 标明题目依赖的数据窗口——种子为滚动窗口（止于上月），窗口类题（上月/近 N 天）的期望数字随数据重生成联动改写。**库值锚点重算脚本化（`eval/recalc_golden.py`）**：种子扩容 / 口径调整后按当前库（PG / Neo4j 直查）重算期望里的数值与实体锚——dry-run 出 diff、`--yes` 落盘、幂等；日常回归仍用 `run_eval.py` 对拍不重算。
+
+**agent 场景集（`eval/agent_scenarios.jsonl`，2026-10-29 起，wayfinder 图「agent 真实化评测」）**：与 golden 单问一答互补的第二评测面——真实措辞打 `/agent/chat` ReAct 全链路（真实 LLM 多轮工具、真实角色权限，不 mock 不降级）。`type ∈ {query, stat, comparison, casegen}`：query=真实措辞查询（口语/行话/模糊指代/一问夹两事，含越权问法）；stat=统计聚合（排序/汇总/时间窗口语变体）；comparison=对比（双实体/双平台/双期间，双边数值锚+结论方向断言）；casegen=案例生成生命周期（draft 字段断言 → `/ingest/case-commit` → 图上落点断言——建号约定/关系/authority/别名——跑后清理不留脏数据）。判据三件：judge 要点（复用 `judge.py`，证据=reply+trace 工具结果）、`must_numbers` 数值锚（容差 ±max(0.06, 1%) 同 golden；锚点重算走 `eval/recalc_agent.py`，协议同 recalc_golden、聚合口径复用 `metrics.agg_expr` 单源）、场景断言。**验收口径：每型分别 ≥90% 且数值锚全中、连续两轮达标**（`--rounds`，防 LLM 时延/质量单轮抖动）；casegen 按场景断言全过计。降级（degraded）进报告清单，不静默算过。
 
 ### 12.4 权限矩阵（`permissions.yaml`）
 

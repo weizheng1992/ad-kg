@@ -26,11 +26,13 @@ cd web && bun run dev                        # 前端 :5173（vite 代理 → :8
 测试与评测：
 
 ```bash
-HF_HUB_OFFLINE=1 uv run pytest              # 全量 280（库不在线自动跳集成；本机必设离线变量否则 hf-mirror 卡死十分钟级）
+HF_HUB_OFFLINE=1 uv run pytest              # 全量 303（库不在线自动跳集成；本机必设离线变量否则 hf-mirror 卡死十分钟级）
 uv run pytest tests/test_retrieval.py -q   # 单文件
 uv run pytest -k "客户"                     # 按名筛选
 bunx promptfoo@latest eval -c promptfooconfig.json -j 1 --no-cache   # 多角色矩阵 24 用例（必须 --no-cache + 串行）
 uv run python eval/run_eval.py             # golden set 38 题（LLM judge + 规则判据）
+uv run python eval/agent_eval.py           # agent 场景集（/agent/chat ReAct 真 LLM；--rounds 2 防抖、--types 选型）
+uv run python eval/recalc_agent.py         # agent 场景数值锚重算（dry-run diff；--yes 落盘）
 uv run python eval/run_ablation.py         # 消融：multi_hop 图谱增益归因
 uv run python eval/recalc_golden.py        # 库值锚点重算（dry-run diff；--yes 落盘幂等；防种子扩容后手工漏改）
 uv run python scripts/sync_feishu.py       # 飞书增量同步（.env FEISHU_DOCS/FEISHU_FOLDER；ingest_job+chunks 双判幂等跳过；新 revision 走 supersedes 版本链）
