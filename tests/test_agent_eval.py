@@ -177,6 +177,55 @@ def test_query路_checks组装():
     assert r4.get("reply_excerpt")                      # 诊断摘录落报告
 
 
+def test_传输层单次重试():
+    """首调超时、重试成功 → 过且 retried 标注；两连败 → 误差含首错。"""
+    class _FlakyOnce:
+        calls = 0
+
+        def post(self, url, json=None):                 # noqa: A002
+            _FlakyOnce.calls += 1
+            if _FlakyOnce.calls == 1:
+                raise TimeoutError("Request timed out.")
+            return type("R", (), {"status_code": 200, "text": "", "json": lambda self: {
+                "reply": "答复。", "trace": [], "case_draft": None, "creative_drafts": None}})()
+
+    sc = {**SCEN, "expected_answer": {"points": [], "must_entities": [], "must_numbers": []}}
+    r = eval_agent(_FlakyOnce(), sc, judge_fn=None)
+    assert r["pass"] is True and r.get("retried") is True
+    assert "TimeoutError" in r.get("first_error", "")   # 首错留痕不掩埋
+
+    class _AlwaysDead:
+        def post(self, url, json=None):                 # noqa: A002
+            raise TimeoutError("Request timed out.")
+
+    r2 = eval_agent(_AlwaysDead(), sc, judge_fn=None)
+    assert r2["pass"] is False and "重试 1 次仍失败" in r2["error"]
+    assert r2.get("transport_dead") is True             # 异常路=传输类，剔除分母
+
+    class _Always422:
+        calls = 0
+
+        def post(self, url, json=None):                 # noqa: A002
+            _Always422.calls += 1
+            return type("R", (), {"status_code": 422, "text": "校验挂", "json": lambda self: {}})()
+
+    r3 = eval_agent(_Always422(), sc, judge_fn=None)
+    assert r3["pass"] is False and not r3.get("transport_dead")  # 确定性 4xx=真失败进分母
+    assert _Always422.calls == 1                        # 4xx 不重试
+
+
+def test_gate剔除传输超时分母():
+    """transport_dead 不进分母（口径重拍板 2026-10-30）；4xx 真失败照常计入。"""
+    rows = [{"id": "a", "type": "stat", "pass": True},
+            {"id": "b", "type": "stat", "pass": False},
+            {"id": "c", "type": "stat", "pass": False, "transport_dead": True}]
+    assert gate_of([rows])["stat"] is False             # 1/2=50%
+    rows[1]["pass"] = True
+    assert gate_of([rows])["stat"] is True              # 剔除后 2/2
+    rows.append({"id": "d", "type": "stat", "pass": False})  # 2/3
+    assert gate_of([rows])["stat"] is False
+
+
 # --------------------------------------------------- 真库集成（skipif 门控）
 
 FINAL = {"final": {"answer": "基于图里的途野露营（户外旅行）给出案例草稿。",

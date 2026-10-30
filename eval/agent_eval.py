@@ -74,8 +74,9 @@ def num_ok(blob: str, must_numbers: list) -> bool:
 
 
 def evidence_of(reply: str, trace: list[dict]) -> list[dict]:
-    """agent 面证据 = reply + 工具结果（judge 证据窗口裁剪同 judge.py 惯例）。"""
-    evs = [{"ref": "agent:reply", "quote": reply[:800]}]
+    """agent 面证据 = reply + 工具结果；reply 窗口 1600（枚举型答案的品牌/案例清单
+    可超 800，截短会造成"答案对但 judge 看不见"的评测者伪影——2026-10-30 A12 实弹）。"""
+    evs = [{"ref": "agent:reply", "quote": reply[:1600]}]
     evs += [{"ref": f"tool:{i}:{t.get('tool')}", "quote": str(t.get("result") or "")[:600]}
             for i, t in enumerate(trace)]
     return evs
@@ -177,14 +178,30 @@ def cleanup_written(written: list[dict]) -> None:
 def eval_agent(client, sc: dict, judge_fn=None, keep: bool = False) -> dict:
     t0 = time.monotonic()
     result = {"id": sc["id"], "type": sc["type"], "checks": {}, "tools": [], "degraded": []}
-    try:
-        r = client.post("/agent/chat", json={
-            "messages": [{"role": "user", "content": sc["question"]}],
-            "role": sc["role"], "user": sc["user"]})
-    except Exception as e:                              # noqa: BLE001 管线异常=该场景不过
-        result["error"] = f"{type(e).__name__}: {e}"
+    r = None
+    first_error = ""
+    for attempt in (1, 2):                              # 传输层单次重试（端点 10~90s 方差长尾，
+        try:                                            #  §7.2 引擎单次不重试纪律不受影响——重试在评测侧且透明标注）
+            r = client.post("/agent/chat", json={
+                "messages": [{"role": "user", "content": sc["question"]}],
+                "role": sc["role"], "user": sc["user"]})
+            if r.status_code == 200 or (400 <= r.status_code < 500 and r.status_code != 429):
+                break                                   # 成功或确定性 4xx（权限/校验）不重试
+            first_error = first_error or f"HTTP {r.status_code}: {r.text[:200]}"
+        except Exception as e:                          # noqa: BLE001 超时/连接类传输失败
+            first_error = first_error or f"{type(e).__name__}: {e}"
+            r = None
+    if attempt == 2 and first_error and (r is None or r.status_code != 200):
+        # 传输类失败（异常/5xx/429）重试后仍死 → transport_dead：剔除该轮分母
+        # （口径重拍板 2026-10-30：端点长尾不是 agent 质量信号，报告单列不掩埋）
+        transport = r is None or r.status_code in (429, 500, 502, 503, 504)
+        result["error"] = f"{first_error}（重试 1 次仍失败）"
+        result["transport_dead"] = transport
         result["pass"] = False
         return result
+    if attempt == 2 and r is not None and r.status_code == 200:
+        result["retried"] = True                        # 首次传输失败、重试成功——报告可见
+    result["first_error"] = first_error if result.get("retried") else ""
     result["seconds"] = round(time.monotonic() - t0, 1)
     if r.status_code != 200:
         result["error"] = f"HTTP {r.status_code}: {r.text[:200]}"
@@ -260,11 +277,14 @@ def _client():
 
 
 def gate_of(results_by_round: list[list[dict]]) -> dict[str, bool]:
-    """两轮门：每型各轮通过率 ≥ 阈值（casegen 恒 1.0）。单轮跑同式（--rounds 1）。"""
+    """两轮门：每型各轮通过率 ≥ 阈值（casegen 恒 1.0），**分母剔除 transport_dead**
+    （传输超时重试后仍死=端点长尾非质量信号，口径重拍板 2026-10-30）。单轮跑同式。"""
     by_type = defaultdict(list)
     for results in results_by_round:
         agg = defaultdict(lambda: [0, 0])
         for r in results:
+            if r.get("transport_dead"):
+                continue
             agg[r["type"]][1] += 1
             agg[r["type"]][0] += bool(r["pass"])
         for t, (ok, n) in agg.items():
@@ -316,19 +336,24 @@ def main() -> None:
                                 "pass": False, "error": f"{type(e).__name__}: {e}"})
         rounds.append(results)
         for r in results:
+            if r.get("transport_dead"):
+                print(f"  ⊘ {r['id']} [{r['type']}] 传输超时剔除分母：{r.get('error', '')[:70]}")
+                continue
             mark = "✓" if r["pass"] else "✗"
             extra = f" tools={r.get('tools')} degraded={r.get('degraded')}" if r["pass"] else ""
             err = f" error={r.get('error')}" if r.get("error") else ""
             bad = "" if r["pass"] else f" 失败项 {[k for k, v in r['checks'].items() if not v]}"
             print(f"  {mark} {r['id']} [{r['type']}] {r.get('seconds', '?')}s{extra}{bad}{err}")
 
-    print("\n—— 达标门（每型分别，各轮 ≥90%；casegen 恒 100%）——")
+    print("\n—— 达标门（每型分别，各轮 ≥90%；casegen 恒 100%；分母剔除传输超时）——")
     gate = gate_of(rounds)
     for t, ok in gate.items():
         rates = []
         for results in rounds:
-            sub = [r for r in results if r["type"] == t]
-            rates.append(f"{sum(bool(r['pass']) for r in sub)}/{len(sub)}")
+            sub = [r for r in results if r["type"] == t and not r.get("transport_dead")]
+            dead = sum(1 for r in results if r["type"] == t and r.get("transport_dead"))
+            rate = f"{sum(bool(r['pass']) for r in sub)}/{len(sub)}"
+            rates.append(rate + (f"（⊘{dead}）" if dead else ""))
         print(f"  {'✓' if ok else '✗'} {t}: {' → '.join(rates)}")
     all_pass = all(gate.values())
     print(f"\n验收门：{'全过' if all_pass else '未过'}（场景文件 {args.scenarios.name}）")
