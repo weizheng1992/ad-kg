@@ -61,18 +61,100 @@ def anchor_creative_cpa(cur, sc: dict) -> dict | None:
 
 
 def anchor_platform_cost(cur, sc: dict) -> dict | None:
-    """各平台消耗合计（matched 全量 sum(cost)，整数形态同 golden）。"""
-    cur.execute("SELECT platform::text AS p, round(sum(cost)::numeric, 0) AS c"
-                " FROM unified_metrics WHERE NOT unmatched GROUP BY 1 ORDER BY 1")
+    """各平台消耗合计（matched sum(cost)，整数形态同 golden）；window=auto 时
+    从问句取窗（T3：上月平台拆分）。"""
+    spec = sc.get("anchor") or {}
+    where, params = "WHERE NOT unmatched", {}
+    if spec.get("window") == "auto":
+        w = text2sql._window_of(sc["question"])
+        if w:
+            where += " AND date BETWEEN %(a)s AND %(b)s"
+            params = {"a": w[0], "b": w[1]}
+    cur.execute(f"SELECT platform::text AS p, round(sum(cost)::numeric, 0) AS c"
+                f" FROM unified_metrics {where} GROUP BY 1 ORDER BY 1", params)
     rows = cur.fetchall()
     if not rows:
         return None
-    return {"points": [f"{p} 合计 ≈ {int(c)}（matched 口径）" for p, c in rows]}
+    suffix = "（matched 口径）" if not params else f"（{params['a']}~{params['b']} 窗）"
+    return {"points": [f"{p} 合计 ≈ {int(c)}{suffix}" for p, c in rows]}
+
+
+def anchor_platform_metric(cur, sc: dict) -> dict | None:
+    """单平台指标聚合均值（T3）：{"kind","metric","platform","window":"auto"?}——
+    agg_expr 单源，平台+窗口过滤（G09「抖音平台平均 CTR」同族）。"""
+    spec = sc.get("anchor") or {}
+    metric, platform = str(spec.get("metric") or ""), str(spec.get("platform") or "")
+    if not metric or not platform:
+        return None
+    where, params = "WHERE NOT unmatched AND platform = %(p)s", {"p": platform}
+    if spec.get("window") == "auto":
+        w = text2sql._window_of(sc["question"])
+        if w:
+            where += " AND date BETWEEN %(a)s AND %(b)s"
+            params.update({"a": w[0], "b": w[1]})
+    cur.execute(f"SELECT {agg_expr(metric)} FROM unified_metrics {where}", params)
+    row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    return {"must_numbers": [str(round(Decimal(row[0]), 2))]}
+
+
+def anchor_window_top_metric(cur, sc: dict) -> dict | None:
+    """泛化窗口 top（T3）：{"kind","metric","order":"desc|asc","platform"?}——
+    口径同 window_top_cpa（_window_of + HAVING≥3），metric 走 agg_expr 单源，
+    order=desc 取最高（ctr 最好/cpa 最差），asc 取最低（成本型"最好"=越低越好）；
+    platform 过滤可选（"小红书那边"类问法的库值真值）。"""
+    spec = sc.get("anchor") or {}
+    metric, order = str(spec.get("metric") or ""), str(spec.get("order") or "desc")
+    if not metric or order not in ("desc", "asc"):
+        return None
+    w = text2sql._window_of(sc["question"])
+    if not w:
+        return None
+    platform = spec.get("platform")
+    where = "WHERE NOT unmatched AND date BETWEEN %(a)s AND %(b)s"
+    if platform:
+        where += " AND platform = %(p)s"
+    cur.execute(f"SELECT creative_id, {agg_expr(metric)} AS v FROM unified_metrics"
+                f" {where} GROUP BY 1 HAVING count(DISTINCT date) >= 3"
+                f" ORDER BY 2 {order.upper()} LIMIT 1",
+                {"a": w[0], "b": w[1], "p": platform})
+    row = cur.fetchone()
+    if not row or row[1] is None:
+        return None
+    return {"must_entities": [row[0]], "must_numbers": [str(round(Decimal(row[1]), 2))]}
+
+
+def anchor_sum_metric(cur, sc: dict) -> dict | None:
+    """和值锚（T3）：{"kind","metrics":[...],"window":"auto"?}——matched 全量
+    sum(metric)；window=auto 时从问句取窗（_window_of，无窗词则全量）。
+    多指标按声明顺序落 must_numbers。"""
+    spec = sc.get("anchor") or {}
+    metrics = spec.get("metrics") or []
+    if not metrics:
+        return None
+    where, params = "WHERE NOT unmatched", {}
+    if spec.get("window") == "auto":
+        w = text2sql._window_of(sc["question"])
+        if w:
+            where += " AND date BETWEEN %(a)s AND %(b)s"
+            params = {"a": w[0], "b": w[1]}
+    nums = []
+    for m in metrics:
+        cur.execute(f"SELECT sum({m}) FROM unified_metrics {where}", params)
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return None
+        nums.append(str(round(Decimal(row[0]), 0)))
+    return {"must_numbers": nums}
 
 
 ANCHORS = {"window_top_cpa": anchor_window_top_cpa,
            "creative_cpa": anchor_creative_cpa,
-           "platform_cost": anchor_platform_cost}
+           "platform_cost": anchor_platform_cost,
+           "window_top_metric": anchor_window_top_metric,
+           "sum_metric": anchor_sum_metric,
+           "platform_metric": anchor_platform_metric}
 
 
 def main() -> None:

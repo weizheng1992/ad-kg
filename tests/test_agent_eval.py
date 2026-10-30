@@ -71,6 +71,15 @@ class TestNumOk:
         assert num_ok("A 100，B 200", ["100", "200"])
         assert num_ok("A 100", ["100", "200"]) is False
 
+    def test_千分位逗号不劈数字(self):
+        assert num_ok("总消耗 1,001,609.41 元", [1001609])
+        assert num_ok("转化 68,746，花费 558,078.95", [68746])
+
+    def test_百分号语义(self):
+        assert num_ok("CTR 为 1.64%（点击 5368 次）", [0.02])   # 1.64%/100=0.0164 容差内
+        assert num_ok("CTR 为 1.64%", [1.64])                   # 锚是百分数形态也中
+        assert num_ok("CPA 48.78 元", [0.02]) is False          # 无百分号不撒 /100 网
+
 
 def test_evidence组装():
     evs = evidence_of("答复正文", [{"tool": "ask_knowledge", "result": "结果一"}])

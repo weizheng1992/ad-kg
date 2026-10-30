@@ -65,10 +65,14 @@ def load(path: Path = SCENARIOS) -> list[dict]:
 
 def num_ok(blob: str, must_numbers: list) -> bool:
     """数值硬断言（与 run_eval 同容差）：期望数字在文本里数值可达——
-    容差 ±max(0.06, 1%)，四舍五入/整数化形态不误杀。"""
+    容差 ±max(0.06, 1%)，四舍五入/整数化形态不误杀；先剥千分位逗号
+    （1,001,609.41 会被劈成三个 token）；百分号标注的数按 /100 候选参与匹配
+    （"CTR 1.64%"语义=0.0164，锚是比率形态——精确限定 % 后缀不撒网）。"""
     if not must_numbers:
         return True
+    blob = blob.replace(",", "").replace("，", "")
     found = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", blob)]
+    found += [float(x) / 100 for x in re.findall(r"(\d+(?:\.\d+)?)\s*[%％]", blob)]
     return all(any(abs(f - float(n)) <= max(0.06, abs(float(n)) * 0.01) for f in found)
                for n in must_numbers)
 
