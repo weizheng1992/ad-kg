@@ -1,6 +1,6 @@
 # AGENTS.md — AdKG
 
-> 本文件是**开发者速查唯一载体**（命令 / 架构大图 / 铁律），遵循 AGENTS.md 跨工具标准；vibe 工具链（`npx vibeworkflow` / `doctor`）以此为主入口；Claude Code ≥2.1.277 在无 CLAUDE.md 时原生回落读本文（本机 2.1.302 验证过），其他工具直接读。**README 仍是唯一规范**：任何设计、接口、约定变更，先改 README 再写代码。
+> 本文件是**开发者速查唯一载体**（命令 / 架构大图 / 铁律），遵循 AGENTS.md 跨工具标准；Claude Code ≥2.1.277 在无 CLAUDE.md 时原生回落读本文（本机 2.1.302 验证过），其他工具直接读。**README 仍是唯一规范**：任何设计、接口、约定变更，先改 README 再写代码。
 
 ## Project
 
@@ -71,9 +71,7 @@ AdKG 是本体驱动的广告营销知识中台，为 Agent 引擎 **smartServe*
 ## Read first
 
 1. `README.md` — **唯一规范**：任何设计、接口、约定变更，先改 README 再写代码
-2. `docs/PRD-AdKG-MVP.md` / `docs/TechDesign-AdKG-MVP.md` — vibe 工具链薄指针（非规范，真源是 README）
-3. `agent_docs/` — vibe 代理上下文五件（project_brief / tech_stack / testing / code_patterns / product_requirements，同为指针不承载规范）
-4. 在办状态：`docs/wayfinder/agent-real-eval/` 地图（不是 `MEMORY.md`——那只是时点快照）
+2. 在办状态：`docs/wayfinder/agent-real-eval/` 地图
 
 ## Protected areas — ask before changing
 
