@@ -91,3 +91,44 @@ class TestIngestAssertion:
             "confidence": 0.9, "role": "creative"})
         assert r.status_code == 422
 
+
+
+@pytest.mark.skipif(not os.environ.get("ADKG_PG_DSN"), reason="未配置 .env")
+class TestActionsReceipt:
+    """回执两段契约后半段（备忘⑮；2026-10-31 夜检：0c08c65 声称的 +2 测试三轮未落，本类补齐对齐提交声明）。"""
+
+    def test_裁决到回执闭环(self, client):
+        # 裁决（allow）→ 回执 done：新审计行引用原 id，原行只追加不回改
+        r = client.post("/actions/check", json={
+            "op": "delete_creative", "target": "Creative:C-2025-001-cp1-cr1",
+            "role": "optimizer", "user": "Person:li"})
+        audit_id = r.json()["audit_id"]
+        r2 = client.post("/actions/receipt", json={
+            "audit_id": audit_id, "outcome": "done", "note": "执行方已删除",
+            "role": "optimizer", "user": "Person:li"})
+        assert r2.status_code == 200, r2.text
+        body = r2.json()
+        assert body["ok"] is True and body["linked"] == audit_id
+        import psycopg
+        with psycopg.connect(os.environ["ADKG_PG_DSN"]) as c, c.cursor() as cur:
+            cur.execute("SELECT action, target, verdict FROM audit_log WHERE id = %s",
+                        (body["receipt_audit_id"],))
+            assert cur.fetchone() == ("action_receipt", f"audit:{audit_id}", "done")
+            cur.execute("SELECT verdict FROM audit_log WHERE id = %s", (audit_id,))
+            assert cur.fetchone()[0] == "allow"          # 原裁决行未被回执改写
+
+    def test_校验序_outcome_uuid_404(self, client):
+        # outcome 词表外 → 422（先于 audit_id 校验——校验序契约钉死）
+        r1 = client.post("/actions/receipt", json={"audit_id": "", "outcome": "ok",
+                                                   "role": "admin"})
+        assert r1.status_code == 422 and "outcome" in r1.json()["detail"]
+        # audit_id 非 uuid → 422
+        r2 = client.post("/actions/receipt", json={"audit_id": "not-a-uuid",
+                                                   "outcome": "done", "role": "admin"})
+        assert r2.status_code == 422 and "uuid" in r2.json()["detail"].lower()
+        # 合法 uuid 但库中不存在 → 404
+        import uuid as _u
+        ghost = str(_u.uuid4())
+        r3 = client.post("/actions/receipt", json={"audit_id": ghost, "outcome": "done",
+                                                   "role": "admin"})
+        assert r3.status_code == 404 and ghost in r3.json()["detail"]

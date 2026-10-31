@@ -5,7 +5,6 @@ embedding 可空（无 API key 时降级，Phase 4 检索前补）。
 """
 from __future__ import annotations
 
-import psycopg
 
 from adkg.store import pg_pool
 

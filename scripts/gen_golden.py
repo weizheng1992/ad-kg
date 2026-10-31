@@ -97,7 +97,7 @@ def main() -> None:
     generated = gen_multi_hop(graph) + gen_fact(os.environ["ADKG_PG_DSN"])
     graph.close()
 
-    handwritten = [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
+    handwritten = [json.loads(ln) for ln in GOLDEN.read_text(encoding="utf-8").splitlines() if ln.strip()]
     seen_q = {h["question"] for h in handwritten}
     fresh = [g for g in generated if g["question"] not in seen_q]
 

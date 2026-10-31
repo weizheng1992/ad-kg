@@ -1,7 +1,7 @@
 ---
 type: task
 status: open
-assignee:
+assignee: weizheng1992
 blocked-by: [T1-eval-executor]
 labels: [wayfinder:task]
 ---

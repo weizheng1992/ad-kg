@@ -7,7 +7,6 @@ agent_id（双身份 §9.1，/actions/check）与外部 conn（/ingest/case-comm
 """
 from __future__ import annotations
 
-import psycopg
 
 from adkg.store import pg_pool
 

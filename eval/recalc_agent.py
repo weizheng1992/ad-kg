@@ -11,7 +11,6 @@ anchor 字段的场景——锚点种类显式声明（{"kind": ...}）而非问
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from decimal import Decimal
@@ -26,25 +25,21 @@ load_dotenv(ROOT / ".env")
 import psycopg  # noqa: E402
 
 from adkg.retrieval import text2sql  # noqa: E402
-from adkg.retrieval.metrics import agg_expr  # noqa: E402
+from adkg.retrieval.metrics import STAT_HAVING, agg_expr  # noqa: E402
+from eval.common import (apply_writeback, read_jsonl, show_changes)  # noqa: E402
 
 SCENARIOS = ROOT / "eval" / "agent_scenarios.jsonl"
 
 
-def anchor_window_top_cpa(cur, sc: dict) -> dict | None:
-    """窗口 top CPA（成本型=汇总比降序，HAVING 与 top_metric 模板同值）——
-    must_entities/must_numbers 换库值；points 语义句由题作者维护不动。"""
-    w = text2sql._window_of(sc["question"])
+def _window_where(spec: dict, question: str) -> tuple[str, dict]:
+    """window=="auto" → 从问句取窗（text2sql._window_of 单源）；无窗词则全量。
+    返回 (where 追加片段, params)——平台/和值/均值三锚的取窗样板曾五处散抄。"""
+    if spec.get("window") != "auto":
+        return "", {}
+    w = text2sql._window_of(question)
     if not w:
-        return None
-    cur.execute(f"SELECT creative_id, {agg_expr('cpa')} AS cpa FROM unified_metrics"
-                " WHERE NOT unmatched AND date BETWEEN %(a)s AND %(b)s"
-                " GROUP BY 1 HAVING count(DISTINCT date) >= 3"
-                " ORDER BY 2 DESC LIMIT 1", {"a": w[0], "b": w[1]})
-    row = cur.fetchone()
-    if not row or row[1] is None:
-        return None
-    return {"must_entities": [row[0]], "must_numbers": [str(round(Decimal(row[1]), 2))]}
+        return "", {}
+    return " AND date BETWEEN %(a)s AND %(b)s", {"a": w[0], "b": w[1]}
 
 
 def anchor_creative_cpa(cur, sc: dict) -> dict | None:
@@ -64,12 +59,8 @@ def anchor_platform_cost(cur, sc: dict) -> dict | None:
     """各平台消耗合计（matched sum(cost)，整数形态同 golden）；window=auto 时
     从问句取窗（T3：上月平台拆分）。"""
     spec = sc.get("anchor") or {}
-    where, params = "WHERE NOT unmatched", {}
-    if spec.get("window") == "auto":
-        w = text2sql._window_of(sc["question"])
-        if w:
-            where += " AND date BETWEEN %(a)s AND %(b)s"
-            params = {"a": w[0], "b": w[1]}
+    wcond, params = _window_where(spec, sc["question"])
+    where = "WHERE NOT unmatched" + wcond
     cur.execute(f"SELECT platform::text AS p, round(sum(cost)::numeric, 0) AS c"
                 f" FROM unified_metrics {where} GROUP BY 1 ORDER BY 1", params)
     rows = cur.fetchall()
@@ -86,12 +77,9 @@ def anchor_platform_metric(cur, sc: dict) -> dict | None:
     metric, platform = str(spec.get("metric") or ""), str(spec.get("platform") or "")
     if not metric or not platform:
         return None
-    where, params = "WHERE NOT unmatched AND platform = %(p)s", {"p": platform}
-    if spec.get("window") == "auto":
-        w = text2sql._window_of(sc["question"])
-        if w:
-            where += " AND date BETWEEN %(a)s AND %(b)s"
-            params.update({"a": w[0], "b": w[1]})
+    wcond, wparams = _window_where(spec, sc["question"])
+    where = "WHERE NOT unmatched AND platform = %(p)s" + wcond
+    params = {"p": platform, **wparams}
     cur.execute(f"SELECT {agg_expr(metric)} FROM unified_metrics {where}", params)
     row = cur.fetchone()
     if not row or row[0] is None:
@@ -101,7 +89,7 @@ def anchor_platform_metric(cur, sc: dict) -> dict | None:
 
 def anchor_window_top_metric(cur, sc: dict) -> dict | None:
     """泛化窗口 top（T3）：{"kind","metric","order":"desc|asc","platform"?}——
-    口径同 window_top_cpa（_window_of + HAVING≥3），metric 走 agg_expr 单源，
+    口径 = 原 window_top_cpa 特例（已并入，_window_of + STAT_HAVING 同一价），metric 走 agg_expr 单源，
     order=desc 取最高（ctr 最好/cpa 最差），asc 取最低（成本型"最好"=越低越好）；
     platform 过滤可选（"小红书那边"类问法的库值真值）。"""
     spec = sc.get("anchor") or {}
@@ -116,7 +104,7 @@ def anchor_window_top_metric(cur, sc: dict) -> dict | None:
     if platform:
         where += " AND platform = %(p)s"
     cur.execute(f"SELECT creative_id, {agg_expr(metric)} AS v FROM unified_metrics"
-                f" {where} GROUP BY 1 HAVING count(DISTINCT date) >= 3"
+                f" {where} GROUP BY 1 {STAT_HAVING}"
                 f" ORDER BY 2 {order.upper()} LIMIT 1",
                 {"a": w[0], "b": w[1], "p": platform})
     row = cur.fetchone()
@@ -133,12 +121,8 @@ def anchor_sum_metric(cur, sc: dict) -> dict | None:
     metrics = spec.get("metrics") or []
     if not metrics:
         return None
-    where, params = "WHERE NOT unmatched", {}
-    if spec.get("window") == "auto":
-        w = text2sql._window_of(sc["question"])
-        if w:
-            where += " AND date BETWEEN %(a)s AND %(b)s"
-            params = {"a": w[0], "b": w[1]}
+    wcond, params = _window_where(spec, sc["question"])
+    where = "WHERE NOT unmatched" + wcond
     nums = []
     for m in metrics:
         cur.execute(f"SELECT sum({m}) FROM unified_metrics {where}", params)
@@ -149,8 +133,9 @@ def anchor_sum_metric(cur, sc: dict) -> dict | None:
     return {"must_numbers": nums}
 
 
-ANCHORS = {"window_top_cpa": anchor_window_top_cpa,
-           "creative_cpa": anchor_creative_cpa,
+# window_top_cpa 已并入 window_top_metric（metric=cpa/order=desc 全同形——A01 已迁，
+# 2026-10-31 收口：特例 kind 曾与泛化版双份维护）
+ANCHORS = {"creative_cpa": anchor_creative_cpa,
            "platform_cost": anchor_platform_cost,
            "window_top_metric": anchor_window_top_metric,
            "sum_metric": anchor_sum_metric,
@@ -163,8 +148,7 @@ def main() -> None:
     ap.add_argument("--yes", action="store_true", help="确认落盘（缺省 dry-run 只展示 diff）")
     args = ap.parse_args()
 
-    rows = [json.loads(line) for line in
-            args.scenarios.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = read_jsonl(args.scenarios)
     changes: list[tuple[dict, dict]] = []
     with psycopg.connect(os.environ["ADKG_PG_RO_DSN"]) as conn, conn.cursor() as cur:
         for sc in rows:
@@ -188,22 +172,14 @@ def main() -> None:
         return
 
     print(f"场景 {len(rows)} 条，{len(changes)} 条锚点漂移：\n")
-    for sc, new_ans in changes:
-        old = sc.get("expected_answer", {})
-        print(f"  {sc['id']} [{sc['type']}] {sc['question']}")
-        for k in ("points", "must_entities", "must_numbers"):
-            if new_ans.get(k) != old.get(k):
-                print(f"    {k}: {old.get(k)}\n      → {new_ans.get(k)}")
+    show_changes(changes)
 
     if not args.yes:
         print("\ndry-run 未落盘；确认后加 --yes 写回场景文件")
         return
-    for sc, new_ans in changes:
-        sc["expected_answer"] = new_ans
-    args.scenarios.write_text(
-        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
-    print(f"\n已写回 {args.scenarios}（{len(changes)} 条）——回归验证："
-          "uv run python eval/agent_eval.py")
+    n = apply_writeback(rows, changes, args.scenarios)
+    print(f"\n已写回 {args.scenarios}（{n} 条）——回归验证："
+          "HF_HUB_OFFLINE=1 uv run python eval/agent_eval.py")
 
 
 if __name__ == "__main__":

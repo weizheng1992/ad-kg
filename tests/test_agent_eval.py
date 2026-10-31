@@ -17,6 +17,12 @@ load_dotenv(ROOT / ".env")
 from eval.agent_eval import (draft_checks, evidence_of, eval_agent, gate_of,  # noqa: E402
                              load, num_ok, degraded_of)
 
+def _resp(status_code: int, body: dict | None = None, text: str = ""):
+    """响应桩单源（2026-10-31 夜检：三处 type("R",()) 复制收口）。"""
+    return type("R", (), {"status_code": status_code, "text": text,
+                          "json": lambda self: body if body is not None else {}})()
+
+
 SCEN = {"id": "X01", "type": "stat", "question": "上个月哪个素材 CPA 最差？", "role": "management",
         "user": "Person:chen", "expected_answer": {"points": ["top1", "数值"],
                                                    "must_entities": ["Creative:a"], "must_numbers": [21.59]}}
@@ -150,10 +156,10 @@ def test_query路_checks组装():
     class _C:
         def post(self, url, json=None):                 # noqa: A002
             assert url == "/agent/chat"
-            return type("R", (), {"status_code": 200, "text": "", "json": lambda self: {
+            return _resp(200, {
                 "reply": "素材 a 的 CPA 是 21.6，最差。",
                 "trace": [{"tool": "ask_knowledge", "result": '{"answer": "x"}'}],
-                "case_draft": None, "creative_drafts": None}})()
+                "case_draft": None, "creative_drafts": None})
 
     sc = {**SCEN, "expected_answer": {"points": [], "must_entities": ["Creative:a"],
                                       "must_numbers": [21.59]},
@@ -195,8 +201,8 @@ def test_传输层单次重试():
             _FlakyOnce.calls += 1
             if _FlakyOnce.calls == 1:
                 raise TimeoutError("Request timed out.")
-            return type("R", (), {"status_code": 200, "text": "", "json": lambda self: {
-                "reply": "答复。", "trace": [], "case_draft": None, "creative_drafts": None}})()
+            return _resp(200, {"reply": "答复。", "trace": [],
+                               "case_draft": None, "creative_drafts": None})
 
     sc = {**SCEN, "expected_answer": {"points": [], "must_entities": [], "must_numbers": []}}
     r = eval_agent(_FlakyOnce(), sc, judge_fn=None)
@@ -216,7 +222,7 @@ def test_传输层单次重试():
 
         def post(self, url, json=None):                 # noqa: A002
             _Always422.calls += 1
-            return type("R", (), {"status_code": 422, "text": "校验挂", "json": lambda self: {}})()
+            return _resp(422, text="校验挂")
 
     r3 = eval_agent(_Always422(), sc, judge_fn=None)
     assert r3["pass"] is False and not r3.get("transport_dead")  # 确定性 4xx=真失败进分母
@@ -309,3 +315,13 @@ class TestAgentEvalReal:
         with _neo4j().session() as s:
             left = s.run("MATCH (e:Entity {id:$id}) RETURN e", id=r["case_id"]).data()
         assert left == []
+
+
+def test_judge回复窗口钉死1600():
+    """T3「评测者伪影四处全钉测试」欠账（2026-10-31 夜检）：judge 回复窗口 800→1600
+    曾无钉死测试——回退 800 不会挂。常量 + 截断行为双锚。"""
+    from eval import agent_eval
+    assert agent_eval.REPLY_WINDOW == 1600
+    evs = agent_eval.evidence_of("x" * 2000, [])
+    assert len(evs[0]["quote"]) == agent_eval.REPLY_WINDOW
+    assert agent_eval.evidence_of("短", [])[0]["quote"] == "短"

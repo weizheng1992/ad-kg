@@ -9,7 +9,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from adkg.models import Provenance, SourceType
+from adkg.models import Provenance
 
 
 class RawRecord(BaseModel):

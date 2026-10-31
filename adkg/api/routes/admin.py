@@ -8,13 +8,12 @@ ADMIN_ROLES 预检 + 基角色 action 门会让 base=admin 的自定义角色绕
 """
 from __future__ import annotations
 
-import psycopg
 
 from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request
 from psycopg.rows import dict_row
 
-from adkg.guards.http import get_graph, get_planner, resolve_identity
+from adkg.guards.http import get_graph, resolve_identity
 from adkg.guards.rbac import require, require_admin_view   # 门唯一实现（spec §19 收口）
 
 router = APIRouter()
@@ -139,13 +138,17 @@ def audit_log(request: Request, page: int = 1, size: int = 30,
     page = max(1, page)
     conds, args = [], {"size": size, "offset": (page - 1) * size}
     if action.strip():
-        conds.append("action = %(action)s"); args["action"] = action.strip()
+        conds.append("action = %(action)s")
+        args["action"] = action.strip()
     if verdict.strip():
-        conds.append("verdict = %(verdict)s"); args["verdict"] = verdict.strip()
+        conds.append("verdict = %(verdict)s")
+        args["verdict"] = verdict.strip()
     if by_role.strip():
-        conds.append("role = %(by_role)s"); args["by_role"] = by_role.strip()
+        conds.append("role = %(by_role)s")
+        args["by_role"] = by_role.strip()
     if q.strip():
-        conds.append("target ILIKE %(q)s"); args["q"] = f"%{q.strip()}%"
+        conds.append("target ILIKE %(q)s")
+        args["q"] = f"%{q.strip()}%"
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
     with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
                          row_factory=dict_row) as c, c.cursor() as cur:
@@ -171,7 +174,8 @@ def review_queue(request: Request, status: str = "open", kind: str = "",
     status = status if status in ("open", "approved", "rejected") else "open"
     conds, args = ["status = %(status)s"], {"status": status}
     if kind.strip():
-        conds.append("kind = %(kind)s"); args["kind"] = kind.strip()
+        conds.append("kind = %(kind)s")
+        args["kind"] = kind.strip()
     where = " WHERE " + " AND ".join(conds)
     with pg_pool.connect(request.app.state.env["ADKG_PG_DSN"],
                          row_factory=dict_row) as c, c.cursor() as cur:

@@ -1,0 +1,10 @@
+# Ruff 项目基线（2026-10-29 wayfinder T1 拍板 E4/E7/E9/F；2026-10-31 夜检固化——
+# 此前无配置文件，基线只活在提交信息里，`ruff check .` 每台机器结果不一）
+line-length = 100
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# 测试文件统一模式：create_app 等 import 须在 load_dotenv 之后（.env 先行）
+"tests/*" = ["E402"]

@@ -35,7 +35,8 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
-from eval.judge import judge_item  # noqa: E402
+from eval._criteria import num_ok  # noqa: E402,F401  # 判据单源（test 从此 re-export）
+from eval.common import connect_judge, make_client  # noqa: E402
 
 load_dotenv(ROOT / ".env")
 
@@ -46,7 +47,8 @@ _CASE_ID = re.compile(r"^Case:C-\d{4}-\d{3}$")
 
 
 def load(path: Path = SCENARIOS) -> list[dict]:
-    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    from eval.common import read_jsonl
+    rows = read_jsonl(path)
     for r in rows:
         missing = {"id", "type", "question", "role", "user"} - set(r)
         if missing:
@@ -62,25 +64,17 @@ def load(path: Path = SCENARIOS) -> list[dict]:
 
 
 # ------------------------------------------------------------------ 判据件
+# num_ok 收口 eval/_criteria.py 单源（2026-10-31：与 run_eval 双源且已分叉——
+# 千分位/% 语义只有本侧懂；模块顶部 import 并 re-export 供测试）
 
-def num_ok(blob: str, must_numbers: list) -> bool:
-    """数值硬断言（与 run_eval 同容差）：期望数字在文本里数值可达——
-    容差 ±max(0.06, 1%)，四舍五入/整数化形态不误杀；先剥千分位逗号
-    （1,001,609.41 会被劈成三个 token）；百分号标注的数按 /100 候选参与匹配
-    （"CTR 1.64%"语义=0.0164，锚是比率形态——精确限定 % 后缀不撒网）。"""
-    if not must_numbers:
-        return True
-    blob = blob.replace(",", "").replace("，", "")
-    found = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", blob)]
-    found += [float(x) / 100 for x in re.findall(r"(\d+(?:\.\d+)?)\s*[%％]", blob)]
-    return all(any(abs(f - float(n)) <= max(0.06, abs(float(n)) * 0.01) for f in found)
-               for n in must_numbers)
+REPLY_WINDOW = 1600                                  # judge 回复窗口（曾 800 截短
+                                                     # 枚举型答案——2026-10-30 A12 实弹）
 
 
 def evidence_of(reply: str, trace: list[dict]) -> list[dict]:
-    """agent 面证据 = reply + 工具结果；reply 窗口 1600（枚举型答案的品牌/案例清单
-    可超 800，截短会造成"答案对但 judge 看不见"的评测者伪影——2026-10-30 A12 实弹）。"""
-    evs = [{"ref": "agent:reply", "quote": reply[:1600]}]
+    """agent 面证据 = reply + 工具结果；reply 窗口 REPLY_WINDOW（枚举型答案的
+    品牌/案例清单可超 800，截短会造成"答案对但 judge 看不见"的评测者伪影）。"""
+    evs = [{"ref": "agent:reply", "quote": reply[:REPLY_WINDOW]}]
     evs += [{"ref": f"tool:{i}:{t.get('tool')}", "quote": str(t.get("result") or "")[:600]}
             for i, t in enumerate(trace)]
     return evs
@@ -271,13 +265,7 @@ def eval_agent(client, sc: dict, judge_fn=None, keep: bool = False) -> dict:
 
 # ------------------------------------------------------------------ 主流程
 
-def _client():
-    from fastapi.testclient import TestClient
-
-    from adkg.api.main import create_app
-    env = {k: v for k, v in os.environ.items()
-           if k.startswith(("ADKG_", "POSTGRES", "NEO4J"))}
-    return TestClient(create_app(env))
+_client = make_client                                # 逐字同形收口 eval/common.py
 
 
 def gate_of(results_by_round: list[list[dict]]) -> dict[str, bool]:
@@ -295,6 +283,15 @@ def gate_of(results_by_round: list[list[dict]]) -> dict[str, bool]:
             by_type[t].append(ok / n if n else 0.0)
     return {t: all(rate >= (1.0 if t == "casegen" else GATE_RATE) for rate in rates)
             for t, rates in by_type.items()}
+
+
+def round_rate(results: list[dict], t: str) -> str:
+    """单轮单型通过率串（⊘=传输超时剔除分母口径，报告单列）——main 打印与
+    gate_of 的分母口径同源，曾两处各算。"""
+    sub = [r for r in results if r["type"] == t and not r.get("transport_dead")]
+    dead = sum(1 for r in results if r["type"] == t and r.get("transport_dead"))
+    rate = f"{sum(bool(r['pass']) for r in sub)}/{len(sub)}"
+    return rate + (f"（⊘{dead}）" if dead else "")
 
 
 def main() -> None:
@@ -316,17 +313,12 @@ def main() -> None:
         sys.exit("无场景可跑")
 
     client = _client()
-    judge_fn = None
-    try:
-        from adkg.llm import LLMClient
-        llm = LLMClient()
-        llm.batch_chat_json("ping", '返回 {"ok": true}')      # 通道可用性探测
-
-        def judge_fn(q, pts, ev):
-            return judge_item(llm.batch_chat_json, q, pts, ev)
-        print(f"judge：LLM 按要点打分；场景 {len(rows)} 条 × {args.rounds} 轮\n")
-    except Exception as e:
-        print(f"judge 不可用，回退规则判据：{type(e).__name__}；场景 {len(rows)} 条 × {args.rounds} 轮\n")
+    judge_fn, err = connect_judge()
+    tail = f"；场景 {len(rows)} 条 × {args.rounds} 轮\n"
+    if judge_fn is not None:
+        print(f"judge：LLM 按要点打分{tail}")
+    else:
+        print(f"judge 不可用，回退规则判据：{err}{tail}")
 
     rounds: list[list[dict]] = []
     for ri in range(1, args.rounds + 1):
@@ -352,12 +344,7 @@ def main() -> None:
     print("\n—— 达标门（每型分别，各轮 ≥90%；casegen 恒 100%；分母剔除传输超时）——")
     gate = gate_of(rounds)
     for t, ok in gate.items():
-        rates = []
-        for results in rounds:
-            sub = [r for r in results if r["type"] == t and not r.get("transport_dead")]
-            dead = sum(1 for r in results if r["type"] == t and r.get("transport_dead"))
-            rate = f"{sum(bool(r['pass']) for r in sub)}/{len(sub)}"
-            rates.append(rate + (f"（⊘{dead}）" if dead else ""))
+        rates = [round_rate(results, t) for results in rounds]
         print(f"  {'✓' if ok else '✗'} {t}: {' → '.join(rates)}")
     all_pass = all(gate.values())
     print(f"\n验收门：{'全过' if all_pass else '未过'}（场景文件 {args.scenarios.name}）")

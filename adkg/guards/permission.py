@@ -12,7 +12,6 @@ permissions.yaml → PermissionPlan：一份矩阵翻译成三路可执行过滤
 """
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 

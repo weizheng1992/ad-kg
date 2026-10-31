@@ -21,7 +21,8 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
-from eval.judge import judge_item  # noqa: E402
+from eval._criteria import num_ok  # noqa: E402
+from eval.common import connect_judge, make_client, read_jsonl  # noqa: E402
 
 load_dotenv(ROOT / ".env")
 
@@ -30,7 +31,7 @@ REQUIRED_TYPES = {"multi_hop", "fact", "concept", "attribution", "operation"}
 
 
 def load() -> list[dict]:
-    rows = [json.loads(line) for line in GOLDEN.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = read_jsonl(GOLDEN)
     bad = [r.get("id") for r in rows
            if not {"id", "type", "question", "expected_routes"} <= set(r)]
     if bad:
@@ -39,16 +40,6 @@ def load() -> list[dict]:
     if unknown:
         sys.exit(f"未知题型 {unknown}")
     return rows
-
-
-def _client():
-    import os
-
-    from fastapi.testclient import TestClient
-    from adkg.api.main import create_app
-    env = {k: v for k, v in os.environ.items()
-           if k.startswith(("ADKG_", "POSTGRES", "NEO4J"))}
-    return TestClient(create_app(env))
 
 
 def _role_of(item: dict) -> tuple[str, str]:
@@ -98,23 +89,18 @@ def eval_one(client, item: dict, judge_fn=None) -> dict:
     # （±max(0.06, 1%)），四舍五入/整数化形态不误杀；judge 只认 verdict（points_hit
     # 曾把明确否决放行成虚绿）
     must_num = item.get("expected_answer", {}).get("must_numbers", [])
-    import re as _re
-
-    def _num_ok(txt: str) -> bool:
-        found = [float(x) for x in _re.findall(r"\d+(?:\.\d+)?", txt)]
-        return all(any(abs(f - float(n)) <= max(0.06, abs(float(n)) * 0.01) for f in found)
-                   for n in must_num)
-
-    num_ok = (not must_num) or _num_ok(blob) or _num_ok(str(body.get("answer") or ""))
+    # 数值口径单源 _criteria.num_ok（2026-10-31 收口：本地 _num_ok 与 agent 侧分叉
+    # ——千分位/% 语义只有 agent 侧懂）；证据 blob 与 answer 任一命中即算
+    num_hit = num_ok([blob, str(body.get("answer") or "")], must_num)
     if judge_fn is not None and evidence:
         verdict = judge_fn(item["question"], points, evidence)   # LLM 按要点（§11.3）
         result["judge"] = verdict
         result["checks"]["evidence"] = bool(
             verdict and verdict["verdict"]) and (
-            not must or any(m in blob for m in must)) and num_ok
+            not must or any(m in blob for m in must)) and num_hit
     else:
         result["checks"]["evidence"] = bool(evidence) and (
-            not must or any(m in blob for m in must)) and num_ok
+            not must or any(m in blob for m in must)) and num_hit
     if role == "client":
         result["checks"]["permission"] = "Case:C-2025-006" not in blob  # 越权目标零出现
     result["degraded"] = body.get("degraded", [])
@@ -124,16 +110,12 @@ def eval_one(client, item: dict, judge_fn=None) -> dict:
 
 def main() -> None:
     rows = load()
-    client = _client()
-    judge_fn = None
-    try:
-        from adkg.llm import LLMClient
-        llm = LLMClient()
-        llm.batch_chat_json("ping", '返回 {"ok": true}')      # 通道可用性探测
-        judge_fn = lambda q, pts, ev: judge_item(llm.batch_chat_json, q, pts, ev)
+    client = make_client()
+    judge_fn, err = connect_judge()
+    if judge_fn is not None:
         print("judge：LLM 按要点打分（glm-4-flash 批通道）\n")
-    except Exception as e:
-        print(f"judge 不可用，回退规则判据：{type(e).__name__}\n")
+    else:
+        print(f"judge 不可用，回退规则判据：{err}\n")
     results = [eval_one(client, item, judge_fn) for item in rows]
 
     dist = Counter(r["type"] for r in results)

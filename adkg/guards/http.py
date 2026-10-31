@@ -14,11 +14,16 @@ routes.ask._planner，且 planner 与 actions 各建一份 GraphStore）。
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pathlib import Path
 
 from fastapi import HTTPException, Request
 
 from adkg.guards.auth import AuthService
+
+if TYPE_CHECKING:                                    # 注解静态可见（惰性 import 防环不动）
+    from adkg.guards.permission import PermissionPlanner
 from adkg.guards.rbac import custom_base
 from adkg.guards.sessions import SESSION_COOKIE, resolve_session
 

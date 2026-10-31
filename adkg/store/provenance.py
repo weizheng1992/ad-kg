@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 
-import psycopg
 
 from adkg.store import pg_pool
 

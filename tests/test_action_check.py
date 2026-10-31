@@ -2,7 +2,6 @@
 
 状态机与"live/closed 不可删素材"离线测（图上下文注入假实现）。
 """
-import pytest
 
 from adkg.guards.action_check import ActionChecker
 from adkg.models import load_schema

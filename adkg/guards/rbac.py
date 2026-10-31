@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import psycopg
 
 from adkg.store import pg_pool
 from psycopg.rows import dict_row

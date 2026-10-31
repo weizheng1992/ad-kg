@@ -8,6 +8,7 @@
 - 定位：知识与管控层。它不是 Agent 引擎，而是 Agent 引擎（如 smartServe）"查什么、能动什么"的依据
 - 状态：**已建成上线**——八步路线（7.1）2026-10-19 收官；真实系统化升级（spec M1–M12）2026-10-24 交付；A 机单机运行，push main 自动发布（docs/deployment.md）
 - 新读者导览见 `docs/introduction.md`（项目详细介绍，可独立阅读）；本 README 是设计与约定的唯一规范
+- **设计文档双轨制（2026-10-31 拍板）**：契约性变更（接口/口径/数据面）走 `docs/specs/`——先改 spec 再写码，变更须回写；wayfinder 项目（`docs/wayfinder/<项目>/map.md` + `tickets/`）承载执行图拍板、验收实据与出界记档——拍板即记录，不重复回写 spec。两轨各管一摊：spec 管「系统是什么样」，map 管「这批活怎么干、干到哪」
 
 目录：[一、为什么使用](#一为什么使用) · [二、核心设计思想](#二核心设计思想) · [三、架构总览](#三架构总览) · [四、目录结构](#四目录结构) · [五、技术栈与规模假设](#五技术栈与规模假设) · [六、本体概览](#六本体概览) · [七、数据流程](#七数据流程) · [八、五层存储](#八五层存储) · [九、如何使用](#九如何使用) · [十、快速开始](#十快速开始) · [十一、使用达到的效果](#十一使用达到的效果) · [十二、约定](#十二约定) · [十三、与 smartServe 的关系](#十三与-smartserve-的关系)
 
@@ -327,7 +328,7 @@ Phase 2 起每阶段收尾跑 run_eval 记入 `eval/runs/`——"评估先行"�
 | text2sql 失败 | 生成单次不重试；执行失败回落口径感知模板（`sql_source=template(fallback)`），模板仍败才空证据并明示"事实数据缺席"——不编数 |
 | T+1 ETL 失败 | 原始层已存 API 原始响应，次日自动补跑，缺口行留状态标记 |
 | 抽取失败 | 登记 ingest_job 待重放（原始层保底） |
-| Neo4j 不可用 | graph 步跳过并标注缺席路、其余路照常（2026-10-27 兑现：三路执行统一 try/except，单路异常不再穿透为整问 500）；Postgres 不可用则服务不可用（事实与向量同库，接受该单点） |
+| Neo4j 不可用 | graph 步跳过并标注缺席路、其余路照常（2026-10-27 兑现三路统一 try/except；**2026-10-31 补完**：事后图补 join/违规样本/人名脱敏/ID→名称映射同包降级——fact 路命中素材时曾仍裸调穿 500）；Postgres 不可用则服务不可用（事实与向量同库，接受该单点） |
 | 端点未捕获异常 | 全局 handler 统一返回 **JSON 500**（`detail` 带异常类名）——Starlette 默认纯文本 body 会让消费方 `.json()` 抛 SyntaxError 掩盖真错（2026-10-21 实测教训） |
 
 ### 7.3 路由决策
@@ -542,8 +543,8 @@ cd web && bun run dev                        # 前端 :5173（vite 代理 → :8
 ```bash
 HF_HUB_OFFLINE=1 uv run pytest                              # 全量 255（库不在线自动跳集成）
 uv run python eval/run_eval.py                              # golden set 38 题（规则判据 + LLM judge）
-uv run python eval/agent_eval.py                            # agent 场景集（/agent/chat ReAct 真 LLM；--types 选型 --rounds N 防抖）
-uv run python eval/recalc_agent.py                          # agent 场景数值锚重算（dry-run diff；--yes 落盘）
+HF_HUB_OFFLINE=1 uv run python eval/agent_eval.py           # agent 场景集（/agent/chat ReAct 真 LLM；--types 选型 --rounds N 防抖）
+HF_HUB_OFFLINE=1 uv run python eval/recalc_agent.py         # agent 场景数值锚重算（dry-run diff；--yes 落盘）
 uv run python eval/run_ablation.py                          # 消融：multi_hop 图谱增益归因
 bunx promptfoo@latest eval -c promptfooconfig.json -j 1 --no-cache   # 多角色矩阵 24 用例（必须串行+关缓存）
 uv run python scripts/sync_feishu.py                        # 飞书增量同步（.env FEISHU_DOCS / FEISHU_FOLDER）

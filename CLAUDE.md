@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 项目现状与最高规则
 
 - **已建成上线**：README §7.1 八步路线 2026-10-19 收官 + 真实系统化升级（spec 2026-10-24，M1–M12 全交付：登录会话/达人库/案例全生命周期/结算/看板/管理台 RBAC）+ web 公网演示（A 机 nginx 唯一公网面）；核心五端点 `/ask` `/graph/entity` `/actions/check` `/guideline/check` `/ingest/assertion` 真跑通，全量 44 端点
-- 评测三件套全绿（时点值，引用注明日期）：pytest 280（截至 2026-10-28，随提交增长）、golden set 38 题（README 记 2026-10-24 终评 95%±抖动、judge 要点命中 32–34/35）、promptfoo 多角色矩阵 24/24
+- 评测三件套全绿（时点值，引用注明日期）：pytest 313（截至 2026-10-31，随提交增长）、golden set 38 题（README 记 2026-10-24 终评 95%±抖动、judge 要点命中 32–34/35）、promptfoo 多角色矩阵 24/24
 - README 是唯一规范：**任何设计、接口、约定变更，先改 README 再写代码**；中文项目（文档/注释/提交信息）；**提交信息不带任何 Claude 署名**（历史已清洗，勿再引入）
 - 换行业的重写边界只在 README §9.6 一处声明；文风高密度中文短句 + 表格；新读者导览在 `docs/introduction.md`
 
@@ -26,7 +26,7 @@ cd web && bun run dev                        # 前端 :5173（vite 代理 → :8
 测试与评测：
 
 ```bash
-HF_HUB_OFFLINE=1 uv run pytest              # 全量 303（库不在线自动跳集成；本机必设离线变量否则 hf-mirror 卡死十分钟级）
+HF_HUB_OFFLINE=1 uv run pytest              # 全量 313（库不在线自动跳集成；本机必设离线变量否则 hf-mirror 卡死十分钟级）
 uv run pytest tests/test_retrieval.py -q   # 单文件
 uv run pytest -k "客户"                     # 按名筛选
 bunx promptfoo@latest eval -c promptfooconfig.json -j 1 --no-cache   # 多角色矩阵 24 用例（必须 --no-cache + 串行）

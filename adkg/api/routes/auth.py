@@ -5,7 +5,6 @@ HttpOnly + SameSite=Lax，部署态 HTTPS 由 ADKG_COOKIE_SECURE=on 加 Secure�
 """
 from __future__ import annotations
 
-import psycopg
 
 from adkg.store import pg_pool
 from fastapi import APIRouter, HTTPException, Request, Response

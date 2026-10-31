@@ -82,17 +82,19 @@ class TestReviewResolve:
 
     def test_冲突采纳闭环(self):
         import io
-        import json as j
 
         import psycopg
         from openpyxl import Workbook
         client = self._client()
         self._cleanup()
         # ① xlsx 导入建号（official_doc/60，spec §15）
-        wb = Workbook(); ws = wb.active
+        wb = Workbook()
+        ws = wb.active
         ws.append(["name", "platform", "niches", "followers", "quote_20s", "creator_id"])
         ws.append(["人审测试达人", "douyin", "测试|人审", 50000, 8000, self.CID])
-        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
         r = client.post("/creators/import", params={"role": "management", "user": "Person:chen"},
                         files={"file": ("t.xlsx", buf, "application/vnd.ms-excel")})
         assert r.json()["created"] == 1, r.text
@@ -227,7 +229,6 @@ class TestMenus:
         assert "/menus" in [m["path"] for m in r.json()["items"]]
 
     def test_保存与防自锁(self):
-        import psycopg
         client = self._client()
         # 读门收口后（spec §19）：management 只读放行、ae 拒；写门见下方 PUT
         assert client.get("/admin/menus", params={"role": "management"}).status_code == 200
@@ -256,10 +257,10 @@ class TestMenus:
         # 还原默认（重播种语义：直接整批 PUT 回默认 roles/enabled）
         items = client.get("/admin/menus", params={"role": "admin"}).json()["items"]
         default = client.get("/menus", params={"role": "finance"}).json()  # noqa: F841
-        import json as j
         from adkg.api.routes.menus import DEFAULT_MENUS
-        restored = [{"path": p, "label": l, "icon": i, "roles": r.split(","),
-                     "sort": s, "enabled": True} for p, l, i, r, s in DEFAULT_MENUS]
+        restored = [{"path": p, "label": lab, "icon": ico, "roles": rls.split(","),
+                     "sort": srt, "enabled": True}
+                    for p, lab, ico, rls, srt in DEFAULT_MENUS]
         assert client.put("/admin/menus", params={"role": "admin"},
                           json={"items": restored}).status_code == 200
 

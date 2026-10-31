@@ -50,8 +50,8 @@ def run_config(name: str, item: dict, plan, env, llm, graph) -> dict:
 
 
 def main() -> None:
-    items = [json.loads(l) for l in (ROOT / "eval" / "golden_set.jsonl")
-             .read_text(encoding="utf-8").splitlines() if l.strip()]
+    items = [json.loads(ln) for ln in (ROOT / "eval" / "golden_set.jsonl")
+             .read_text(encoding="utf-8").splitlines() if ln.strip()]
     multi_hop = [i for i in items if i["type"] == "multi_hop"]
     fact = [i for i in items if i["type"] == "fact"]
 

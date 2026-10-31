@@ -7,7 +7,6 @@
 """
 from __future__ import annotations
 
-import psycopg
 
 from adkg.store import pg_pool
 from fastapi import APIRouter, Header, HTTPException, Request

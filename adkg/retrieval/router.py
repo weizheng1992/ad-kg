@@ -12,11 +12,19 @@ from dataclasses import dataclass
 from adkg.models import RouteStep, RouterPlan
 from adkg.retrieval.metrics import RANK_WORDS
 
-_OPS = ("删除", "删掉", "暂停", "停掉", "下掉", "改回", "改成", "迁移",
-        "停投", "关停", "关掉", "下线",
-        # 预算操作族（2026-10-27 拍板：显式 deny——AdKG 是决策点不是执行点，
-        # 预算调整请走投放平台；只收动宾复合词，裸"预算"是名词留检索路）
-        "加预算", "调预算", "提预算", "减预算", "砍预算", "预算调")
+# 执行族（删除/暂停/关停…）：字面强，直接判 operation
+_OPS_EXEC = ("删除", "删掉", "暂停", "停掉", "下掉", "改回", "改成", "迁移",
+             "停投", "关停", "关掉", "下线")
+# 预算操作族（2026-10-27 拍板：显式 deny——AdKG 是决策点不是执行点，预算调整请走
+# 投放平台；裸"预算"是名词留检索路）。2026-10-31 勘误（spec §20）：动词前置六词在
+# 把字句/受事前置/分式下逃逸（"把预算砍到 5000""加一下预算"），补受事前置形与分式
+# regex；且字面命中会误伤规范问句（"调预算的规则是什么"），规则词在场让位 concept
+_OPS_BUDGET = ("加预算", "调预算", "提预算", "减预算", "砍预算", "预算调",
+               "预算加", "预算提", "预算减", "预算砍", "预算调高", "预算调低",
+               r"[加调提减砍][一两二三四五六七八九]*下?预算")
+_OPS = _OPS_EXEC + _OPS_BUDGET
+# 问规则/流程/政策 ≠ 要执行动作（预算族字面浅，与执行族分开让位）
+_OPS_RULE_WORDS = ("规则", "流程", "政策", "制度")
 # 操作词多为动宾两用（"关停的案例列表"是状态查询不是操作）——有检索标记即降检索路；
 # 名词性标记（列表/清单/看看/查一下…）与被动/疑问标记同权重；不含"帮我/给我"
 # （"帮我删掉"仍是祈使操作）
@@ -29,7 +37,8 @@ _FACT = ("多少", "消耗", "cpa", "ctr", "cvr", "roi") + RANK_WORDS + \
          "gmv", "点击(?!率)", "曝光", "展现", "跑量", "爆量", "起量")   # 点击负向预见：点击率≠点击量
 _GRAPH = ("谁", "哪些案例", "哪些品牌", "名下", "负责", "对接", "关系链", "多少个",
           "目标人群", "年龄段", "人群画像", "定向人群")   # 实体属性型问题走属性证据（§7.3）
-_CONCEPT = ("规范", "要求", "时长", "规定", "vi", "广告法", "尺寸", "口径")
+_CONCEPT = ("规范", "要求", "时长", "规定", "vi", "广告法", "尺寸", "口径",
+            "规则", "流程", "政策", "制度")
 # 口径/定义类短语：问的是"这个词什么意思"而非数值——命中 _FACT 前先归 concept；
 # 但带强聚合/方向词（"按新口径 CPA 最差"）仍是查数题，不得劫持；
 # 定义尾（"排名是什么意思"）在场时主语词不算查数信号
@@ -91,8 +100,11 @@ def rule_route(question: str) -> RouteDecision:
     q = question.lower()
     if _hits(q, _OPS) and not any(m in q for m in _RETRIEVAL_MARK) \
             and not _hits(q, _DEF_TAIL):
-        # 定义尾在场永不判操作（"暂停是什么意思"是概念题，§7.3）
-        return RouteDecision("operation", None, 0.95)
+        # 定义尾在场永不判操作（"暂停是什么意思"是概念题，§7.3）；
+        # 预算族 + 规则词在场是规范问句不是执行（"调预算的规则是什么"——字面浅
+        # 的预算词不得劫持，2026-10-31 勘误）；执行族不受影响
+        if not (_hits(q, _OPS_BUDGET) and _hits(q, _OPS_RULE_WORDS)):
+            return RouteDecision("operation", None, 0.95)
     if _hits(q, _ATTR) and (_hits(q, _FACT) or _hits(q, _CONCEPT)):
         return RouteDecision("attribution", _plan_for("attribution"), 0.85)
     if _hits(q, _DEF) and (_hits(q, _FACT) or _hits(q, _CONCEPT)) \

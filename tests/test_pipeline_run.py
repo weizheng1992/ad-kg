@@ -49,7 +49,9 @@ class FakeTrace:
     def job_mark(self, source_id, version, pg=None, neo4j=None, error=None): self.jobs.append(("mark", pg, neo4j))
     def push_review(self, kind, payload): self.reviews.append(kind)
     def provenance_count(self): return self.prov_rows
-    def insert_provenance(self, p): self.prov_rows += 1; return f"prov-{self.prov_rows}"
+    def insert_provenance(self, p):
+        self.prov_rows += 1
+        return f"prov-{self.prov_rows}"
 
     def reconcile(self, graph_counts):
         if self.prov_rows != graph_counts.get("nodes", 0) + graph_counts.get("relations", 0):
@@ -106,7 +108,6 @@ class TestRunDocs:
 
     def test_对账差异进review_queue(self, tmp_path):
         # 对账语义：PG 侧含 chunk 溯源行，图 ≤ PG 属正常；图 > PG 是异常态必报
-        from adkg.models import Entity, Provenance
 
         v, g, t = FakeVector(), FakeGraph(), FakeTrace()
         t.prov_rows = 0                                      # PG 没有溯源行

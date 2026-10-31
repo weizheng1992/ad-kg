@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import psycopg
 
 from adkg.store import pg_pool
 import yaml
@@ -178,7 +177,7 @@ def ingest_assertion(request: Request, body: dict,
     if confidence < ACCEPT:
         push_review("low_confidence", {"relation": rel.model_dump(),
                                         "confidence": confidence})
-        return {"status": "review", "reason": f"confidence ∈ [0.4, 0.7) → 人审（§12.1）"}
+        return {"status": "review", "reason": "confidence ∈ [0.4, 0.7) → 人审（§12.1）"}
 
     # 冲突仲裁：已有更高 authority 的同边 → 低者不覆盖
     graph = get_graph(request)

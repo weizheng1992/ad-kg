@@ -22,7 +22,6 @@ HAVING >=3 与 top_metric 模板同值（text2sql 侧改阈值需同步此处）
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -39,7 +38,8 @@ import psycopg  # noqa: E402
 from neo4j import GraphDatabase  # noqa: E402
 
 from adkg.retrieval import text2sql  # noqa: E402
-from adkg.retrieval.metrics import agg_expr  # noqa: E402
+from adkg.retrieval.metrics import STAT_HAVING, agg_expr  # noqa: E402
+from eval.common import apply_writeback, read_jsonl, show_changes  # noqa: E402
 
 GOLDEN = ROOT / "eval" / "golden_set.jsonl"
 
@@ -98,7 +98,7 @@ def recalc_window_top(cur, item: dict) -> dict | None:
         return None                                     # 无窗口词的题不属本族
     cur.execute(f"SELECT creative_id, {agg_expr('cpa')} AS cpa FROM unified_metrics"
                 " WHERE NOT unmatched AND date BETWEEN %(a)s AND %(b)s"
-                " GROUP BY 1 HAVING count(DISTINCT date) >= 3"
+                f" GROUP BY 1 {STAT_HAVING}"
                 " ORDER BY 2 DESC LIMIT 1", {"a": w[0], "b": w[1]})
     row = cur.fetchone()
     if not row or row[1] is None:
@@ -237,7 +237,7 @@ def main() -> None:
     ap.add_argument("--yes", action="store_true", help="确认落盘（缺省 dry-run 只展示 diff）")
     args = ap.parse_args()
 
-    items = [json.loads(l) for l in GOLDEN.read_text(encoding="utf-8").splitlines() if l.strip()]
+    items = read_jsonl(GOLDEN)
     graph = GraphDatabase.driver(os.environ["ADKG_NEO4J_URI"],
                                  auth=(os.environ["ADKG_NEO4J_USER"],
                                        os.environ["ADKG_NEO4J_PASSWORD"]))
@@ -261,21 +261,13 @@ def main() -> None:
         return
 
     print(f"golden {len(items)} 题，{len(changes)} 题锚点漂移：\n")
-    for it, new_ans in changes:
-        old_ans = it["expected_answer"]
-        print(f"  {it['id']} [{it['type']}] {it['question']}")
-        for k in ("points", "must_entities", "must_numbers"):
-            if new_ans.get(k) != old_ans.get(k):
-                print(f"    {k}: {old_ans.get(k)}\n      → {new_ans.get(k)}")
+    show_changes(changes)
 
     if not args.yes:
         print("\ndry-run 未落盘；确认后加 --yes 写回 golden_set.jsonl")
         return
-    for it, new_ans in changes:
-        it["expected_answer"] = new_ans
-    GOLDEN.write_text("\n".join(json.dumps(m, ensure_ascii=False) for m in items) + "\n",
-                      encoding="utf-8")
-    print(f"\n已写回 {GOLDEN}（{len(changes)} 题）——回归验证：uv run python eval/run_eval.py")
+    n = apply_writeback(items, changes, GOLDEN)
+    print(f"\n已写回 {GOLDEN}（{n} 题）——回归验证：uv run python eval/run_eval.py")
 
 
 if __name__ == "__main__":

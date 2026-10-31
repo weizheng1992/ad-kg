@@ -56,6 +56,9 @@ TRADE_ASC_WORDS = LOW_WORDS + ("最差",)   # 交易模板方向：orders/gmv �
 # 案例统计全家桶（§六）：一问多指标的默认投影族——graph 统计卡与 text2sql 案例粒度
 # top_metric 共用（曾两处硬编码 ("cost","ctr","cvr","cpa")）
 STAT_FAMILY = ("cost", "ctr", "cvr", "cpa")
+# top-1 窗口查询的"多天覆盖"阈值（HAVING）——text2sql top_metric 模板与 recalc_*
+# 锚点重算共用一价（改阈值动一处；曾三处字面同形漂移隐患，2026-10-31 收口）
+STAT_HAVING = "HAVING count(DISTINCT date) >= 3"
 
 # —— 交易口径（§六 分列）：orders/gmv 与投放 clicks 按 product×day 对齐 ——
 # unified 粒度是 creative×platform×day，直接 join 会把 orders/gmv 按投放行数放大

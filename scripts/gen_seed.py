@@ -421,7 +421,6 @@ def gen_creators(cases) -> None:
     （每 3 单加一位跨品类）；带货 = 品类同源商品（含 SKU），跨品类达人带全部 SKU。
     """
     rng2 = random.Random(4242)
-    cat_of_brand = {f"Brand:{b[0]}": b[2] for b in BRANDS}
     products_of_cat: dict[str, list[str]] = {}
     for p in PRODUCTS:
         products_of_cat.setdefault(p[2], []).append(f"Product:{p[0]}")

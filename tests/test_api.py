@@ -79,6 +79,33 @@ class TestAsk:
         r = client.post("/ask", json={"question": "x", "role": "hacker"})
         assert r.status_code == 401
 
+    def test_图补join段宕机降级不炸整问(self, client, monkeypatch):
+        """缺口⑬续（2026-10-31 夜检）：循环后 join/违规样本/脱敏/名称映射曾仍裸调——
+        fact 路命中素材行时 Neo4j 宕机 ServiceUnavailable 仍穿整问 500；统一包降级。"""
+        from adkg.store.graph import GraphStore
+
+        def _boom(*a, **k):
+            raise RuntimeError("simulated neo4j down")
+        monkeypatch.setattr(GraphStore, "responsible_for_creatives", _boom)
+        monkeypatch.setattr(GraphStore, "violations_of_creatives", _boom)
+        r = client.post("/ask", json={"question": "上月 CPA 最差的素材是哪个",
+                                      "role": "management", "user": "Person:chen"})
+        assert r.status_code == 200, r.text
+        assert "graph_join" in r.json()["degraded"]
+
+    def test_脱敏与名称映射宕机降级不炸整问(self, client, monkeypatch):
+        """session 级宕机（脱敏人名表 / _id_name_map）同包降级：答案回模板仍可交付。"""
+        from adkg.store.graph import GraphStore
+
+        def _boom(*a, **k):
+            raise RuntimeError("simulated neo4j down")
+        monkeypatch.setattr(GraphStore, "session", property(lambda self: (_ for _ in ()).throw(RuntimeError("down"))))
+        r = client.post("/ask", json={"question": "各案例本月消耗统计",
+                                      "role": "management", "user": "Person:chen"})
+        assert r.status_code == 200, r.text
+        degraded = r.json()["degraded"]
+        assert "name_map" in degraded
+
     def test_真token认证(self, client):
         r = client.post("/ask", json={"question": "消耗多少"},
                         headers={"Authorization": "Bearer change-me-management"})

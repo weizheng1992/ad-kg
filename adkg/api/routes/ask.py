@@ -73,41 +73,53 @@ def ask(request: Request, body: dict,
         results[step.step_id] = {"route": step.route.value, "confidence": step.confidence, **r}
 
     # 事实行→图补 join（"谁做的"）：text2sql 命中的素材回查负责人，作为 relation 证据
-    # 注入 graph 路（行权限已由谓词过滤保证；人名脱敏在 assemble 出口统一处理 §12.6）
+    # 注入 graph 路（行权限已由谓词过滤保证；人名脱敏在 assemble 出口统一处理 §12.6）。
+    # Neo4j 宕机整段降级（§7.2 缺席不如降级；缺口⑬续：循环后 join 段曾仍裸调，
+    # fact 路命中素材行时 ServiceUnavailable 仍穿整问 500——2026-10-31 夜检补完）
+    degraded_extra: list[str] = []
     creative_ids = sorted({str(row.get("creative_id"))
                            for res in results.values()
                            for ev in res.get("evidence", [])
                            for row in ev.get("rows", [])
                            if row.get("creative_id")})
     joined = []
-    for j in graph.responsible_for_creatives(creative_ids):
-        joined.append({
-            "type": "relation",
-            "ref": (f"({j['cid']})<-[:uses]-({j['campaign']})"
-                    f"-[:belongs_to]->({j['case']})<-[:responsible_for]-({j['person']})"),
-            "who": j.get("person_name") or "",           # agent 总结直接用人名
-            "provenance": {"source_type": "system_of_record", "authority": 100},
-        })
+    try:
+        for j in graph.responsible_for_creatives(creative_ids):
+            joined.append({
+                "type": "relation",
+                "ref": (f"({j['cid']})<-[:uses]-({j['campaign']})"
+                        f"-[:belongs_to]->({j['case']})<-[:responsible_for]-({j['person']})"),
+                "who": j.get("person_name") or "",       # agent 总结直接用人名
+                "provenance": {"source_type": "system_of_record", "authority": 100},
+            })
+    except Exception:
+        degraded_extra.append("graph_join")
     # 违规边补拉（G15）："CPA 最差的素材违反了哪些规范"——事实行素材回查 violates 规范；
     # 所问素材集无违规时补图上违规样本（答案如实说明"无违规记录 + 全图样本"），
     # 归因问题必须有 violates 证据可答（§7.3 串行 g→t→v 的 v 步素材）
-    for j in graph.violations_of_creatives(creative_ids):
-        joined.append({
-            "type": "relation",
-            "ref": f"({j['cid']})-[:violates]->({j['gid']})",
-            "who": j.get("guideline_name") or "",
-            "provenance": {"source_type": "official_doc", "authority": 60},
-        })
+    try:
+        for j in graph.violations_of_creatives(creative_ids):
+            joined.append({
+                "type": "relation",
+                "ref": f"({j['cid']})-[:violates]->({j['gid']})",
+                "who": j.get("guideline_name") or "",
+                "provenance": {"source_type": "official_doc", "authority": 60},
+            })
+    except Exception:
+        degraded_extra.append("violates_join")
     if "违反" in question and not any("violates" in str(e.get("ref", "")) for e in joined):
-        with graph.session() as s:
-            for r_ in s.run("MATCH (c:Entity)-[:violates]->(g:Entity)"
-                            " RETURN c.id AS cid, g.id AS gid, g.name AS gname LIMIT 5").data():
-                joined.append({
-                    "type": "relation",
-                    "ref": f"({r_['cid']})-[:violates]->({r_['gid']})",
-                    "who": r_.get("gname") or "",
-                    "provenance": {"source_type": "official_doc", "authority": 60},
-                })
+        try:
+            with graph.session() as s:
+                for r_ in s.run("MATCH (c:Entity)-[:violates]->(g:Entity)"
+                                " RETURN c.id AS cid, g.id AS gid, g.name AS gname LIMIT 5").data():
+                    joined.append({
+                        "type": "relation",
+                        "ref": f"({r_['cid']})-[:violates]->({r_['gid']})",
+                        "who": r_.get("gname") or "",
+                        "provenance": {"source_type": "official_doc", "authority": 60},
+                    })
+        except Exception:
+            degraded_extra.append("violates_sample")
     if joined:
         gres = results.get("g")                            # 归并进 graph 路（无则补一路）
         if gres is None:
@@ -121,10 +133,20 @@ def ask(request: Request, body: dict,
         else:
             gres["evidence"] = gres.get("evidence", []) + joined
 
-    person_names = load_person_names(graph) if plan.mask_rules else None  # §12.6
+    try:
+        person_names = load_person_names(graph) if plan.mask_rules else None  # §12.6
+    except Exception:
+        person_names = None
+        degraded_extra.append("person_names")
     out = assemble(results, plan, decision, person_names=person_names)
+    if degraded_extra:
+        out["degraded"] = [*out.get("degraded", []), *degraded_extra]
 
-    name_map = _id_name_map(out["evidence"], graph)         # ID → 中文名（答案/证据可读性）
+    try:
+        name_map = _id_name_map(out["evidence"], graph)     # ID → 中文名（答案/证据可读性）
+    except Exception:
+        name_map = {}
+        out["degraded"] = [*out.get("degraded", []), "name_map"]
     _readable_refs(out["evidence"], name_map)
 
     answer, answer_source = _summarize(question, out, decision), "template"

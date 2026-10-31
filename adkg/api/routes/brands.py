@@ -24,7 +24,6 @@ def list_brands(request: Request, q: str = "",
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     plan = planner.plan(role, person=user)
     plan.gate("Brand", anchor_ok=True)   # 锚点角色豁免类闸：client 只看 external_for 那片
-    visible = plan.visible_entity_ids
     with get_graph(request).session() as s:
         rows = s.run("MATCH (b:Entity {class: 'Brand'}) "
                      "WHERE $q = '' OR b.name CONTAINS $q "
@@ -54,7 +53,6 @@ def brand_detail(request: Request, bid: str,
     role, user, planner = resolve_identity(request, authorization, role=role, user=user)
     plan = planner.plan(role, person=user)
     allowed = set(plan.metadata_filter.get("entity_class__in", []))
-    visible = plan.visible_entity_ids
     with get_graph(request).session() as s:
         rec = s.run("MATCH (b:Entity {id: $id}) RETURN b.id AS id, b.name AS name, "
                     "b.category AS category, b.class AS class", id=bid).single()

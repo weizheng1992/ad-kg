@@ -5,7 +5,6 @@ assemble 拼装时在响应里注明缺席路（§7.2 降级矩阵）。
 """
 from __future__ import annotations
 
-import psycopg
 
 from adkg.store import pg_pool
 

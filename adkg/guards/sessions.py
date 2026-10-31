@@ -6,7 +6,6 @@ from __future__ import annotations
 import secrets
 from datetime import timedelta
 
-import psycopg
 
 from adkg.store import pg_pool
 

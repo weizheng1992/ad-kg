@@ -6,7 +6,7 @@ quote_20s 之和（种子无逐单成交价，按报价上界估计，前端标�
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, Request
 
 from adkg.guards.http import get_graph, resolve_identity
 

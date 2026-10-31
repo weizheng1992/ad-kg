@@ -88,7 +88,6 @@ class TestResolution:
         assert resolve_by_alias("douyin", "nope", aliases) is None
 
     def test_L2_相似候选按阈值过滤(self):
-        import math
 
         def fake_embed(texts):
             # "品牌A 女装" 与已知名同向，与另一个近乎正交

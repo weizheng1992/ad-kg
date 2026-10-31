@@ -186,7 +186,6 @@ class TestText2SQL:
         rows = out["evidence"][0]["rows"]
         # 案例级谓词下：客户能看到自己品牌（B04=案例 003/011/019）的 matched 行，
         # 但不得出现他牌案例（如 005/006）的素材——行级权限的正行为
-        theirs = {r[0] for r in [(c,) for c in []]}
         bad = [r for r in rows if str(r.get("creative_id", "")).startswith(
             ("Creative:C-2025-005", "Creative:C-2025-006", "Creative:C-2025-002"))]
         assert not bad, f"越权：{bad}"

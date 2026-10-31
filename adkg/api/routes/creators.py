@@ -17,10 +17,8 @@ import io
 import re
 from datetime import datetime, timezone
 
-import psycopg
 
 from adkg.store import pg_pool
-from psycopg.rows import dict_row
 from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
 
 from adkg.guards.http import get_graph, resolve_identity

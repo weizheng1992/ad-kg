@@ -48,7 +48,7 @@ def graph_entity(request: Request, id: str, hops: int = 1,
         if allowed_classes and r["cls"] not in allowed_classes and r["cls"] not in global_classes:
             filtered += 1
             continue
-        if visible and r["dst"] not in visible and not (r["src"] in visible):
+        if visible and r["dst"] not in visible and r["src"] not in visible:
             filtered += 1
             continue
         edges.append(r)
@@ -98,6 +98,7 @@ def _trade_stats(env: dict, plan, graph, product_id: str) -> dict:
     import psycopg
     from psycopg.rows import dict_row
 
+    from adkg.store import pg_pool
     try:
         with pg_pool.connect(env["ADKG_PG_RO_DSN"], options="-c statement_timeout=3000",
                              row_factory=dict_row) as conn:
