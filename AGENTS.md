@@ -1,11 +1,17 @@
-# CLAUDE.md
+# AGENTS.md — AdKG
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> 本文件是**开发者速查唯一载体**（命令 / 架构大图 / 铁律），遵循 AGENTS.md 跨工具标准；vibe 工具链（`npx vibeworkflow` / `doctor`）以此为主入口；Claude Code ≥2.1.277 在无 CLAUDE.md 时原生回落读本文（本机 2.1.302 验证过），其他工具直接读。**README 仍是唯一规范**：任何设计、接口、约定变更，先改 README 再写代码。
+
+## Project
+
+- **What this is:** 本体驱动的广告营销知识中台——从「能搜到文档」升级到「能回答跨系统的问题，每个答案可追溯、每个操作有边界」；为 Agent 引擎 smartServe 提供「查什么、能动什么」，只暴露 HTTP API 不内置编排（README §1.4、§十三）
+- **Who it is for:** 六类角色（README §9.2）：AE/销售、优化师、创意/AIGC、客户方（外部角色全白名单+人名脱敏）、财务/商务、管理层；Agent 引擎 smartServe 以受托身份调用，权限矩阵对人对 Agent 一致
+- **Current phase:** 已上线（八步路线收官 + 真实系统化升级 M1–M12 全交付 + web 公网演示）；既有系统增量演进，不走新项目规划
 
 ## 项目现状与最高规则
 
 - **已建成上线**：README §7.1 八步路线 2026-10-19 收官 + 真实系统化升级（spec 2026-10-24，M1–M12 全交付：登录会话/达人库/案例全生命周期/结算/看板/管理台 RBAC）+ web 公网演示（A 机 nginx 唯一公网面）；核心五端点 `/ask` `/graph/entity` `/actions/check` `/guideline/check` `/ingest/assertion` 真跑通，全量 44 端点
-- 评测三件套全绿（时点值，引用注明日期）：pytest 313（截至 2026-10-31，随提交增长）、golden set 38 题（README 记 2026-10-24 终评 95%±抖动、judge 要点命中 32–34/35）、promptfoo 多角色矩阵 24/24
+- 评测三件套全绿（时点值，引用注明日期）：pytest 315（截至 2026-10-31，随提交增长）、golden set 38 题（README 记 2026-10-24 终评 95%±抖动、judge 要点命中 32–34/35）、promptfoo 多角色矩阵 24/24
 - README 是唯一规范：**任何设计、接口、约定变更，先改 README 再写代码**；中文项目（文档/注释/提交信息）；**提交信息不带任何 Claude 署名**（历史已清洗，勿再引入）
 - 换行业的重写边界只在 README §9.6 一处声明；文风高密度中文短句 + 表格；新读者导览在 `docs/introduction.md`
 
@@ -26,7 +32,7 @@ cd web && bun run dev                        # 前端 :5173（vite 代理 → :8
 测试与评测：
 
 ```bash
-HF_HUB_OFFLINE=1 uv run pytest              # 全量 313（库不在线自动跳集成；本机必设离线变量否则 hf-mirror 卡死十分钟级）
+HF_HUB_OFFLINE=1 uv run pytest              # 全量 315（库不在线自动跳集成；本机必设离线变量否则 hf-mirror 卡死十分钟级）
 uv run pytest tests/test_retrieval.py -q   # 单文件
 uv run pytest -k "客户"                     # 按名筛选
 bunx promptfoo@latest eval -c promptfooconfig.json -j 1 --no-cache   # 多角色矩阵 24 用例（必须 --no-cache + 串行）
@@ -47,7 +53,7 @@ AdKG 是本体驱动的广告营销知识中台，为 Agent 引擎 **smartServe*
 
 七层：`ontology/`（唯一语义真源，横贯所有层）→ `connectors`（files/feishu/platforms）→ `pipeline`（chunking/extraction/resolution/etl_facts/case_gen/run 双写编排）→ `store`（raw 不可变 / vector / graph / provenance+ingest_job）→ `retrieval`（router + 三路 + assemble；口径单一来源 metrics.py、汇总比脚手架 stats.py）→ `guards`（auth/permission/action_check/rbac/audit）→ `api`。数据流单向：connectors → `data/raw/`（不可变+hash）→ Postgres 先 Neo4j 后（幂等 MERGE，ingest_job 对账）→ 检索层只读。
 
-`/ask` 链路：认证（resolve_identity，token > cookie > dev）→ **PermissionPlan**（guards/permission.py 是 permissions.yaml → 三路过滤器的唯一翻译点；SQL 谓词案例级优先品牌级兜底）→ 路由（强关键词信规则，弱置信 <0.8 走 LLM）→ 按步执行三路（graph 路命中实体带属性作 `entity` 证据，`deny_properties` 属性黑名单在该出口唯一执行）→ 事实行→图补 join（素材→负责人）→ assemble（去重/缺席路/人名脱敏）→ **agent 总结**（LLM 依据证据生成，带 [#N] 引用；失败回模板）→ audit。
+`/ask` 链路：认证（resolve_identity，token > cookie > dev）→ **PermissionPlan**（guards/permission.py 是 permissions.yaml → 三路过滤器的唯一翻译点；SQL 谓词案例级优先品牌级兜底）→ 路由（强关键词信规则，弱置信 <0.8 走 LLM）→ 按步执行三路（graph 路命中实体带属性作 `entity` 证据，`deny_properties` 属性黑名单在该出口唯一执行）→ 事实行→图补 join（素材→负责人）→ assemble（去重/缺席路/人名脱敏）→ **agent 总结**（LLM 依据证据生成，带 #N 编号引用；失败回模板）→ audit。
 
 **text2sql 双路**（`retrieval/text2sql.py`）：LLM 自由生成 → `validate_sql` 五道闸静态校验（仅 SELECT/单语句/视图白名单/列白名单——剥 AS 别名与字符串字面量/强制 LIMIT）→ `enforce_predicate` 行谓词包裹 → `enforce_semantics` 注入 `NOT unmatched` → ro 账号执行；任何失败回落**口径感知模板**（指标词/方向反转——成本型越低越好/平台/时间窗/空窗回退注明）。响应 `sql_source` 标注来源。
 
@@ -61,3 +67,38 @@ AdKG 是本体驱动的广告营销知识中台，为 Agent 引擎 **smartServe*
 - AdKG 是决策点不是执行点：`/actions/check` 只裁决（allow/deny + audit_id）
 - 实体 ID `{class}:{slug}`；平台 ID 只作 external_id 进 entity_alias；抽取产物**必须先过对齐**（`scripts/enrich_aligned.py` 的 L1 / case_gen 草稿路）才能入图——未对齐直接入图会污染检索（实测教训）；对齐 L3 LLM 判别未实现（L1/L2 + 人审兜底）
 - LLM：智谱 **coding 端点** `glm-5.3-flash`（同 key 普通端点仅 glm-4-flash）；批任务（抽取/judge）走 `batch_chat_json`（模型 glm-4-flash；`ADKG_LLM_BATCH_BASE_URL` 未配时回落主端点——现状实际仍打 coding 端点，分流需显式配置）；嵌入**本地** bge-small-zh-v1.5（512 维，需 `HF_ENDPOINT=https://hf-mirror.com`，模型已缓存）；LLM 失败一律降级不阻塞（§7.2 矩阵）；请求路限时档 12/15/30/60s（探测/路由/text2sql 生成/总结），单次不重试
+
+## Read first
+
+1. `README.md` — **唯一规范**：任何设计、接口、约定变更，先改 README 再写代码
+2. `docs/PRD-AdKG-MVP.md` / `docs/TechDesign-AdKG-MVP.md` — vibe 工具链薄指针（非规范，真源是 README）
+3. `agent_docs/` — vibe 代理上下文五件（project_brief / tech_stack / testing / code_patterns / product_requirements，同为指针不承载规范）
+4. 在办状态：`docs/wayfinder/agent-real-eval/` 地图（不是 `MEMORY.md`——那只是时点快照）
+
+## Protected areas — ask before changing
+
+- `.env*`（凭据永不入库）
+- `ontology/permissions.yaml`（数据面权限真源）、`sql/` 既有迁移
+- `.github/workflows/`、`deploy/`（A 机 nginx 唯一公网面 + 自动发布）
+- `audit_log` 只追加；`eval/golden_set.jsonl` 及锚点（改动须 recalc 对账）
+
+**Never print, commit, or transmit secrets, tokens, private logs, or production
+data.** Never delete files, rewrite large areas, or change
+infrastructure/auth/billing/migrations without approval.
+
+## AI features
+
+- **Model can see:** 检索出的证据行 / 文档 chunk——已过 PermissionPlan 行列过滤与人名脱敏，不靠 prompt 兜权限
+- **Never send:** 凭据、全量库导出、越权行（过滤器在上游收口）
+- **AI can do:** 只读检索与总结（答案带 #N 编号引用，证据可回溯）；写路径仅 ingest 断言 / 案例草稿，必过对齐或人审
+- **Needs approval:** `/actions/check` 只裁决 allow/deny——任何执行动作永远需要外部决策，AdKG 是决策点不是执行点
+- **How to verify behavior:** `HF_HUB_OFFLINE=1 uv run pytest`（越权零泄漏写成不变量测试）+ golden/agent 评测三件套
+- **Fallback:** LLM 失败一律降级回模板不阻塞（README §7.2 矩阵）；请求路单次不重试各限时档
+
+## Done means
+
+Report: files changed · commands run · test/build results · 评测证据（时点值引用注明日期；pytest 全量计数随提交增长，与本文时点值同批更新）· remaining risks · rollback。
+
+---
+
+**拆分信号：** 本文件变长时——任务型流程移入 `.claude/skills/<name>/SKILL.md`；目录级约定移入 `<subdir>/AGENTS.md`（Claude Code 等按需加载子目录文件时生效）；普适约束与安全禁令留在本文件（"never do X" 永不挪到可能不加载的位置）。

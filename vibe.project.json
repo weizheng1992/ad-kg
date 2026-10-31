@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "templateVersion": "0.3.0",
+  "mode": "guided",
+  "tools": [
+    "claude"
+  ],
+  "documents": {
+    "prd": "docs/PRD-AdKG-MVP.md",
+    "techdesign": "docs/TechDesign-AdKG-MVP.md"
+  }
+}

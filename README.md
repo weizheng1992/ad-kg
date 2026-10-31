@@ -115,10 +115,15 @@
 ```text
 ad-kg/
 ├── README.md                      # 唯一规范（设计与约定）
-├── CLAUDE.md                      # 开发者速查（命令 / 架构大图 / 铁律）
+├── AGENTS.md                      # 开发者速查唯一载体（命令 / 架构大图 / 铁律；AGENTS.md 跨工具标准——
+│                                  #   Claude Code ≥2.1.277 无 CLAUDE.md 时原生回落读此文件，其他工具直读）
+├── MEMORY.md                      # 代理工作记忆（时点快照；在办状态真源是 docs/wayfinder 地图）
+├── REVIEW-CHECKLIST.md            # 代理评审检查单（含 AdKG 项目特有节）
+├── agent_docs/                    # vibe 代理上下文五件（薄指针，不承载规范内容）
 ├── pyproject.toml / uv.lock       # uv 管理的 Python 项目
 ├── docker-compose.yml             # PG18(pgvector) + Neo4j + 星图·模拟 三服务
 ├── promptfooconfig.json           # 多角色矩阵评测（24 用例，真 HTTP 打 /ask）
+├── vibe.project.json              # vibe 工具链锚（声明 PRD/TechDesign 指针文档路径）
 ├── .env.example                   # 连接串、LLM key、service token 模板
 │
 ├── ontology/                      # 【资产】本体：唯一语义真源
@@ -208,7 +213,9 @@ ad-kg/
 │   └── logs/                      #   launchd 同步日志
 │
 ├── docs/                          #   introduction.md（项目详细介绍）· deployment.md（部署运维）·
-│                                  #   specs/（拍板 spec）· reports/（夜间检查等运行报告）
+│                                  #   specs/（拍板 spec）· reports/（夜间检查等运行报告）·
+│                                  #   wayfinder/（在办地图）· PRD/TechDesign-AdKG-MVP.md
+│                                  #   （vibe 工具链薄指针，非规范——真源仍在本 README）
 │
 ├── scripts/
 │   ├── gen_seed.py                #   生成确定性合成种子（固定随机流，同日重跑逐字节一致）
