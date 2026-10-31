@@ -259,6 +259,42 @@ def test_诚实降级通道():
     assert r2["pass"] is False and not r2.get("honest_degrade")
 
 
+def test_casegen_诚实拒绝与动作门():
+    """T5 新路：expect_draft.none 断言不产草稿（诚实拒绝/编造诱惑）；
+    expect_no_commit 断言动作门位不实际落库（无写入无清理）。"""
+    class _C:
+        def __init__(self, body):
+            self._b = body
+
+        def post(self, url, json=None):                 # noqa: A002
+            body = self._b
+            return type("R", (), {"status_code": 200, "text": "", "json": lambda self: body})()
+
+    refuse = {"id": "X", "type": "casegen", "question": "记一下", "role": "ae",
+              "user": "Person:li", "expect_draft": {"none": True}}
+    r = eval_agent(_C({"reply": "请问要记录哪个案例？提供品牌与产品信息。", "trace": [],
+                       "case_draft": None, "creative_drafts": None,
+                       "can_commit_case": True}), refuse, judge_fn=None)
+    assert r["pass"] is True and r["checks"]["no_draft"]
+
+    cheat = eval_agent(_C({"reply": "已记录。", "trace": [],
+                           "case_draft": {"case": {"id": "Case:C-2026-001"}, "brand": {}},
+                           "creative_drafts": None}), refuse, judge_fn=None)
+    assert cheat["pass"] is False and cheat["checks"]["no_draft"] is False
+
+    gate = {"id": "Y", "type": "casegen", "question": "录案例", "role": "optimizer",
+            "user": "Person:zhao",
+            "expect_draft": {"brand_name": "途野露营", "stage": "proposal"},
+            "expect_no_commit": True, "expect_can_commit": False}
+    draft_body = {"reply": "草稿已生成，确认后可提交。", "trace": [],
+                  "case_draft": {"case": {"id": "Case:C-2026-002",
+                                          "props": {"stage": "proposal"}},
+                                 "brand": {"name": "途野露营"}},
+                  "creative_drafts": None, "can_commit_case": False}
+    rg = eval_agent(_C(draft_body), gate, judge_fn=None)
+    assert rg["pass"] is True and rg["checks"]["can_commit"]      # 门位=期望 false 命中
+
+
 def test_gate剔除传输超时分母():
     """transport_dead 不进分母（口径重拍板 2026-10-30）；4xx 真失败照常计入。"""
     rows = [{"id": "a", "type": "stat", "pass": True},
@@ -273,9 +309,9 @@ def test_gate剔除传输超时分母():
 
 # --------------------------------------------------- 真库集成（skipif 门控）
 
-FINAL = {"final": {"answer": "基于图里的途野露营（户外旅行）给出案例草稿。",
-                   "case_seed": {"brand_name": "途野露营", "product_names": ["星链Pro"],
-                                 "case_name": "星链Pro 冬季投放", "stage": "proposal",
+FINAL = {"final": {"answer": "基于图里的轻食日记（餐饮）给出案例草稿。",
+                   "case_seed": {"brand_name": "轻食日记", "product_names": ["轻食日记App"],
+                                 "case_name": "轻食日记品牌焕新季", "stage": "live",
                                  "person_ids": ["Person:li"]},
                    "creative_drafts": None}}
 ACTION_ASK = {"action": "ask_knowledge", "args": {"question": "上月 CPA 最差的素材有哪些？"}}

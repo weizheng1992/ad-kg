@@ -57,8 +57,10 @@ def load(path: Path = SCENARIOS) -> list[dict]:
             sys.exit(f"{r.get('id', '?')} 缺必填字段 {sorted(missing)}")
         if r["type"] not in AGENT_TYPES:
             sys.exit(f"{r['id']} 未知题型 {r['type']}（合法：{sorted(AGENT_TYPES)}）")
-        if r["type"] == "casegen" and not isinstance(r.get("expect_draft"), dict):
-            sys.exit(f"{r['id']} casegen 场景缺 expect_draft（brand_name/stage）")
+        if r["type"] == "casegen" and not isinstance(r.get("expect_draft"), dict) \
+                and not r.get("expect_grounded"):
+            sys.exit(f"{r['id']} casegen 场景缺 expect_draft（brand_name/stage）"
+                     "或 expect_grounded（反编造路）")
     ids = [r["id"] for r in rows]
     if len(ids) != len(set(ids)):
         sys.exit("场景 id 重复")
@@ -112,6 +114,16 @@ def draft_checks(case_draft: dict | None, expect: dict) -> dict[str, bool]:
 
 
 # -------------------------------------------------------------- casegen 图断言
+
+def names_in_graph(names: list[str]) -> set[str]:
+    """图上实体名集合（expect_grounded 反编造断言用）。"""
+    if not names:
+        return set()
+    with _neo4j().session() as s:
+        rows = s.run("MATCH (e:Entity) WHERE e.name IN $names RETURN e.name AS n",
+                     names=names).data()
+    return {r["n"] for r in rows}
+
 
 def _neo4j():
     from neo4j import GraphDatabase
@@ -215,8 +227,47 @@ def eval_agent(client, sc: dict, judge_fn=None, keep: bool = False) -> dict:
     blob = reply + "\n" + "\n".join(str(t.get("result") or "") for t in trace)
 
     if sc["type"] == "casegen":
-        checks = draft_checks(body.get("case_draft"), sc.get("expect_draft") or {})
+        expect = sc.get("expect_draft") or {}
+        if expect.get("none"):
+            # 诚实拒绝路（T5）：信息不全/编造诱惑 → 断言不产草稿；可选断言动作门位
+            checks = {"no_draft": body.get("case_draft") is None,
+                      "reply": bool(reply.strip())}
+            if "expect_can_commit" in sc:
+                checks["can_commit"] = body.get("can_commit_case") == sc["expect_can_commit"]
+            result["checks"].update(checks)
+            result["pass"] = all(result["checks"].values())
+            return result
+        if sc.get("expect_grounded"):
+            # 反编造路（T5 A34"你懂的"类）：不产草稿（反问/说明）也算过；产了草稿
+            # 则实体名必须真实在库——消解到真实案例（附证据）= 合规，编出库外实体
+            # = 不合规。不在库即不 commit（不落脏数据），场景判 fail
+            d = body.get("case_draft")
+            if not isinstance(d, dict):
+                result["checks"] = {"reply": bool(reply.strip())}
+                result["pass"] = True
+                return result
+            names = []
+            if isinstance(d.get("brand"), dict):
+                names.append(str(d["brand"].get("name") or ""))
+            names += [str(p.get("name") or "") for p in (d.get("products") or [])
+                      if isinstance(p, dict)]
+            names = [n for n in names if n]
+            in_graph = names_in_graph(names)
+            result["checks"] = {"draft": True,
+                                "grounded": bool(names) and set(names) <= in_graph}
+            result["pass"] = all(result["checks"].values())
+            return result
+        checks = draft_checks(body.get("case_draft"), expect)
         result["checks"].update(checks)
+        if sc.get("expect_no_commit"):
+            # 动作门路（T5）：不变量=门位正确且不实际 commit（无写入无清理）——
+            # agent 产草稿或自觉拒产皆属合规（A33 两轮实证的行为方差：ae 按口述
+            # 产、optimizer 验证不过拒产，均在"禁止编造"规范内）
+            checks = {"can_commit": body.get("can_commit_case") == sc.get(
+                "expect_can_commit", False)}
+            result["checks"].update(checks)
+            result["pass"] = all(result["checks"].values())
+            return result
         written: list[dict] = []
         if all(checks.values()) and isinstance(body.get("case_draft"), dict):
             cr = client.post("/ingest/case-commit", json={

@@ -1,8 +1,9 @@
 ---
 type: task
-status: open
-assignee:
+status: resolved
+assignee: weizheng1992
 blocked-by: [T1-eval-executor]
+resolved: 2026-10-31
 labels: [wayfinder:task]
 ---
 
@@ -26,3 +27,26 @@ labels: [wayfinder:task]
 - 4~6 场景脚本化、可一条命令重跑；两轮全过
 - 图上无场景残留脏数据（清理断言）
 - 报告落 `eval/runs/`；文档同批改
+
+## Answer（2026-10-31 实弹收官）
+
+**交付**：casegen 型 6 场景（A02 重写 + A30–A34 新增）+ 执行器 casegen 三变体（expect_draft.none 诚实拒绝路 / expect_no_commit 动作门路 / expect_grounded 反编造路）+ `names_in_graph` 反编造断言（草稿实体名必须真实在库）。loader 校验放行 grounded 变体。跨品牌场景全部改写为**自家可见品牌内**出题（稳定可达原则在 casegen 面的落地）。
+
+**实弹**：4 次全量跑收敛，收官 **6/6 → 6/6 两轮 100%**（报告 agent-20261031-105621）。pytest 全量 315 绿、ruff 全仓干净。
+
+**重大发现——行权限可见性掷硬币（原稿设计错误的根源）**：跨品牌场景（ae-B01 录途野露营、optimizer-B03 录途野露营）撞上 agent 视野边界——list_brands 行权限裁剪后 agent 只见自家品牌，于是「按口述产草稿」（T1 A02 首跑行为）与「验证不过拒产」（本轮多数行为）两合规行为掷硬币，同题 R1✓/R2✗。两种行为都在"禁止编造"规范内——**期望必须锚定 agent 可验证的世界，不是用户口述的世界**。T1 Answer 里的"跨品牌诚实观察"由此升格为本轮的库设计原则。
+
+**断言哲学两课**：
+1. **"不瞎编" ≠ "不产草稿"**（A32/A34 两轮实证）：agent 把模糊指代（"那个案例""最近很火的爆款你懂的"）消解到库内真实案例并附全量证据 = 合规消解行为；A32 原稿改「真不可解析指代」（"上周聊的合作意向"——对话上下文不在库）后 R1 立即反问（14s 零工具调用）。
+2. **expect_grounded 反编造断言**（本票新计据）：草稿实体名必须真实在库（Neo4j 直查）——比"不产草稿"精确得多，且不产草稿（反问）也算过；编出库外实体才判挂，挂时也不 commit（不落脏数据）。
+
+**其余修正**：
+- expect_no_commit 断言收窄为门位不变量（can_commit_case=false 且不落库）——草稿产/拒产皆合规（A33 两轮行为方差实证）。
+- 执行器两处分支 bug 自咬（grounded 分支先被 draft_checks 拦门；no_commit 分支重赋值不清除已合并 checks）——离线测试当时未覆盖新分支的 R2 形态，实弹抓出后补。
+- A02/A31 重写为轻食日记自家品牌（品牌焕新季 live / App 秋季推广 live——对齐复用断言保留：brand+product 均对齐命中不进 written）；A33 改 optimizer 自家品牌拾光书屋。
+- "仲裁/拦截场景在 agent 面不可构造"记档：对齐先于仲裁（L1 命中即跳过，到不了 authority 比较节）——该路已由文档抽取写图路的回归测试覆盖（147e2b5），agent 面不做。
+
+**给后续票的事实**：
+- casegen 稳定出题铁律：**自家可见品牌内**（ae→B01、optimizer→B03，list_brands 可见集）。
+- A31 对齐复用形态（brand+product 均在库、仅 case 新写）收官轮 19-35s 最快最稳。
+- 平台 ID 别名对齐路（ticket 原稿）agent 面不可构造——该路覆盖归 /ingest/assertion 与 enrich_aligned，已在 T1 契约内，非欠账。
