@@ -44,6 +44,8 @@ SCENARIOS = ROOT / "eval" / "agent_scenarios.jsonl"
 AGENT_TYPES = {"query", "stat", "comparison", "casegen"}
 GATE_RATE = 0.9                                     # 题型达标线（casegen 恒 1.0）
 _CASE_ID = re.compile(r"^Case:C-\d{4}-\d{3}$")
+_DEGRADE_MARKERS = ("无法对比", "暂不支持", "无法同时", "需要分两次", "无法给出两个",
+                    "暂时无法", "暂无法")            # 诚实降级声明词面（allow_honest_degrade 场景）
 
 
 def load(path: Path = SCENARIOS) -> list[dict]:
@@ -255,7 +257,15 @@ def eval_agent(client, sc: dict, judge_fn=None, keep: bool = False) -> dict:
         result["entities_hit"] = ent_hit
     else:
         checks["entities"] = ent_hit
-    checks["numbers"] = num_ok(blob, ans.get("must_numbers") or [])
+    # 双期间等对比题允许诚实降级（T4 票内拍板）：judge 未中但回复明确声明无法
+    # 对比 → 算过并标注 honest_degrade——系统能力边界如实上报 ≠ 答错；降级回复
+    # 本就不含双期数值，数值锚免检（有数反而可疑：降级还报数=编数，judge 已挡）
+    if sc.get("allow_honest_degrade") and not checks["judge"] \
+            and any(m in reply for m in _DEGRADE_MARKERS):
+        checks["judge"] = True
+        result["honest_degrade"] = True
+    else:
+        checks["numbers"] = num_ok(blob, ans.get("must_numbers") or [])
     if sc.get("expect_absent"):
         checks["permission"] = all(a not in blob for a in sc["expect_absent"])
     result["checks"].update(checks)

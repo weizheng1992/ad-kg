@@ -24,8 +24,15 @@ def num_ok(texts: str | list[str], must_numbers: list) -> bool:
     return True
 
 
+_NUM_RE = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
+
+
 def _hit(text: str, target: float, tol: float) -> bool:
-    blob = text.replace(",", "").replace("，", "")
-    found = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", blob)]
-    found += [float(x) / 100 for x in re.findall(r"(\d+(?:\.\d+)?)\s*[%％]", blob)]
+    """数字提取两难：千分位 1,001,609.41 要整体读、分句逗号 6297，2026 要分开
+    读（整串剥逗号曾把相邻两数粘成巨数 62972026——2026-10-31 A29 实弹）。正则
+    按「3 位分组优先」消歧：半角逗号只在合法千分位组里被消费；全角逗号（中文
+    分句符）从不剥。百分号标注的数按 /100 候选参与匹配（精确限定 % 后缀）。"""
+    found = [float(x.replace(",", "")) for x in re.findall(_NUM_RE, text)]
+    found += [float(x.replace(",", "")) / 100 for x in
+              re.findall(f"({_NUM_RE})\\s*[%％]", text)]
     return any(abs(f - target) <= tol for f in found)

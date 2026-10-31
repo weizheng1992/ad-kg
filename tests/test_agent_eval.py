@@ -229,6 +229,36 @@ def test_传输层单次重试():
     assert _Always422.calls == 1                        # 4xx 不重试
 
 
+def test_诚实降级通道():
+    """allow_honest_degrade 场景（T4 双期间）：judge 未中但回复声明无法对比 →
+    过且标注 honest_degrade（票内拍板：能力边界如实上报 ≠ 答错）；
+    无声明词面 → 照常挂（数值锚免检仅限降级路，有数还挂 judge = 编数嫌疑）。"""
+    class _C:
+        def __init__(self, reply):
+            self._r = reply
+
+        def post(self, url, json=None):                 # noqa: A002
+            reply = self._r                             # 闭包捕获（R 实例上无 _r）
+            return type("R", (), {"status_code": 200, "text": "", "json": lambda self: {
+                "reply": reply, "trace": [], "case_draft": None,
+                "creative_drafts": None}})()
+
+    sc = {"id": "X", "type": "comparison", "question": "9 月和 8 月比投放费？",
+          "role": "management", "user": "Person:chen",
+          "expected_answer": {"points": ["9 月投放费", "8 月投放费", "方向结论"],
+                              "must_entities": [], "must_numbers": [93954, 79317]},
+          "allow_honest_degrade": True}
+
+    def _judge_no(q, pts, ev):
+        return {"verdict": False, "points_hit": [], "reason": "未命中"}
+
+    r1 = eval_agent(_C("系统当前无法对比两个月份的投放费，建议分两次查询。"), sc, judge_fn=_judge_no)
+    assert r1["pass"] is True and r1.get("honest_degrade") is True
+
+    r2 = eval_agent(_C("9 月花了 5 万。"), sc, judge_fn=_judge_no)
+    assert r2["pass"] is False and not r2.get("honest_degrade")
+
+
 def test_gate剔除传输超时分母():
     """transport_dead 不进分母（口径重拍板 2026-10-30）；4xx 真失败照常计入。"""
     rows = [{"id": "a", "type": "stat", "pass": True},

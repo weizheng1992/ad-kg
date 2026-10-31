@@ -57,7 +57,8 @@ def anchor_creative_cpa(cur, sc: dict) -> dict | None:
 
 def anchor_platform_cost(cur, sc: dict) -> dict | None:
     """各平台消耗合计（matched sum(cost)，整数形态同 golden）；window=auto 时
-    从问句取窗（T3：上月平台拆分）。"""
+    从问句取窗（T3：上月平台拆分）。points 与 must_numbers 同源双断言
+    （T4 补：曾只填 points，A21 残留旧总量锚靠答案恰带总量侥幸过——收紧）。"""
     spec = sc.get("anchor") or {}
     wcond, params = _window_where(spec, sc["question"])
     where = "WHERE NOT unmatched" + wcond
@@ -67,7 +68,8 @@ def anchor_platform_cost(cur, sc: dict) -> dict | None:
     if not rows:
         return None
     suffix = "（matched 口径）" if not params else f"（{params['a']}~{params['b']} 窗）"
-    return {"points": [f"{p} 合计 ≈ {int(c)}{suffix}" for p, c in rows]}
+    return {"points": [f"{p} 合计 ≈ {int(c)}{suffix}" for p, c in rows],
+            "must_numbers": [str(int(c)) for _, c in rows]}
 
 
 def anchor_platform_metric(cur, sc: dict) -> dict | None:
@@ -133,13 +135,113 @@ def anchor_sum_metric(cur, sc: dict) -> dict | None:
     return {"must_numbers": nums}
 
 
+def _metric_expr(metric: str) -> str:
+    """比率型走 agg_expr 单源；和值型（conversions/cost/clicks/impressions）sum。"""
+    if metric in ("cpa", "ctr", "cvr", "cpm", "roi"):
+        return agg_expr(metric)
+    return f"sum({metric})"
+
+
+def anchor_creative_metric(cur, sc: dict) -> dict | None:
+    """素材级指标双边锚（T4 双实体对比）：{"kind","creatives":[...],"metric",
+    "window":"auto"?}——多素材按声明顺序落 must_numbers；比率型 agg_expr、
+    和值型 sum（_metric_expr 单源）。"""
+    spec = sc.get("anchor") or {}
+    metric = str(spec.get("metric") or "cpa")
+    ids = [c for c in (spec.get("creatives") or []) if str(c).startswith("Creative:")]
+    if not ids:
+        return None
+    wcond, params = _window_where(spec, sc["question"])
+    where = "WHERE NOT unmatched AND creative_id = %(id)s" + wcond
+    nums = []
+    for cid in ids:
+        cur.execute(f"SELECT {_metric_expr(metric)} FROM unified_metrics {where}",
+                    {**params, "id": cid})
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return None
+        nums.append(str(round(Decimal(row[0]), 2)))
+    return {"must_numbers": nums}
+
+
+def anchor_platform_metric_multi(cur, sc: dict) -> dict | None:
+    """平台级指标双边锚（T4 双平台对比）：{"kind","platforms":[...],"metric",
+    "window":"auto"?}——多平台按声明顺序落 must_numbers（单平台特例用
+    platform_metric，双份形状曾合并考虑，读法不同留两 kind）。"""
+    spec = sc.get("anchor") or {}
+    metric = str(spec.get("metric") or "")
+    platforms = [p for p in (spec.get("platforms") or []) if p]
+    if not metric or not platforms:
+        return None
+    wcond, params = _window_where(spec, sc["question"])
+    where = "WHERE NOT unmatched AND platform = %(p)s" + wcond
+    nums = []
+    for p in platforms:
+        cur.execute(f"SELECT {_metric_expr(metric)} FROM unified_metrics {where}",
+                    {**params, "p": p})
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return None
+        nums.append(str(round(Decimal(row[0]), 2)))
+    return {"must_numbers": nums}
+
+
+def anchor_period_sum(cur, sc: dict) -> dict | None:
+    """双期间和值锚（T4 双期间对比）：{"kind","metric","windows":["2026-09",...]}——
+    显式月份（_window_of 不认"上上月"，题面点名月份；月界=自然月，月内逐日
+    覆盖口径与 window_top 的 STAT_HAVING 语义不同——期间和值不设 HAVING）。"""
+    import calendar
+    spec = sc.get("anchor") or {}
+    metric, months = str(spec.get("metric") or ""), (spec.get("windows") or [])
+    if not metric or not months:
+        return None
+    nums = []
+    for m in months:
+        y, mo = int(str(m)[:4]), int(str(m)[5:7])
+        last = calendar.monthrange(y, mo)[1]
+        cur.execute(f"SELECT sum({metric}) FROM unified_metrics"
+                    " WHERE NOT unmatched AND date BETWEEN %(a)s AND %(b)s",
+                    {"a": f"{y:04d}-{mo:02d}-01", "b": f"{y:04d}-{mo:02d}-{last:02d}"})
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return None
+        nums.append(str(round(Decimal(row[0]), 0)))
+    return {"must_numbers": nums}
+
+
+def anchor_brand_metric(cur, sc: dict) -> dict | None:
+    """品牌级指标双边锚（T4 双品牌对比）：{"kind","brands":[...],"metric",
+    "window":"auto"?}——unified_metrics 自带 brand_id（brand 粒度 native 可达；
+    双实体素材级对比不可达——缺口⑥，2026-10-31 A24 原题实证后改写至此）。"""
+    spec = sc.get("anchor") or {}
+    metric = str(spec.get("metric") or "")
+    brands = [b for b in (spec.get("brands") or []) if str(b).startswith("Brand:")]
+    if not metric or not brands:
+        return None
+    wcond, params = _window_where(spec, sc["question"])
+    where = "WHERE NOT unmatched AND brand_id = %(b)s" + wcond
+    nums = []
+    for b in brands:
+        cur.execute(f"SELECT {_metric_expr(metric)} FROM unified_metrics {where}",
+                    {**params, "b": b})
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            return None
+        nums.append(str(round(Decimal(row[0]), 0)))
+    return {"must_numbers": nums}
+
+
 # window_top_cpa 已并入 window_top_metric（metric=cpa/order=desc 全同形——A01 已迁，
 # 2026-10-31 收口：特例 kind 曾与泛化版双份维护）
 ANCHORS = {"creative_cpa": anchor_creative_cpa,
            "platform_cost": anchor_platform_cost,
            "window_top_metric": anchor_window_top_metric,
            "sum_metric": anchor_sum_metric,
-           "platform_metric": anchor_platform_metric}
+           "platform_metric": anchor_platform_metric,
+           "creative_metric": anchor_creative_metric,
+           "platform_metric_multi": anchor_platform_metric_multi,
+           "period_sum": anchor_period_sum,
+           "brand_metric": anchor_brand_metric}
 
 
 def main() -> None:
